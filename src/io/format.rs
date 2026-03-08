@@ -14,6 +14,9 @@ pub enum ModelFormat {
     /// SafeTensors format (HuggingFace compatible, efficient binary)
     SafeTensors,
 
+    /// APR format (sovereign stack universal format — atomic, binary, training+inference)
+    Apr,
+
     /// Placeholder for future GGUF support
     #[cfg(feature = "gguf")]
     Gguf,
@@ -26,6 +29,7 @@ impl ModelFormat {
             ModelFormat::Json => "json",
             ModelFormat::Yaml => "yaml",
             ModelFormat::SafeTensors => "safetensors",
+            ModelFormat::Apr => "apr",
             #[cfg(feature = "gguf")]
             ModelFormat::Gguf => "gguf",
         }
@@ -37,6 +41,7 @@ impl ModelFormat {
             "json" => Some(ModelFormat::Json),
             "yaml" | "yml" => Some(ModelFormat::Yaml),
             "safetensors" => Some(ModelFormat::SafeTensors),
+            "apr" => Some(ModelFormat::Apr),
             #[cfg(feature = "gguf")]
             "gguf" => Some(ModelFormat::Gguf),
             _ => None,
@@ -91,6 +96,7 @@ mod tests {
         assert_eq!(ModelFormat::Json.extension(), "json");
         assert_eq!(ModelFormat::Yaml.extension(), "yaml");
         assert_eq!(ModelFormat::SafeTensors.extension(), "safetensors");
+        assert_eq!(ModelFormat::Apr.extension(), "apr");
     }
 
     #[test]
@@ -101,6 +107,7 @@ mod tests {
         assert_eq!(ModelFormat::from_extension("yml"), Some(ModelFormat::Yaml));
         assert_eq!(ModelFormat::from_extension("safetensors"), Some(ModelFormat::SafeTensors));
         assert_eq!(ModelFormat::from_extension("SAFETENSORS"), Some(ModelFormat::SafeTensors));
+        assert_eq!(ModelFormat::from_extension("apr"), Some(ModelFormat::Apr));
         assert_eq!(ModelFormat::from_extension("unknown"), None);
     }
 

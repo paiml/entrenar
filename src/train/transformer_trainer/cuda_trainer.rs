@@ -2234,11 +2234,13 @@ impl CudaTransformerTrainer {
         }
 
         // Sync LM head weight
+        // ALB-097: ALWAYS save GPU-trained LM head, even for tied-weight models.
+        // During GPU training, lm_head diverges from embed_tokens because they have
+        // separate optimizers (GPU AdamW vs CPU AdamW). If we skip the sync for tied
+        // weights, the checkpoint loses 500+ steps of GPU LM head training → random-init
+        // loss on resume (Five Whys root cause of ALB-097).
         if let Ok(lm_data) = self.cuda_trainer.download(&self.lm_head_weight_gpu) {
-            if self.model.lm_head.is_some() {
-                self.model.lm_head = Some(Tensor::from_vec(lm_data, false));
-            }
-            // If tied weights, embedding was updated by CPU optimizer — don't overwrite
+            self.model.lm_head = Some(Tensor::from_vec(lm_data, false));
         }
     }
 
@@ -2322,6 +2324,129 @@ impl CudaTransformerTrainer {
         })
     }
 
+    /// ALB-096: Save model weights as APR checkpoint (syncs GPU→CPU first).
+    ///
+    /// Single atomic file containing all model weights. Use `save_apr_checkpoint()`
+    /// to include optimizer state and training metadata in the same file.
+    pub fn save_apr(
+        &mut self,
+        path: impl AsRef<std::path::Path>,
+        name: &str,
+        architecture: &str,
+    ) -> crate::Result<()> {
+        self.sync_weights_to_cpu();
+
+        let params: Vec<(String, Tensor)> = self
+            .model
+            .named_parameters()
+            .into_iter()
+            .map(|(name, tensor)| (name, tensor.clone()))
+            .collect();
+
+        let metadata = ModelMetadata::new(name, architecture);
+        let model = Model::new(metadata, params);
+        let config = SaveConfig::new(ModelFormat::Apr);
+
+        save_model(&model, path, &config)
+    }
+
+    /// ALB-096: Prepare APR checkpoint data for async save.
+    ///
+    /// Syncs GPU weights to CPU and snapshots tensor data + optimizer state as
+    /// Send-able `Vec<f32>`. Returns a closure that writes a single atomic APR
+    /// file from another thread. Includes model weights + CPU embedding optimizer
+    /// state + training metadata — all in one file.
+    pub fn prepare_async_apr_save(
+        &mut self,
+        name: &str,
+        architecture: &str,
+        step: usize,
+        loss: f64,
+        lr: f64,
+    ) -> Box<dyn FnOnce(&std::path::Path) -> crate::Result<()> + Send> {
+        self.sync_weights_to_cpu();
+
+        // Snapshot model weights
+        let param_data: Vec<(String, Vec<f32>)> = self
+            .model
+            .named_parameters()
+            .into_iter()
+            .map(|(n, t)| (n, t.data().to_vec()))
+            .collect();
+
+        // Snapshot CPU embedding optimizer state
+        let embed_m: Vec<Vec<f32>> = self
+            .embed_optimizer
+            .first_moments()
+            .iter()
+            .filter_map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
+            .collect();
+        let embed_v: Vec<Vec<f32>> = self
+            .embed_optimizer
+            .second_moments()
+            .iter()
+            .filter_map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
+            .collect();
+        let embed_step = self.embed_optimizer.step_count();
+
+        let name = name.to_string();
+        let architecture = architecture.to_string();
+        let model_config_json = serde_json::to_string(&self.config.model_config).ok();
+
+        Box::new(move |path: &std::path::Path| {
+            use aprender::serialization::apr::AprWriter;
+            use serde_json::Value as Jv;
+
+            let mut writer = AprWriter::new();
+
+            // Metadata
+            writer.set_metadata("model_name", Jv::String(name));
+            writer.set_metadata("architecture", Jv::String(architecture));
+            writer.set_metadata("format", Jv::String("entrenar-checkpoint".into()));
+            writer.set_metadata("checkpoint_step", Jv::String(step.to_string()));
+            writer.set_metadata("loss", Jv::String(format!("{loss:.6}")));
+            writer.set_metadata("learning_rate", Jv::String(format!("{lr:.6e}")));
+            writer.set_metadata("optimizer_step", Jv::String(embed_step.to_string()));
+            if let Some(cfg) = model_config_json {
+                writer.set_metadata("model_config", Jv::String(cfg));
+            }
+
+            // Find hidden_size from norm weights for shape inference
+            let hidden_size = param_data
+                .iter()
+                .find(|(n, _)| n.ends_with("layernorm.weight") || n == "model.norm.weight")
+                .map_or(0, |(_, d)| d.len());
+
+            // Model weight tensors
+            for (tensor_name, data) in &param_data {
+                let shape = infer_tensor_shape(tensor_name, data.len(), hidden_size);
+                writer.add_tensor_f32(tensor_name, shape, data);
+            }
+
+            // Optimizer state tensors (__training__ namespace)
+            for (i, m_data) in embed_m.iter().enumerate() {
+                writer.add_tensor_f32(
+                    format!("__training__.embed_optimizer.m.{i}"),
+                    vec![m_data.len()],
+                    m_data,
+                );
+            }
+            for (i, v_data) in embed_v.iter().enumerate() {
+                writer.add_tensor_f32(
+                    format!("__training__.embed_optimizer.v.{i}"),
+                    vec![v_data.len()],
+                    v_data,
+                );
+            }
+
+            writer
+                .write(path)
+                .map_err(|e| crate::error::Error::Serialization(format!("APR save failed: {e}")))?;
+
+            Ok(())
+        })
+    }
+
     /// GPU device name.
     pub fn gpu_name(&self) -> String {
         self.cuda_trainer.device_name()
@@ -2359,6 +2484,50 @@ impl CudaTransformerTrainer {
         Ok(())
     }
 
+    /// ALB-096: Load CPU embedding optimizer state from APR checkpoint.
+    ///
+    /// Reads `__training__.embed_optimizer.{m,v}.*` tensors from the APR file.
+    /// Returns true if state was loaded.
+    pub fn load_optimizer_state_apr(&mut self, apr_path: &std::path::Path) -> bool {
+        let reader = match aprender::serialization::apr::AprReader::open(apr_path) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+
+        // Restore step count from metadata
+        if let Some(step_val) = reader.get_metadata("optimizer_step") {
+            if let Some(step_str) = step_val.as_str() {
+                if let Ok(step) = step_str.parse::<u64>() {
+                    self.embed_optimizer.set_step_count(step);
+                }
+            }
+        }
+
+        // Restore first moments (m)
+        for i in 0..128 {
+            let name = format!("__training__.embed_optimizer.m.{i}");
+            match reader.read_tensor_f32(&name) {
+                Ok(data) if !data.is_empty() => {
+                    self.embed_optimizer.set_first_moment(i, ndarray::Array1::from_vec(data));
+                }
+                _ => break,
+            }
+        }
+
+        // Restore second moments (v)
+        for i in 0..128 {
+            let name = format!("__training__.embed_optimizer.v.{i}");
+            match reader.read_tensor_f32(&name) {
+                Ok(data) if !data.is_empty() => {
+                    self.embed_optimizer.set_second_moment(i, ndarray::Array1::from_vec(data));
+                }
+                _ => break,
+            }
+        }
+
+        true
+    }
+
     /// R-001: Load CPU embedding optimizer state from `optimizer_state.json`.
     ///
     /// Returns true if state was loaded, false if file doesn't exist.
@@ -2382,6 +2551,25 @@ impl CudaTransformerTrainer {
             self.embed_optimizer.set_second_moment(idx, arr);
         });
         true
+    }
+}
+
+/// ALB-096: Infer 2D tensor shape from name and element count.
+///
+/// Same logic as `infer_all_tensor_shapes` in `io/save.rs` but for a single tensor.
+#[cfg(feature = "cuda")]
+fn infer_tensor_shape(name: &str, numel: usize, hidden_size: usize) -> Vec<usize> {
+    if name.ends_with("layernorm.weight") || name == "model.norm.weight" {
+        vec![numel]
+    } else if hidden_size > 0 && numel % hidden_size == 0 {
+        let other_dim = numel / hidden_size;
+        if name.ends_with("down_proj.weight") {
+            vec![hidden_size, other_dim]
+        } else {
+            vec![other_dim, hidden_size]
+        }
+    } else {
+        vec![numel]
     }
 }
 
