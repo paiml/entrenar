@@ -256,10 +256,10 @@ fn run_lora_adapter_merge(args: &MergeArgs, level: LogLevel) -> Result<(), Strin
     log(level, LogLevel::Normal, &format!("  Adapter: {}", adapter_dir.display()));
 
     // Read adapter config
-    let config_str = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("Read adapter config: {e}"))?;
-    let config: serde_json::Value = serde_json::from_str(&config_str)
-        .map_err(|e| format!("Parse adapter config: {e}"))?;
+    let config_str =
+        std::fs::read_to_string(&config_path).map_err(|e| format!("Read adapter config: {e}"))?;
+    let config: serde_json::Value =
+        serde_json::from_str(&config_str).map_err(|e| format!("Parse adapter config: {e}"))?;
 
     let rank = config.get("r").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
     let alpha = config.get("lora_alpha").and_then(|v| v.as_f64()).unwrap_or(rank as f64 * 2.0);
@@ -268,24 +268,19 @@ fn run_lora_adapter_merge(args: &MergeArgs, level: LogLevel) -> Result<(), Strin
     log(level, LogLevel::Normal, &format!("  Rank: {rank}, Alpha: {alpha}, Scale: {scale:.4}"));
 
     // Load base model
-    let base_data = std::fs::read(base_path)
-        .map_err(|e| format!("Read base model: {e}"))?;
-    let base_tensors = SafeTensors::deserialize(&base_data)
-        .map_err(|e| format!("Parse base model: {e}"))?;
+    let base_data = std::fs::read(base_path).map_err(|e| format!("Read base model: {e}"))?;
+    let base_tensors =
+        SafeTensors::deserialize(&base_data).map_err(|e| format!("Parse base model: {e}"))?;
 
     // Load adapter
-    let adapter_data = std::fs::read(&adapter_path)
-        .map_err(|e| format!("Read adapter: {e}"))?;
-    let adapter_tensors = SafeTensors::deserialize(&adapter_data)
-        .map_err(|e| format!("Parse adapter: {e}"))?;
+    let adapter_data = std::fs::read(&adapter_path).map_err(|e| format!("Read adapter: {e}"))?;
+    let adapter_tensors =
+        SafeTensors::deserialize(&adapter_data).map_err(|e| format!("Parse adapter: {e}"))?;
 
     // Merge: copy all base tensors, apply LoRA delta where adapters exist
-    let adapter_names: Vec<String> = adapter_tensors.names().iter()
-        .map(|s| (*s).to_string())
-        .collect();
-    let base_names: Vec<String> = base_tensors.names().iter()
-        .map(|s| (*s).to_string())
-        .collect();
+    let adapter_names: Vec<String> =
+        adapter_tensors.names().iter().map(|s| (*s).to_string()).collect();
+    let base_names: Vec<String> = base_tensors.names().iter().map(|s| (*s).to_string()).collect();
 
     // Build map of adapter A/B pairs grouped by module path
     let lora_pairs = build_lora_pairs(&adapter_names, &adapter_tensors)?;
@@ -295,8 +290,7 @@ fn run_lora_adapter_merge(args: &MergeArgs, level: LogLevel) -> Result<(), Strin
     let mut output_tensors: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
     for name in &base_names {
-        let base_t = base_tensors.tensor(name)
-            .map_err(|e| format!("Get tensor {name}: {e}"))?;
+        let base_t = base_tensors.tensor(name).map_err(|e| format!("Get tensor {name}: {e}"))?;
         let shape: Vec<usize> = base_t.shape().to_vec();
 
         // Check if this weight has a LoRA adapter
@@ -342,8 +336,12 @@ fn run_lora_adapter_merge(args: &MergeArgs, level: LogLevel) -> Result<(), Strin
         .iter()
         .filter_map(|(name, bytes, shape)| {
             safetensors::tensor::TensorView::new(
-                safetensors::tensor::Dtype::F32, shape.clone(), bytes,
-            ).ok().map(|view| (name.as_str(), view))
+                safetensors::tensor::Dtype::F32,
+                shape.clone(),
+                bytes,
+            )
+            .ok()
+            .map(|view| (name.as_str(), view))
         })
         .collect();
 
@@ -359,12 +357,16 @@ fn run_lora_adapter_merge(args: &MergeArgs, level: LogLevel) -> Result<(), Strin
         .map_err(|e| format!("Write merged model: {e}"))?;
 
     let output_size = std::fs::metadata(&args.output).map(|m| m.len()).unwrap_or(0);
-    log(level, LogLevel::Normal, &format!(
-        "  Merged {merged_count} adapter weights into base model"
-    ));
-    log(level, LogLevel::Normal, &format!(
-        "  Output: {} ({:.2} MB)", args.output.display(), output_size as f64 / 1e6
-    ));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Merged {merged_count} adapter weights into base model"),
+    );
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Output: {} ({:.2} MB)", args.output.display(), output_size as f64 / 1e6),
+    );
 
     Ok(())
 }
@@ -387,8 +389,7 @@ fn build_lora_pairs<'a>(
             continue;
         };
 
-        let tensor = tensors.tensor(name)
-            .map_err(|e| format!("Get adapter tensor {name}: {e}"))?;
+        let tensor = tensors.tensor(name).map_err(|e| format!("Get adapter tensor {name}: {e}"))?;
         let data = tensor.data().to_vec();
         let shape = tensor.shape().to_vec();
 
@@ -416,31 +417,25 @@ fn build_lora_pairs<'a>(
 fn bytes_to_f32(data: &[u8], dtype: safetensors::tensor::Dtype) -> Vec<f32> {
     match dtype {
         safetensors::tensor::Dtype::F32 => {
-            data.chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                .collect()
+            data.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
         }
-        safetensors::tensor::Dtype::F16 => {
-            data.chunks_exact(2)
-                .map(|c| {
-                    let bits = u16::from_le_bytes([c[0], c[1]]);
-                    half::f16::from_bits(bits).to_f32()
-                })
-                .collect()
-        }
-        safetensors::tensor::Dtype::BF16 => {
-            data.chunks_exact(2)
-                .map(|c| {
-                    let bits = u16::from_le_bytes([c[0], c[1]]);
-                    half::bf16::from_bits(bits).to_f32()
-                })
-                .collect()
-        }
+        safetensors::tensor::Dtype::F16 => data
+            .chunks_exact(2)
+            .map(|c| {
+                let bits = u16::from_le_bytes([c[0], c[1]]);
+                half::f16::from_bits(bits).to_f32()
+            })
+            .collect(),
+        safetensors::tensor::Dtype::BF16 => data
+            .chunks_exact(2)
+            .map(|c| {
+                let bits = u16::from_le_bytes([c[0], c[1]]);
+                half::bf16::from_bits(bits).to_f32()
+            })
+            .collect(),
         _ => {
             // For other dtypes, treat as f32 (best effort)
-            data.chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                .collect()
+            data.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
         }
     }
 }

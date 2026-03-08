@@ -46,8 +46,12 @@ impl DoRALayer {
             .map(|row| {
                 let row_start = row * d_in;
                 let row_end = row_start + d_in;
-                let row_norm_sq: f32 =
-                    base_weight.data().slice(ndarray::s![row_start..row_end]).iter().map(|x| x * x).sum();
+                let row_norm_sq: f32 = base_weight
+                    .data()
+                    .slice(ndarray::s![row_start..row_end])
+                    .iter()
+                    .map(|x| x * x)
+                    .sum();
                 row_norm_sq.sqrt().max(1e-8)
             })
             .collect();

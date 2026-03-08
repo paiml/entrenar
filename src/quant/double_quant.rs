@@ -85,12 +85,8 @@ pub fn quantize_4bit_double(values: &[f32]) -> DoubleQuantized4Bit {
 
         // Super-scale = max of this block of scales
         // Scales are always non-negative (absmax / 7)
-        let max_scale = scale_block
-            .iter()
-            .copied()
-            .max_by(f32::total_cmp)
-            .unwrap_or(1e-8)
-            .max(1e-8); // avoid division by zero
+        let max_scale =
+            scale_block.iter().copied().max_by(f32::total_cmp).unwrap_or(1e-8).max(1e-8); // avoid division by zero
         super_scales.push(max_scale);
 
         // Quantize each scale to u8: q = round(scale / max_scale * 255)
@@ -180,9 +176,7 @@ mod tests {
     #[test]
     fn test_ent_lora_008_double_quant_within_1pct_of_single() {
         // Realistic transformer weight distribution
-        let values: Vec<f32> = (0..4096)
-            .map(|i| ((i as f32 * 0.1).sin() * 2.0))
-            .collect();
+        let values: Vec<f32> = (0..4096).map(|i| ((i as f32 * 0.1).sin() * 2.0)).collect();
 
         let single = quantize_4bit(&values);
         let single_deq = dequantize_4bit(&single);

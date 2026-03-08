@@ -705,10 +705,7 @@ fn test_ent_lora_001_lora_b_initialized_zeros() {
     for (i, layer) in lora.iter().enumerate() {
         let b_data = layer.lora_b().data();
         let max_b = b_data.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-        assert!(
-            max_b < 1e-10,
-            "LoRA B[{i}] should be zeros at init, max value: {max_b}"
-        );
+        assert!(max_b < 1e-10, "LoRA B[{i}] should be zeros at init, max value: {max_b}");
     }
 }
 
@@ -788,10 +785,7 @@ fn test_ent_lora_001_lora_updates_only_adapters() {
             continue;
         }
         // Attention and FFN base weights must NOT change
-        assert_eq!(
-            data_b, data_a,
-            "Base weight '{name_b}' changed during LoRA training"
-        );
+        assert_eq!(data_b, data_a, "Base weight '{name_b}' changed during LoRA training");
     }
 }
 
@@ -833,10 +827,7 @@ fn test_ent_lora_002_norm_weights_trainable() {
 
     let norm_after: Vec<f32> = trainer.model().norm.weight.data().to_vec();
     // At least some norm weights should have changed
-    let any_changed = norm_before
-        .iter()
-        .zip(&norm_after)
-        .any(|(b, a)| (b - a).abs() > 1e-10);
+    let any_changed = norm_before.iter().zip(&norm_after).any(|(b, a)| (b - a).abs() > 1e-10);
     assert!(any_changed, "Norm weights should be trainable during LoRA fine-tuning");
 }
 
@@ -861,18 +852,15 @@ fn test_ent_lora_003_save_adapter() {
     let _ = std::fs::remove_dir_all(&tmp_dir);
     std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
 
-    trainer
-        .save_lora_adapter(&tmp_dir, Some("test-model"))
-        .expect("save adapter should succeed");
+    trainer.save_lora_adapter(&tmp_dir, Some("test-model")).expect("save adapter should succeed");
 
     // Verify PEFT files exist
     assert!(tmp_dir.join("adapter_config.json").exists());
     assert!(tmp_dir.join("adapter_model.safetensors").exists());
 
     // Adapter should be much smaller than full model
-    let adapter_size = std::fs::metadata(tmp_dir.join("adapter_model.safetensors"))
-        .expect("adapter file")
-        .len();
+    let adapter_size =
+        std::fs::metadata(tmp_dir.join("adapter_model.safetensors")).expect("adapter file").len();
     // Adapter for tiny model with rank=4 should be very small
     assert!(adapter_size < 100_000, "Adapter should be small, got {adapter_size} bytes");
 
@@ -896,8 +884,8 @@ fn test_ent_lora_003_save_adapter_without_lora_fails() {
 #[test]
 fn test_ent_lora_005_all_linear_creates_7_layers_per_block() {
     let model_config = TransformerConfig::tiny();
-    let config = TransformerTrainConfig::new(model_config)
-        .with_lora(4, 8.0, vec!["all_linear".to_string()]);
+    let config =
+        TransformerTrainConfig::new(model_config).with_lora(4, 8.0, vec!["all_linear".to_string()]);
 
     let trainer = TransformerTrainer::new(config);
     let lora = trainer.lora_layers().expect("LoRA should be active");
@@ -908,8 +896,8 @@ fn test_ent_lora_005_all_linear_creates_7_layers_per_block() {
 #[test]
 fn test_ent_lora_005_attention_shorthand() {
     let model_config = TransformerConfig::tiny();
-    let config = TransformerTrainConfig::new(model_config)
-        .with_lora(4, 8.0, vec!["attention".to_string()]);
+    let config =
+        TransformerTrainConfig::new(model_config).with_lora(4, 8.0, vec!["attention".to_string()]);
 
     let trainer = TransformerTrainer::new(config);
     let lora = trainer.lora_layers().expect("LoRA should be active");
@@ -920,8 +908,8 @@ fn test_ent_lora_005_attention_shorthand() {
 #[test]
 fn test_ent_lora_005_mlp_shorthand() {
     let model_config = TransformerConfig::tiny();
-    let config = TransformerTrainConfig::new(model_config)
-        .with_lora(4, 8.0, vec!["mlp".to_string()]);
+    let config =
+        TransformerTrainConfig::new(model_config).with_lora(4, 8.0, vec!["mlp".to_string()]);
 
     let trainer = TransformerTrainer::new(config);
     let lora = trainer.lora_layers().expect("LoRA should be active");
@@ -941,7 +929,474 @@ fn test_ent_lora_006_config_default_ratio() {
 
 #[test]
 fn test_ent_lora_006_config_with_ratio() {
-    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
-        .with_lora_plus_ratio(16.0);
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_lora_plus_ratio(16.0);
     assert!((config.lora_plus_ratio - 16.0).abs() < 1e-6);
+}
+
+// ============================================================================
+// Coverage improvement: Builder methods and accessors (config.rs)
+// ============================================================================
+
+#[test]
+fn test_config_with_lr_sets_value() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_lr(0.0005);
+    assert!((config.lr - 0.0005).abs() < 1e-8, "with_lr should set lr field");
+}
+
+#[test]
+fn test_config_with_grad_clip_sets_base_max_grad_norm() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_grad_clip(2.5);
+    assert_eq!(
+        config.base.max_grad_norm,
+        Some(2.5),
+        "with_grad_clip should set base.max_grad_norm"
+    );
+}
+
+#[test]
+fn test_config_with_use_cuda_true() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_use_cuda(true);
+    assert!(config.use_cuda, "with_use_cuda(true) should set use_cuda to true");
+}
+
+#[test]
+fn test_config_with_use_cuda_false() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_use_cuda(false);
+    assert!(!config.use_cuda, "with_use_cuda(false) should set use_cuda to false");
+}
+
+#[test]
+fn test_config_with_beta2_sets_value() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_beta2(0.95);
+    assert!((config.beta2 - 0.95).abs() < 1e-8, "with_beta2 should set beta2 field");
+}
+
+#[test]
+fn test_config_with_weight_decay_sets_value() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_weight_decay(0.1);
+    assert!(
+        (config.weight_decay - 0.1).abs() < 1e-8,
+        "with_weight_decay should set weight_decay field"
+    );
+}
+
+#[test]
+fn test_config_with_profile_interval_sets_value() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_profile_interval(50);
+    assert_eq!(
+        config.profile_interval, 50,
+        "with_profile_interval should set profile_interval field"
+    );
+}
+
+#[test]
+fn test_config_with_profile_interval_zero_disabled() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_profile_interval(0);
+    assert_eq!(config.profile_interval, 0, "profile_interval=0 means disabled");
+}
+
+#[test]
+fn test_config_with_max_steps_sets_some() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_max_steps(500);
+    assert_eq!(config.max_steps, Some(500), "with_max_steps should set max_steps to Some(N)");
+}
+
+#[test]
+fn test_config_with_double_quantize_enabled() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_double_quantize(true);
+    assert!(config.double_quantize, "with_double_quantize(true) should enable double quantization");
+}
+
+#[test]
+fn test_config_with_double_quantize_disabled() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_double_quantize(false);
+    assert!(
+        !config.double_quantize,
+        "with_double_quantize(false) should disable double quantization"
+    );
+}
+
+#[test]
+fn test_config_with_accumulation_steps_clamps_to_one() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_accumulation_steps(0);
+    assert_eq!(config.accumulation_steps, 1, "with_accumulation_steps(0) should clamp to 1");
+}
+
+#[test]
+fn test_config_with_accumulation_steps_preserves_valid() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_accumulation_steps(8);
+    assert_eq!(config.accumulation_steps, 8, "with_accumulation_steps(8) should preserve value");
+}
+
+// ============================================================================
+// Coverage improvement: Distributed config, accessors, defaults
+// ============================================================================
+
+#[test]
+fn test_distributed_role_default_is_coordinator() {
+    let role = DistributedRole::default();
+    assert_eq!(role, DistributedRole::Coordinator, "Default DistributedRole should be Coordinator");
+}
+
+#[test]
+fn test_distributed_backend_default_is_auto() {
+    let backend = DistributedBackend::default();
+    assert_eq!(backend, DistributedBackend::Auto, "Default DistributedBackend should be Auto");
+}
+
+#[test]
+fn test_distributed_role_eq() {
+    assert_eq!(DistributedRole::Coordinator, DistributedRole::Coordinator);
+    assert_eq!(DistributedRole::Worker, DistributedRole::Worker);
+    assert_ne!(DistributedRole::Coordinator, DistributedRole::Worker);
+}
+
+#[test]
+fn test_distributed_backend_eq() {
+    assert_eq!(DistributedBackend::Cuda, DistributedBackend::Cuda);
+    assert_eq!(DistributedBackend::Wgpu, DistributedBackend::Wgpu);
+    assert_eq!(DistributedBackend::Auto, DistributedBackend::Auto);
+    assert_ne!(DistributedBackend::Cuda, DistributedBackend::Wgpu);
+}
+
+#[test]
+fn test_distributed_role_clone() {
+    let role = DistributedRole::Worker;
+    let cloned = role;
+    assert_eq!(role, cloned);
+}
+
+#[test]
+fn test_distributed_backend_clone() {
+    let backend = DistributedBackend::Cuda;
+    let cloned = backend;
+    assert_eq!(backend, cloned);
+}
+
+#[test]
+fn test_config_with_distributed_sets_some() {
+    let dist = DistributedTrainConfig {
+        world_size: 4,
+        rank: 1,
+        local_rank: 0,
+        role: DistributedRole::Worker,
+        coordinator_addr: "127.0.0.1:29500".parse().expect("valid socket addr"),
+        backend: DistributedBackend::Cuda,
+    };
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_distributed(dist);
+
+    assert!(config.distributed.is_some(), "with_distributed should set distributed");
+    let d = config.distributed.as_ref().expect("distributed should be Some");
+    assert_eq!(d.world_size, 4);
+    assert_eq!(d.rank, 1);
+    assert_eq!(d.local_rank, 0);
+    assert_eq!(d.role, DistributedRole::Worker);
+    assert_eq!(d.backend, DistributedBackend::Cuda);
+}
+
+#[test]
+fn test_config_is_distributed_false_by_default() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!(!config.is_distributed(), "is_distributed() should be false by default");
+}
+
+#[test]
+fn test_config_is_distributed_true_when_set() {
+    let dist = DistributedTrainConfig {
+        world_size: 2,
+        rank: 0,
+        local_rank: 0,
+        role: DistributedRole::Coordinator,
+        coordinator_addr: "127.0.0.1:29500".parse().expect("valid socket addr"),
+        backend: DistributedBackend::Auto,
+    };
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_distributed(dist);
+    assert!(
+        config.is_distributed(),
+        "is_distributed() should be true when distributed config is set"
+    );
+}
+
+#[test]
+fn test_config_world_size_default_is_one() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert_eq!(
+        config.world_size(),
+        1,
+        "world_size() should return 1 for single-GPU (no distributed)"
+    );
+}
+
+#[test]
+fn test_config_world_size_from_distributed() {
+    let dist = DistributedTrainConfig {
+        world_size: 8,
+        rank: 3,
+        local_rank: 1,
+        role: DistributedRole::Worker,
+        coordinator_addr: "10.0.0.1:29500".parse().expect("valid socket addr"),
+        backend: DistributedBackend::Wgpu,
+    };
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_distributed(dist);
+    assert_eq!(config.world_size(), 8, "world_size() should return distributed world_size");
+}
+
+#[test]
+fn test_config_rank_default_is_zero() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert_eq!(config.rank(), 0, "rank() should return 0 for single-GPU (no distributed)");
+}
+
+#[test]
+fn test_config_rank_from_distributed() {
+    let dist = DistributedTrainConfig {
+        world_size: 4,
+        rank: 2,
+        local_rank: 0,
+        role: DistributedRole::Worker,
+        coordinator_addr: "127.0.0.1:29500".parse().expect("valid socket addr"),
+        backend: DistributedBackend::Auto,
+    };
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_distributed(dist);
+    assert_eq!(config.rank(), 2, "rank() should return distributed rank");
+}
+
+// ============================================================================
+// Coverage improvement: Builder chaining and default values
+// ============================================================================
+
+#[test]
+fn test_config_new_defaults() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+
+    // Verify all default values from config.rs new()
+    assert_eq!(config.max_seq_len, 512);
+    assert_eq!(config.accumulation_steps, 1);
+    assert_eq!(config.warmup_steps, 0);
+    assert!((config.lr - 0.001).abs() < 1e-8);
+    assert!(config.max_steps.is_none());
+    assert!(config.use_cuda);
+    assert!((config.beta1 - 0.9).abs() < 1e-8);
+    assert!((config.beta2 - 0.999).abs() < 1e-8);
+    assert!((config.weight_decay - 0.01).abs() < 1e-8);
+    assert!(config.distributed.is_none());
+    assert!(!config.deterministic);
+    assert_eq!(config.seed, 42);
+    assert_eq!(config.profile_interval, 0);
+    assert!(config.lora_rank.is_none());
+    assert!(config.lora_alpha.is_none());
+    assert!(config.lora_target_modules.is_none());
+    assert!((config.lora_plus_ratio - 1.0).abs() < 1e-8);
+    assert!(!config.double_quantize);
+}
+
+#[test]
+fn test_config_full_builder_chain() {
+    // Test chaining ALL builder methods together
+    let dist = DistributedTrainConfig {
+        world_size: 2,
+        rank: 1,
+        local_rank: 0,
+        role: DistributedRole::Worker,
+        coordinator_addr: "127.0.0.1:29500".parse().expect("valid socket addr"),
+        backend: DistributedBackend::Cuda,
+    };
+
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_checkpointing(4)
+        .with_bf16()
+        .with_max_seq_len(2048)
+        .with_accumulation_steps(8)
+        .with_warmup_steps(200)
+        .with_lr(3e-4)
+        .with_grad_clip(0.5)
+        .with_max_steps(10000)
+        .with_use_cuda(true)
+        .with_beta2(0.95)
+        .with_weight_decay(0.05)
+        .with_deterministic(true)
+        .with_seed(12345)
+        .with_profile_interval(100)
+        .with_lora(16, 32.0, vec!["q_proj".to_string(), "v_proj".to_string()])
+        .with_lora_plus_ratio(16.0)
+        .with_double_quantize(true)
+        .with_distributed(dist);
+
+    assert!(config.checkpoint_config.enabled);
+    assert_eq!(config.checkpoint_config.num_segments, 4);
+    assert!(config.precision_config.is_mixed());
+    assert_eq!(config.max_seq_len, 2048);
+    assert_eq!(config.accumulation_steps, 8);
+    assert_eq!(config.warmup_steps, 200);
+    assert!((config.lr - 3e-4).abs() < 1e-8);
+    assert_eq!(config.base.max_grad_norm, Some(0.5));
+    assert_eq!(config.max_steps, Some(10000));
+    assert!(config.use_cuda);
+    assert!((config.beta2 - 0.95).abs() < 1e-8);
+    assert!((config.weight_decay - 0.05).abs() < 1e-8);
+    assert!(config.deterministic);
+    assert_eq!(config.seed, 12345);
+    assert_eq!(config.profile_interval, 100);
+    assert!(config.is_lora());
+    assert_eq!(config.lora_rank, Some(16));
+    assert_eq!(config.lora_alpha, Some(32.0));
+    assert!((config.lora_plus_ratio - 16.0).abs() < 1e-8);
+    assert!(config.double_quantize);
+    assert!(config.is_distributed());
+    assert_eq!(config.world_size(), 2);
+    assert_eq!(config.rank(), 1);
+}
+
+#[test]
+fn test_config_is_lora_false_without_lora() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!(!config.is_lora(), "is_lora() should be false when lora_rank is None");
+}
+
+#[test]
+fn test_config_with_warmup_steps_value() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_warmup_steps(500);
+    assert_eq!(config.warmup_steps, 500);
+}
+
+#[test]
+fn test_config_with_max_seq_len_value() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_max_seq_len(4096);
+    assert_eq!(config.max_seq_len, 4096);
+}
+
+#[test]
+fn test_config_with_seed_value() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_seed(99999);
+    assert_eq!(config.seed, 99999);
+}
+
+#[test]
+fn test_config_with_deterministic_true() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_deterministic(true);
+    assert!(config.deterministic);
+}
+
+#[test]
+fn test_config_with_deterministic_false() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_deterministic(false);
+    assert!(!config.deterministic);
+}
+
+#[test]
+fn test_config_apply_deterministic_settings_noop_when_disabled() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_deterministic(false);
+    // Should not panic and should be a no-op
+    config.apply_deterministic_settings();
+}
+
+#[test]
+fn test_config_apply_deterministic_settings_when_enabled() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(777);
+    config.apply_deterministic_settings();
+
+    // Verify CUDA env vars are set
+    assert_eq!(std::env::var("CUBLAS_WORKSPACE_CONFIG").unwrap_or_default(), ":4096:8");
+}
+
+#[test]
+fn test_distributed_train_config_debug() {
+    let dist = DistributedTrainConfig {
+        world_size: 2,
+        rank: 0,
+        local_rank: 0,
+        role: DistributedRole::Coordinator,
+        coordinator_addr: "127.0.0.1:29500".parse().expect("valid socket addr"),
+        backend: DistributedBackend::Auto,
+    };
+    let debug_str = format!("{dist:?}");
+    assert!(debug_str.contains("DistributedTrainConfig"), "Debug output should contain type name");
+    assert!(debug_str.contains("world_size: 2"), "Debug output should contain world_size");
+}
+
+#[test]
+fn test_distributed_train_config_clone() {
+    let dist = DistributedTrainConfig {
+        world_size: 4,
+        rank: 2,
+        local_rank: 1,
+        role: DistributedRole::Worker,
+        coordinator_addr: "192.168.1.1:29500".parse().expect("valid socket addr"),
+        backend: DistributedBackend::Wgpu,
+    };
+    let cloned = dist.clone();
+    assert_eq!(cloned.world_size, 4);
+    assert_eq!(cloned.rank, 2);
+    assert_eq!(cloned.local_rank, 1);
+    assert_eq!(cloned.role, DistributedRole::Worker);
+    assert_eq!(cloned.backend, DistributedBackend::Wgpu);
+}
+
+#[test]
+fn test_distributed_role_debug() {
+    let coordinator = format!("{:?}", DistributedRole::Coordinator);
+    let worker = format!("{:?}", DistributedRole::Worker);
+    assert_eq!(coordinator, "Coordinator");
+    assert_eq!(worker, "Worker");
+}
+
+#[test]
+fn test_distributed_backend_debug() {
+    let cuda = format!("{:?}", DistributedBackend::Cuda);
+    let wgpu = format!("{:?}", DistributedBackend::Wgpu);
+    let auto = format!("{:?}", DistributedBackend::Auto);
+    assert_eq!(cuda, "Cuda");
+    assert_eq!(wgpu, "Wgpu");
+    assert_eq!(auto, "Auto");
+}
+
+#[test]
+fn test_config_with_lora_sets_all_fields() {
+    let modules = vec![
+        "q_proj".to_string(),
+        "k_proj".to_string(),
+        "v_proj".to_string(),
+        "o_proj".to_string(),
+    ];
+    let config =
+        TransformerTrainConfig::new(TransformerConfig::tiny()).with_lora(32, 64.0, modules.clone());
+
+    assert_eq!(config.lora_rank, Some(32));
+    assert_eq!(config.lora_alpha, Some(64.0));
+    assert_eq!(config.lora_target_modules, Some(modules),);
+}
+
+#[test]
+fn test_config_bf16_then_fp16_overwrites() {
+    // Last precision config wins
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_bf16().with_fp16();
+    assert!(config.precision_config.is_mixed());
+    assert!(config.precision_config.dynamic_scaling, "fp16 should have dynamic_scaling");
+}
+
+#[test]
+fn test_config_fp16_then_bf16_overwrites() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_fp16().with_bf16();
+    assert!(config.precision_config.is_mixed());
+    // bf16 should NOT have dynamic scaling
+    assert!(!config.precision_config.dynamic_scaling, "bf16 should not have dynamic_scaling");
+}
+
+#[test]
+fn test_config_with_grad_clip_overrides_default() {
+    // Default TrainConfig has max_grad_norm=Some(1.0)
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert_eq!(config.base.max_grad_norm, Some(1.0));
+
+    let config = config.with_grad_clip(5.0);
+    assert_eq!(config.base.max_grad_norm, Some(5.0));
+}
+
+#[test]
+fn test_config_with_use_cuda_default_true() {
+    // Verify the default is true
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!(config.use_cuda, "Default use_cuda should be true");
 }

@@ -320,7 +320,8 @@ fn test_rslora_scaling_compute() {
     // rsLoRA: alpha / sqrt(rank)
     assert_abs_diff_eq!(LoRAScaling::RsLoRA.compute(32.0, 16), 8.0, epsilon = 1e-6); // 32/4
     assert_abs_diff_eq!(LoRAScaling::RsLoRA.compute(32.0, 64), 4.0, epsilon = 1e-6); // 32/8
-    assert_abs_diff_eq!(LoRAScaling::RsLoRA.compute(8.0, 4), 4.0, epsilon = 1e-6); // 8/2
+    assert_abs_diff_eq!(LoRAScaling::RsLoRA.compute(8.0, 4), 4.0, epsilon = 1e-6);
+    // 8/2
 }
 
 #[test]
@@ -351,4 +352,157 @@ fn test_lora_layer_standard_scaling_matches_new() {
     let standard = LoRALayer::new(base_weight.clone(), 2, 2, 4, 8.0);
     let explicit = LoRALayer::new_with_scaling(base_weight, 2, 2, 4, 8.0, LoRAScaling::Standard);
     assert_abs_diff_eq!(standard.scale(), explicit.scale(), epsilon = 1e-10);
+}
+
+// ========================================================================
+// COVERAGE GAP TESTS — early returns, Clone, accessors
+// ========================================================================
+
+#[test]
+fn test_merge_already_merged_is_noop() {
+    // Covers the "already merged" early return in merge() (lines 149-151)
+    let base_weight = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], false);
+    let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
+
+    // Set non-zero LoRA weights
+    *lora.lora_a_mut().data_mut() = ndarray::arr1(&[1.0, 2.0]);
+    *lora.lora_b_mut().data_mut() = ndarray::arr1(&[0.5, 0.5]);
+
+    // First merge
+    lora.merge();
+    assert!(lora.is_merged());
+    let weight_after_first_merge = lora.base_weight().data().to_owned();
+
+    // Second merge — should be a no-op (early return path)
+    lora.merge();
+    assert!(lora.is_merged());
+    let weight_after_second_merge = lora.base_weight().data().to_owned();
+
+    // Weights must be identical — no double-merge
+    for i in 0..4 {
+        assert_abs_diff_eq!(
+            weight_after_first_merge[i],
+            weight_after_second_merge[i],
+            epsilon = 1e-10
+        );
+    }
+}
+
+#[test]
+fn test_unmerge_not_merged_is_noop() {
+    // Covers the "not merged" early return in unmerge() (lines 169-171)
+    let base_data = vec![1.0, 2.0, 3.0, 4.0];
+    let base_weight = Tensor::from_vec(base_data.clone(), false);
+    let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
+
+    // Set non-zero LoRA weights
+    *lora.lora_a_mut().data_mut() = ndarray::arr1(&[1.0, 2.0]);
+    *lora.lora_b_mut().data_mut() = ndarray::arr1(&[0.5, 0.5]);
+
+    // Never merged — unmerge should be a no-op (early return path)
+    assert!(!lora.is_merged());
+    lora.unmerge();
+    assert!(!lora.is_merged());
+
+    // Weights must be unchanged
+    for i in 0..4 {
+        assert_abs_diff_eq!(lora.base_weight().data()[i], base_data[i], epsilon = 1e-10);
+    }
+}
+
+#[test]
+fn test_lora_layer_clone() {
+    // Covers the Clone derive on LoRALayer
+    let base_weight = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], false);
+    let mut original = LoRALayer::new(base_weight, 2, 2, 1, 2.0);
+
+    *original.lora_a_mut().data_mut() = ndarray::arr1(&[0.3, 0.7]);
+    *original.lora_b_mut().data_mut() = ndarray::arr1(&[0.5, 0.9]);
+
+    let cloned = original.clone();
+
+    // Verify all fields match
+    assert_eq!(cloned.d_out(), original.d_out());
+    assert_eq!(cloned.d_in(), original.d_in());
+    assert_eq!(cloned.rank(), original.rank());
+    assert_abs_diff_eq!(cloned.scale(), original.scale(), epsilon = 1e-10);
+    assert_eq!(cloned.is_merged(), original.is_merged());
+
+    // Verify tensor data matches
+    for (a, b) in cloned.lora_a().data().iter().zip(original.lora_a().data().iter()) {
+        assert_abs_diff_eq!(a, b, epsilon = 1e-10);
+    }
+    for (a, b) in cloned.lora_b().data().iter().zip(original.lora_b().data().iter()) {
+        assert_abs_diff_eq!(a, b, epsilon = 1e-10);
+    }
+    for (a, b) in cloned.base_weight().data().iter().zip(original.base_weight().data().iter()) {
+        assert_abs_diff_eq!(a, b, epsilon = 1e-10);
+    }
+
+    // Verify independence: modifying clone doesn't affect original
+    let x = Tensor::from_vec(vec![1.0, 1.0], true);
+    let output_original = original.forward(&x);
+    let output_cloned = cloned.forward(&x);
+    for i in 0..2 {
+        assert_abs_diff_eq!(output_original.data()[i], output_cloned.data()[i], epsilon = 1e-6);
+    }
+}
+
+#[test]
+fn test_lora_a_mut_modifies_weights() {
+    // Explicitly covers lora_a_mut() accessor
+    let base_weight = Tensor::from_vec(vec![1.0; 4], false);
+    let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
+
+    // Verify initial A has small values (from sin init)
+    let initial_a: Vec<f32> = lora.lora_a().data().to_vec();
+
+    // Mutate through lora_a_mut
+    *lora.lora_a_mut().data_mut() = ndarray::arr1(&[99.0, 99.0]);
+
+    // Verify mutation took effect
+    assert_abs_diff_eq!(lora.lora_a().data()[0], 99.0, epsilon = 1e-6);
+    assert_abs_diff_eq!(lora.lora_a().data()[1], 99.0, epsilon = 1e-6);
+    assert!(
+        (lora.lora_a().data()[0] - initial_a[0]).abs() > 1.0,
+        "lora_a_mut should have changed the values"
+    );
+}
+
+#[test]
+fn test_lora_b_mut_modifies_weights() {
+    // Explicitly covers lora_b_mut() accessor
+    let base_weight = Tensor::from_vec(vec![1.0; 4], false);
+    let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
+
+    // B is initialized to zeros
+    assert_abs_diff_eq!(lora.lora_b().data()[0], 0.0, epsilon = 1e-10);
+
+    // Mutate through lora_b_mut
+    *lora.lora_b_mut().data_mut() = ndarray::arr1(&[42.0, 42.0]);
+
+    // Verify mutation took effect
+    assert_abs_diff_eq!(lora.lora_b().data()[0], 42.0, epsilon = 1e-6);
+    assert_abs_diff_eq!(lora.lora_b().data()[1], 42.0, epsilon = 1e-6);
+}
+
+#[test]
+fn test_lora_scaling_clone_and_eq() {
+    // Covers Clone and PartialEq derives on LoRAScaling
+    let standard = LoRAScaling::Standard;
+    let rslora = LoRAScaling::RsLoRA;
+    let standard_clone = standard;
+
+    assert_eq!(standard, standard_clone);
+    assert_ne!(standard, rslora);
+    assert_eq!(rslora, LoRAScaling::RsLoRA);
+}
+
+#[test]
+fn test_lora_scaling_debug() {
+    // Covers Debug derive on LoRAScaling
+    let s = format!("{:?}", LoRAScaling::Standard);
+    assert!(s.contains("Standard"));
+    let r = format!("{:?}", LoRAScaling::RsLoRA);
+    assert!(r.contains("RsLoRA"));
 }

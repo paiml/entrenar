@@ -115,11 +115,9 @@ impl std::str::FromStr for MergeMethod {
             "slerp" => Ok(MergeMethod::Slerp),
             "average" | "avg" => Ok(MergeMethod::Average),
             "lora-adapter" | "lora" => Ok(MergeMethod::LoraAdapter),
-            _ => {
-                Err(format!(
-                    "Unknown merge method: {s}. Valid: ties, dare, slerp, average, lora-adapter"
-                ))
-            }
+            _ => Err(format!(
+                "Unknown merge method: {s}. Valid: ties, dare, slerp, average, lora-adapter"
+            )),
         }
     }
 }
