@@ -75,6 +75,7 @@ fn test_invalid_lora_rank() {
         dropout: 0.0,
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRARank(0)));
@@ -126,6 +127,7 @@ fn test_invalid_lora_alpha() {
         dropout: 0.0,
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRAAlpha(_)));
@@ -141,6 +143,7 @@ fn test_invalid_lora_dropout() {
         dropout: 1.0,
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRADropout(_)));
@@ -156,6 +159,7 @@ fn test_empty_lora_targets() {
         dropout: 0.0,
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::EmptyLoRATargets));
@@ -171,6 +175,7 @@ fn test_invalid_lora_rank_too_high() {
         dropout: 0.0,
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRARank(_)));
@@ -305,6 +310,7 @@ fn test_invalid_lora_dropout_negative() {
         dropout: -0.1,
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRADropout(_)));
@@ -324,6 +330,7 @@ fn test_valid_config_with_all_optional_fields() {
         dropout: 0.1,
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: false,
     });
     spec.quantize = Some(QuantSpec { bits: 4, symmetric: true, per_channel: true });
     spec.merge = Some(MergeSpec { method: "ties".to_string(), params: HashMap::new() });

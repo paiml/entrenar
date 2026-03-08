@@ -211,6 +211,7 @@ mod tests {
                 target_modules: vec!["q_proj".to_string()],
                 lora_plus_ratio: 1.0,
                 double_quantize: false,
+                quantize_base: false,
             }),
             quantize: Some(QuantSpec { bits: 4, symmetric: true, per_channel: true }),
             merge: Some(MergeSpec {

@@ -354,6 +354,14 @@ pub struct LoRASpec {
     /// Default true when quantize_base is true
     #[serde(default)]
     pub double_quantize: bool,
+
+    /// Quantize frozen base weights to NF4 (4-bit) for QLoRA (ENT-263)
+    ///
+    /// When true, base model weights are quantized to NF4 and frozen.
+    /// Only LoRA adapters + norm weights are trainable in fp32.
+    /// Achieves ~8x VRAM compression on base weights.
+    #[serde(default)]
+    pub quantize_base: bool,
 }
 
 fn default_lora_plus_ratio() -> f32 {
@@ -1113,5 +1121,60 @@ optimizer:
 ";
         let spec: TrainSpec = serde_yaml::from_str(yaml).expect("parse YAML");
         assert!(!spec.training.deterministic, "deterministic should default to false");
+    }
+
+    #[test]
+    fn test_ent_263_lora_quantize_base_yaml() {
+        let yaml = r"
+model:
+  path: model.safetensors
+
+data:
+  train: data.parquet
+  batch_size: 4
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+
+lora:
+  rank: 16
+  alpha: 32.0
+  target_modules: [q_proj, v_proj]
+  quantize_base: true
+  double_quantize: true
+
+training:
+  epochs: 1
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).expect("parse YAML");
+        let lora = spec.lora.expect("lora should be present");
+        assert!(lora.quantize_base, "quantize_base should be true");
+        assert!(lora.double_quantize, "double_quantize should be true");
+        assert_eq!(lora.rank, 16);
+    }
+
+    #[test]
+    fn test_ent_263_lora_quantize_base_default_false() {
+        let yaml = r"
+model:
+  path: model.safetensors
+
+data:
+  train: data.parquet
+  batch_size: 4
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+
+lora:
+  rank: 8
+  alpha: 16.0
+  target_modules: [q_proj]
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).expect("parse YAML");
+        let lora = spec.lora.expect("lora should be present");
+        assert!(!lora.quantize_base, "quantize_base should default to false");
     }
 }
