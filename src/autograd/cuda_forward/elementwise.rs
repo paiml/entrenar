@@ -117,6 +117,8 @@ pub fn inplace_add_gpu(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: kernel launch with pre-validated device pointers and grid config;
+    // both src and dst are valid CudaTensor buffers with length >= n elements.
     unsafe {
         stream.launch_kernel(module, "residual_add", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("In-place add launch failed: {e:?}"))

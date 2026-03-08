@@ -2735,6 +2735,9 @@ impl CudaNf4TransformerBlock {
                 stream,
             )?;
         } else {
+            // SAFETY: async GPU buffer copy within same CUDA stream; both buffers are
+            // pre-allocated scratch with matching sizes, and stream ordering guarantees
+            // the source is fully written before this copy executes.
             unsafe {
                 scratch
                     .attn_kv_temp2
