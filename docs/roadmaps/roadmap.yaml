@@ -1332,11 +1332,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ENT-LoRA-012: PiSSA initialization — SVD-based init from top-r singular components'
-  status: inprogress
+  status: completed
   priority: low
   assigned_to: null
   created: 2026-03-08T13:35:15Z
-  updated: 2026-03-08T14:30:00.156908037+00:00
+  updated: 2026-03-08T14:37:53.011044628+00:00
   spec: null
   acceptance_criteria: []
   phases: []
