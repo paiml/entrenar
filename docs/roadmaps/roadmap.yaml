@@ -1300,11 +1300,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ENT-LoRA-010: Paged optimizer states — page AdamW m/v to CPU when GPU VRAM pressure detected'
-  status: inprogress
+  status: completed
   priority: low
   assigned_to: null
   created: 2026-03-08T13:35:13Z
-  updated: 2026-03-08T14:28:32.223383017+00:00
+  updated: 2026-03-08T14:36:38.711323505+00:00
   spec: null
   acceptance_criteria: []
   phases: []
