@@ -285,4 +285,235 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unsupported file format"));
     }
+
+    #[test]
+    fn test_inspect_data_file_summary() {
+        let temp = std::env::temp_dir().join("inspect_sum.csv");
+        std::fs::write(&temp, "a,b\n1,2").expect("write csv");
+        let r = inspect_data_file(&temp, "csv", InspectMode::Summary, 3.0, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_inspect_data_file_outliers() {
+        let temp = std::env::temp_dir().join("inspect_out.csv");
+        std::fs::write(&temp, "a,b\n1,2").expect("write csv");
+        let r = inspect_data_file(&temp, "csv", InspectMode::Outliers, 2.5, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_inspect_data_file_distribution() {
+        let temp = std::env::temp_dir().join("inspect_dist.csv");
+        std::fs::write(&temp, "a,b\n1,2").expect("write csv");
+        let r = inspect_data_file(&temp, "csv", InspectMode::Distribution, 3.0, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_inspect_data_file_schema() {
+        let temp = std::env::temp_dir().join("inspect_sch.parquet");
+        std::fs::write(&temp, "fake parquet").expect("write file");
+        let r = inspect_data_file(&temp, "parquet", InspectMode::Schema, 3.0, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_inspect_gguf() {
+        let temp = std::env::temp_dir().join("test_model.gguf");
+        std::fs::write(&temp, "GGUF fake data 12345678").expect("write gguf");
+        let r = inspect_gguf(&temp, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_count_total_parameters_single_scalar() {
+        use safetensors::serialize;
+        use safetensors::tensor::TensorView;
+        use safetensors::Dtype;
+        // A scalar tensor with shape [1] = 1 parameter
+        let data = [0u8; 4]; // 1 f32 = 4 bytes
+        let tv = TensorView::new(Dtype::F32, vec![1], &data).unwrap();
+        let tensors = vec![("scalar", tv)];
+        let bytes = serialize(tensors, None).unwrap();
+        let st = safetensors::SafeTensors::deserialize(&bytes).unwrap();
+        let names: Vec<String> = st.names().iter().map(|s| (*s).to_string()).collect();
+        let total = count_total_parameters(&st, &names);
+        assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn test_count_total_parameters_with_data() {
+        use safetensors::serialize;
+        use safetensors::tensor::TensorView;
+        use safetensors::Dtype;
+        let data = [0u8; 24];
+        let tv = TensorView::new(Dtype::F32, vec![2, 3], &data).unwrap();
+        let tensors = vec![("w", tv)];
+        let bytes = serialize(tensors, None).unwrap();
+        let st = safetensors::SafeTensors::deserialize(&bytes).unwrap();
+        let names: Vec<String> = st.names().iter().map(|s| (*s).to_string()).collect();
+        let total = count_total_parameters(&st, &names);
+        assert_eq!(total, 6);
+    }
+
+    #[test]
+    fn test_log_model_info() {
+        log_model_info(LogLevel::Normal, 1_000_000, 500_000_000, 100);
+    }
+
+    #[test]
+    fn test_log_model_info_verbose() {
+        log_model_info(LogLevel::Verbose, 0, 0, 0);
+    }
+
+    #[test]
+    fn test_run_inspect_csv_file() {
+        let temp = std::env::temp_dir().join("ri_test.csv");
+        std::fs::write(&temp, "col1,col2\nval1,val2").expect("write csv");
+        let args = InspectArgs {
+            input: temp.clone(),
+            mode: InspectMode::Summary,
+            columns: None,
+            z_threshold: 3.0,
+        };
+        let r = run_inspect(args, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_run_inspect_gguf_file() {
+        let temp = std::env::temp_dir().join("ri_test.gguf");
+        std::fs::write(&temp, "GGUF fake").expect("write gguf");
+        let args = InspectArgs {
+            input: temp.clone(),
+            mode: InspectMode::Summary,
+            columns: None,
+            z_threshold: 3.0,
+        };
+        let r = run_inspect(args, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_run_inspect_directory_no_adapter() {
+        let temp = std::env::temp_dir().join("ri_dir_test");
+        let _ = std::fs::create_dir_all(&temp);
+        let args = InspectArgs {
+            input: temp.clone(),
+            mode: InspectMode::Summary,
+            columns: None,
+            z_threshold: 3.0,
+        };
+        let r = run_inspect(args, LogLevel::Normal);
+        let _ = std::fs::remove_dir_all(&temp);
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("adapter_config.json"));
+    }
+
+    #[test]
+    fn test_run_inspect_parquet_distribution() {
+        let temp = std::env::temp_dir().join("ri_test.parquet");
+        std::fs::write(&temp, "fake parquet data").expect("write");
+        let args = InspectArgs {
+            input: temp.clone(),
+            mode: InspectMode::Distribution,
+            columns: None,
+            z_threshold: 3.0,
+        };
+        let r = run_inspect(args, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_run_inspect_outlier_mode() {
+        let temp = std::env::temp_dir().join("ri_outlier.csv");
+        std::fs::write(&temp, "x\n1\n2\n3").expect("write");
+        let args = InspectArgs {
+            input: temp.clone(),
+            mode: InspectMode::Outliers,
+            columns: None,
+            z_threshold: 2.0,
+        };
+        let r = run_inspect(args, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_run_inspect_schema_mode() {
+        let temp = std::env::temp_dir().join("ri_schema.csv");
+        std::fs::write(&temp, "a,b\n1,2").expect("write");
+        let args = InspectArgs {
+            input: temp.clone(),
+            mode: InspectMode::Schema,
+            columns: None,
+            z_threshold: 3.0,
+        };
+        let r = run_inspect(args, LogLevel::Normal);
+        let _ = std::fs::remove_file(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_inspect_lora_adapter_empty_dir() {
+        let temp = std::env::temp_dir().join("ri_lora_empty");
+        let _ = std::fs::create_dir_all(&temp);
+        std::fs::write(temp.join("adapter_config.json"), "{}").expect("write config");
+        let r = inspect_lora_adapter(&temp, LogLevel::Normal);
+        let _ = std::fs::remove_dir_all(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_inspect_lora_adapter_with_config() {
+        let temp = std::env::temp_dir().join("ri_lora_cfg");
+        let _ = std::fs::create_dir_all(&temp);
+        let config = serde_json::json!({
+            "r": 16,
+            "lora_alpha": 32.0,
+            "target_modules": ["q_proj", "v_proj"],
+            "base_model_name_or_path": "test/model"
+        });
+        std::fs::write(temp.join("adapter_config.json"), config.to_string()).expect("write");
+        let r = inspect_lora_adapter(&temp, LogLevel::Normal);
+        let _ = std::fs::remove_dir_all(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_run_inspect_lora_adapter_dir() {
+        let temp = std::env::temp_dir().join("ri_lora_run");
+        let _ = std::fs::create_dir_all(&temp);
+        std::fs::write(temp.join("adapter_config.json"), "{}").expect("write");
+        let args = InspectArgs {
+            input: temp.clone(),
+            mode: InspectMode::Summary,
+            columns: None,
+            z_threshold: 3.0,
+        };
+        let r = run_inspect(args, LogLevel::Normal);
+        let _ = std::fs::remove_dir_all(&temp);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_get_extension_compound() {
+        let p = PathBuf::from("model.v2.safetensors");
+        assert_eq!(get_extension(&p), "safetensors");
+    }
+
+    #[test]
+    fn test_get_extension_dotfile() {
+        let p = PathBuf::from(".hidden");
+        assert_eq!(get_extension(&p), "");
+    }
 }

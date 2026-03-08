@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_truncate_long() {
-        assert_eq!(truncate("a very long name", 10), "a very...");
+        assert_eq!(truncate("a very long name", 10), "a very ...");
     }
 
     #[test]

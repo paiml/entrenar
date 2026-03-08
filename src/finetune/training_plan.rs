@@ -551,7 +551,7 @@ fn audit_data(
 }
 
 /// Count samples in an optional JSONL file.
-fn count_file_samples(path: Option<&PathBuf>, num_classes: usize) -> Option<usize> {
+pub(crate) fn count_file_samples(path: Option<&PathBuf>, num_classes: usize) -> Option<usize> {
     path.and_then(|p| {
         if p.exists() {
             load_safety_corpus(p, num_classes).ok().map(|c| c.len())
@@ -562,7 +562,10 @@ fn count_file_samples(path: Option<&PathBuf>, num_classes: usize) -> Option<usiz
 }
 
 /// Resolve model architecture from size hint.
-fn resolve_model(config: &PlanConfig, pre_flight: &mut Vec<PreFlightCheck>) -> ModelInfo {
+pub(crate) fn resolve_model(
+    config: &PlanConfig,
+    pre_flight: &mut Vec<PreFlightCheck>,
+) -> ModelInfo {
     let (hidden_size, num_layers, architecture) = match config.model_size.as_str() {
         "0.5B" | "500M" | "qwen2-0.5b" => (896, 24, "qwen2"),
         "9B" | "qwen3.5-9b" => (4096, 48, "qwen3.5"),
@@ -633,7 +636,7 @@ fn resolve_model(config: &PlanConfig, pre_flight: &mut Vec<PreFlightCheck>) -> M
 }
 
 /// Build HPO plan with search space and sample configs.
-fn build_hpo_plan(
+pub(crate) fn build_hpo_plan(
     config: &PlanConfig,
     train_samples: usize,
     issues: &mut Vec<PlanIssue>,
@@ -759,7 +762,7 @@ fn build_hpo_plan(
 }
 
 /// Estimate GPU hours for a full HPO run.
-fn estimate_gpu_hours(train_samples: usize, max_epochs: usize, budget: usize) -> f64 {
+pub(crate) fn estimate_gpu_hours(train_samples: usize, max_epochs: usize, budget: usize) -> f64 {
     // Based on observed RTX 4090 throughput: ~58 sec/step, median batch_size=64
     let batch_size = 64;
     let steps_per_epoch = train_samples.div_ceil(batch_size);
@@ -769,7 +772,7 @@ fn estimate_gpu_hours(train_samples: usize, max_epochs: usize, budget: usize) ->
 }
 
 /// Estimate resource usage.
-fn estimate_resources(
+pub(crate) fn estimate_resources(
     config: &PlanConfig,
     model: &ModelInfo,
     data: &DataAudit,
@@ -820,7 +823,7 @@ fn estimate_resources(
 }
 
 /// Detect GPU device name (best-effort, no NVML required).
-fn detect_gpu_device() -> Option<String> {
+pub(crate) fn detect_gpu_device() -> Option<String> {
     // Try reading from sysfs (Linux)
     if let Ok(entries) = std::fs::read_dir("/proc/driver/nvidia/gpus") {
         for entry in entries.flatten() {
@@ -1261,7 +1264,7 @@ fn run_single_trial_with_warmup(
 }
 
 /// Resolve class weights from strategy name and class counts.
-fn resolve_class_weights(
+pub(crate) fn resolve_class_weights(
     strategy: &str,
     class_counts: &[usize],
     num_classes: usize,
@@ -1328,7 +1331,7 @@ impl TrainingPlan {
 }
 
 /// Map pruned/stopped_early flags to a status string.
-fn resolve_trial_status(was_pruned: bool, stopped_early: bool) -> &'static str {
+pub(crate) fn resolve_trial_status(was_pruned: bool, stopped_early: bool) -> &'static str {
     if was_pruned {
         "pruned"
     } else if stopped_early {
@@ -1343,13 +1346,13 @@ fn resolve_trial_status(was_pruned: bool, stopped_early: bool) -> &'static str {
 /// Thin wrapper around SqliteBackend for logging training experiments.
 /// All methods are best-effort (errors silently ignored) so training is
 /// never blocked by storage failures.
-struct ExperimentTracker {
-    store: Option<crate::storage::SqliteBackend>,
-    exp_id: Option<String>,
+pub(crate) struct ExperimentTracker {
+    pub(crate) store: Option<crate::storage::SqliteBackend>,
+    pub(crate) exp_id: Option<String>,
 }
 
 impl ExperimentTracker {
-    fn open(output_dir: &std::path::Path, plan: &TrainingPlan) -> Self {
+    pub(crate) fn open(output_dir: &std::path::Path, plan: &TrainingPlan) -> Self {
         use crate::storage::{ExperimentStorage, SqliteBackend};
 
         let mut store = SqliteBackend::open_project(output_dir).ok();
@@ -1423,7 +1426,7 @@ impl ExperimentTracker {
         let _ = store.complete_run(&run_id, status);
     }
 
-    fn log_failed_trial(&mut self) {
+    pub(crate) fn log_failed_trial(&mut self) {
         use crate::storage::ExperimentStorage;
         let (store, eid) = match (self.store.as_mut(), self.exp_id.as_ref()) {
             (Some(s), Some(e)) => (s, e),

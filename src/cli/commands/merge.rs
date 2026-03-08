@@ -654,9 +654,12 @@ mod tests {
             base: None,
             adapter: None,
         };
-        assert!(
-            perform_ties_merge(&[mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.1, 2.1])])], &a).is_ok()
-        );
+        // ties_merge needs base + at least 2 delta models (3 total)
+        assert!(perform_ties_merge(
+            &[mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.1, 2.1])]), mk(&[("w", &[1.2, 2.2])]),],
+            &a
+        )
+        .is_ok());
     }
 
     #[test]
