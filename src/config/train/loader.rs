@@ -2045,16 +2045,29 @@ fn save_trained_model_cpu(trainer: &TransformerTrainer, spec: &TrainSpec) -> Res
 
     std::fs::create_dir_all(&spec.training.output_dir).ok();
 
-    let weights_path = spec.training.output_dir.join("model.safetensors");
-    let model_name =
-        spec.model.path.file_name().and_then(|n| n.to_str()).unwrap_or("entrenar-model");
-    println!("Saving model weights to {}...", weights_path.display());
-    trainer.save(&weights_path, model_name, "LlamaForCausalLM")?;
-    println!(
-        "✓ Model weights saved ({} bytes)",
-        std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
-    );
+    // ENT-LoRA-015: Save adapter-only checkpoint when LoRA is active
+    if trainer.is_lora() {
+        let base_model_name =
+            spec.model.path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+        println!("Saving LoRA adapter to {}...", spec.training.output_dir.display());
+        trainer.save_lora_adapter(&spec.training.output_dir, Some(base_model_name))?;
+        let adapter_path = spec.training.output_dir.join("adapter_model.safetensors");
+        let adapter_size = std::fs::metadata(&adapter_path).map(|m| m.len()).unwrap_or(0);
+        println!("✓ LoRA adapter saved ({adapter_size} bytes)");
+        println!("  adapter_model.safetensors + adapter_config.json");
+    } else {
+        let weights_path = spec.training.output_dir.join("model.safetensors");
+        let model_name =
+            spec.model.path.file_name().and_then(|n| n.to_str()).unwrap_or("entrenar-model");
+        println!("Saving model weights to {}...", weights_path.display());
+        trainer.save(&weights_path, model_name, "LlamaForCausalLM")?;
+        println!(
+            "✓ Model weights saved ({} bytes)",
+            std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
+        );
+    }
 
+    let weights_path = spec.training.output_dir.join("model.safetensors");
     save_config_and_metadata(
         trainer.model().config(),
         trainer.step(),

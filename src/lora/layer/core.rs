@@ -12,6 +12,25 @@
 use crate::autograd::matmul;
 use crate::Tensor;
 
+/// LoRA scaling mode (ENT-LoRA-004)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LoRAScaling {
+    /// Standard: scale = alpha / rank
+    Standard,
+    /// rsLoRA: scale = alpha / sqrt(rank) — rank-stable, default for rank > 16
+    RsLoRA,
+}
+
+impl LoRAScaling {
+    /// Compute the scaling factor
+    pub fn compute(self, alpha: f32, rank: usize) -> f32 {
+        match self {
+            Self::Standard => alpha / rank as f32,
+            Self::RsLoRA => alpha / (rank as f32).sqrt(),
+        }
+    }
+}
+
 /// LoRA layer: adds trainable low-rank adaptation to a frozen base weight
 #[derive(Clone)]
 pub struct LoRALayer {
@@ -64,6 +83,22 @@ impl LoRALayer {
         let scale = alpha / rank as f32;
 
         Self { base_weight, lora_a, lora_b, d_out, d_in, rank, scale, merged: false }
+    }
+
+    /// Create a new LoRA layer with explicit scaling mode (ENT-LoRA-004)
+    ///
+    /// Use `LoRAScaling::RsLoRA` for rank-stable training (recommended for rank > 16).
+    pub fn new_with_scaling(
+        base_weight: Tensor,
+        d_out: usize,
+        d_in: usize,
+        rank: usize,
+        alpha: f32,
+        scaling: LoRAScaling,
+    ) -> Self {
+        let mut layer = Self::new(base_weight, d_out, d_in, rank, alpha);
+        layer.scale = scaling.compute(alpha, rank);
+        layer
     }
 
     /// Forward pass: y = W@x + scale * (B @ (A @ x))

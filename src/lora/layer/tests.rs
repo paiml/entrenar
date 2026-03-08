@@ -306,3 +306,49 @@ fn test_lora_rank_scaling() {
     assert_abs_diff_eq!(lora_r4.scale(), 2.0, epsilon = 1e-6); // 8/4 = 2
     assert_abs_diff_eq!(lora_r8.scale(), 1.0, epsilon = 1e-6); // 8/8 = 1
 }
+
+// ========================================================================
+// ENT-LoRA-004: rsLoRA scaling tests
+// ========================================================================
+
+#[test]
+fn test_rslora_scaling_compute() {
+    // Standard: alpha / rank
+    assert_abs_diff_eq!(LoRAScaling::Standard.compute(32.0, 16), 2.0, epsilon = 1e-6);
+    assert_abs_diff_eq!(LoRAScaling::Standard.compute(32.0, 64), 0.5, epsilon = 1e-6);
+
+    // rsLoRA: alpha / sqrt(rank)
+    assert_abs_diff_eq!(LoRAScaling::RsLoRA.compute(32.0, 16), 8.0, epsilon = 1e-6); // 32/4
+    assert_abs_diff_eq!(LoRAScaling::RsLoRA.compute(32.0, 64), 4.0, epsilon = 1e-6); // 32/8
+    assert_abs_diff_eq!(LoRAScaling::RsLoRA.compute(8.0, 4), 4.0, epsilon = 1e-6); // 8/2
+}
+
+#[test]
+fn test_rslora_scaling_all_ranks() {
+    // FALSIFY-LoRA-MATH-002: rsLoRA scale for r=4,8,16,32,64,128
+    let alpha = 32.0;
+    for &rank in &[4usize, 8, 16, 32, 64, 128] {
+        let standard = LoRAScaling::Standard.compute(alpha, rank);
+        let rslora = LoRAScaling::RsLoRA.compute(alpha, rank);
+        assert_abs_diff_eq!(standard, alpha / rank as f32, epsilon = 1e-6);
+        assert_abs_diff_eq!(rslora, alpha / (rank as f32).sqrt(), epsilon = 1e-6);
+        // rsLoRA should always be >= standard for rank > 1
+        assert!(rslora >= standard, "rsLoRA should be >= standard for rank={rank}");
+    }
+}
+
+#[test]
+fn test_lora_layer_with_rslora() {
+    let base_weight = Tensor::from_vec(vec![1.0; 4], false);
+    let layer = LoRALayer::new_with_scaling(base_weight, 2, 2, 4, 8.0, LoRAScaling::RsLoRA);
+    // rsLoRA: 8.0 / sqrt(4) = 8.0 / 2.0 = 4.0
+    assert_abs_diff_eq!(layer.scale(), 4.0, epsilon = 1e-6);
+}
+
+#[test]
+fn test_lora_layer_standard_scaling_matches_new() {
+    let base_weight = Tensor::from_vec(vec![1.0; 4], false);
+    let standard = LoRALayer::new(base_weight.clone(), 2, 2, 4, 8.0);
+    let explicit = LoRALayer::new_with_scaling(base_weight, 2, 2, 4, 8.0, LoRAScaling::Standard);
+    assert_abs_diff_eq!(standard.scale(), explicit.scale(), epsilon = 1e-10);
+}
