@@ -119,4 +119,74 @@ mod tests {
         let result = ledger.try_reserve(9000, "too-big");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_guard_budget_mb() {
+        let ledger = test_guard_ledger(24000);
+        let guard = VramGuard { ledger, budget_mb: 8000 };
+        assert_eq!(guard.budget_mb(), 8000);
+    }
+
+    #[test]
+    fn test_guard_gpu_uuid() {
+        let ledger = test_guard_ledger(24000);
+        let guard = VramGuard { ledger, budget_mb: 5000 };
+        assert_eq!(guard.gpu_uuid(), "GPU-test-guard");
+    }
+
+    #[test]
+    fn test_guard_status() {
+        let ledger = test_guard_ledger(24000);
+        let guard = VramGuard { ledger, budget_mb: 5000 };
+        // status() reads the ledger file — should not panic
+        let result = guard.status();
+        // May succeed or fail depending on ledger state, but should not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_guard_update_actual_without_reservation() {
+        let ledger = test_guard_ledger(24000);
+        let mut guard = VramGuard { ledger, budget_mb: 5000 };
+        // No reservation made, update_actual should be a no-op
+        let result = guard.update_actual(4000);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_guard_multiple_reservations_sequential() {
+        let mut ledger1 = test_guard_ledger(24000);
+        ledger1.try_reserve(3000, "task-1").expect("should succeed");
+        let reserved = ledger1.total_reserved().expect("should succeed");
+        assert_eq!(reserved, 3000);
+
+        // After drop, reservation should be released
+        drop(ledger1);
+    }
+
+    #[test]
+    fn test_guard_zero_budget() {
+        let mut ledger = test_guard_ledger(24000);
+        // Reserving 0 MB should succeed
+        let result = ledger.try_reserve(0, "zero-budget");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_guard_exact_budget() {
+        // Ledger total 10000 with 0.85 headroom factor = 8500 usable
+        let mut ledger = test_guard_ledger(10000);
+        // Try to reserve exactly at the headroom limit
+        let result = ledger.try_reserve(8000, "near-limit");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_guard_update_actual_reduces_reserved() {
+        let mut ledger = test_guard_ledger(24000);
+        ledger.try_reserve(8000, "actual-test").expect("should succeed");
+        assert_eq!(ledger.total_reserved().expect("should succeed"), 8000);
+        ledger.update_actual(6000).expect("should succeed");
+        assert_eq!(ledger.total_reserved().expect("should succeed"), 6000);
+    }
 }

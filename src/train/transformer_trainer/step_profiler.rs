@@ -294,4 +294,177 @@ mod tests {
             assert_eq!(p.totals[i], Duration::ZERO);
         }
     }
+
+    #[test]
+    fn test_is_enabled() {
+        let p = StepProfiler::new(true, 0);
+        assert!(p.is_enabled());
+        let p = StepProfiler::disabled();
+        assert!(!p.is_enabled());
+    }
+
+    #[test]
+    fn test_step_count_starts_at_zero() {
+        let p = StepProfiler::new(true, 0);
+        assert_eq!(p.step_count(), 0);
+    }
+
+    #[test]
+    fn test_disabled_profiler_step_count_stays_zero() {
+        let mut p = StepProfiler::disabled();
+        for _ in 0..5 {
+            p.begin_step();
+            p.begin(StepProfiler::EMBED);
+            p.end(StepProfiler::EMBED);
+            p.finish_step();
+        }
+        assert_eq!(p.step_count(), 0);
+    }
+
+    #[test]
+    fn test_all_phase_constants() {
+        // Verify phase constants match expected values
+        assert_eq!(StepProfiler::EMBED, 0);
+        assert_eq!(StepProfiler::H2D, 1);
+        assert_eq!(StepProfiler::FORWARD, 2);
+        assert_eq!(StepProfiler::NORM_LM, 3);
+        assert_eq!(StepProfiler::LOSS, 4);
+        assert_eq!(StepProfiler::GRAD_H2D, 5);
+        assert_eq!(StepProfiler::LM_BWD, 6);
+        assert_eq!(StepProfiler::NORM_BWD, 7);
+        assert_eq!(StepProfiler::BLK_BWD, 8);
+        assert_eq!(StepProfiler::EMBED_BWD, 9);
+        assert_eq!(StepProfiler::OPT, 10);
+    }
+
+    #[test]
+    fn test_phase_names_count() {
+        assert_eq!(PHASE_NAMES.len(), NUM_PHASES);
+        assert_eq!(NUM_PHASES, 11);
+    }
+
+    #[test]
+    fn test_multiple_phases_in_one_step() {
+        let mut p = StepProfiler::new(true, 0);
+        p.begin_step();
+
+        p.begin(StepProfiler::EMBED);
+        std::thread::sleep(Duration::from_millis(1));
+        p.end(StepProfiler::EMBED);
+
+        p.begin(StepProfiler::FORWARD);
+        std::thread::sleep(Duration::from_millis(1));
+        p.end(StepProfiler::FORWARD);
+
+        p.begin(StepProfiler::LOSS);
+        std::thread::sleep(Duration::from_millis(1));
+        p.end(StepProfiler::LOSS);
+
+        p.finish_step();
+
+        assert_eq!(p.step_count(), 1);
+        assert!(p.totals[EMBED] > Duration::ZERO);
+        assert!(p.totals[FORWARD] > Duration::ZERO);
+        assert!(p.totals[LOSS] > Duration::ZERO);
+        // Unrecorded phases should be zero
+        assert_eq!(p.totals[H2D], Duration::ZERO);
+        assert_eq!(p.totals[NORM_LM], Duration::ZERO);
+    }
+
+    #[test]
+    fn test_end_without_begin_is_noop() {
+        let mut p = StepProfiler::new(true, 0);
+        p.begin_step();
+        // end without begin should be a no-op (phase_start is None)
+        p.end(StepProfiler::EMBED);
+        p.finish_step();
+        assert_eq!(p.totals[EMBED], Duration::ZERO);
+    }
+
+    #[test]
+    fn test_print_report_empty_is_noop() {
+        let p = StepProfiler::new(true, 0);
+        // No steps recorded — should not panic
+        p.print_report();
+        assert_eq!(p.step_count(), 0);
+    }
+
+    #[test]
+    fn test_print_report_with_data() {
+        let mut p = StepProfiler::new(true, 0);
+        for _ in 0..3 {
+            p.begin_step();
+            p.begin(StepProfiler::EMBED);
+            std::thread::sleep(Duration::from_millis(1));
+            p.end(StepProfiler::EMBED);
+            p.finish_step();
+        }
+        // Should print without panic
+        p.print_report();
+        assert_eq!(p.step_count(), 3);
+    }
+
+    #[test]
+    fn test_report_interval_auto_print() {
+        let mut p = StepProfiler::new(true, 2); // report every 2 steps
+        for _ in 0..4 {
+            p.begin_step();
+            p.begin(StepProfiler::LOSS);
+            p.end(StepProfiler::LOSS);
+            p.finish_step();
+        }
+        assert_eq!(p.step_count(), 4);
+        // Report should have been triggered at steps 2 and 4
+    }
+
+    #[test]
+    fn test_step_durations_tracked() {
+        let mut p = StepProfiler::new(true, 0);
+        for _ in 0..5 {
+            p.begin_step();
+            std::thread::sleep(Duration::from_millis(1));
+            p.finish_step();
+        }
+        assert_eq!(p.step_durations.len(), 5);
+        for d in &p.step_durations {
+            assert!(*d >= Duration::from_micros(500));
+        }
+    }
+
+    #[test]
+    fn test_total_wall_accumulates() {
+        let mut p = StepProfiler::new(true, 0);
+        p.begin_step();
+        std::thread::sleep(Duration::from_millis(2));
+        p.finish_step();
+
+        p.begin_step();
+        std::thread::sleep(Duration::from_millis(2));
+        p.finish_step();
+
+        assert!(p.total_wall >= Duration::from_millis(4));
+    }
+
+    #[test]
+    fn test_percentiles_with_enough_steps() {
+        let mut p = StepProfiler::new(true, 0);
+        for _ in 0..20 {
+            p.begin_step();
+            std::thread::sleep(Duration::from_millis(1));
+            p.finish_step();
+        }
+        // print_report will show percentiles (>= 10 steps)
+        p.print_report();
+        assert_eq!(p.step_durations.len(), 20);
+    }
+
+    #[test]
+    fn test_finish_step_without_begin_step() {
+        let mut p = StepProfiler::new(true, 0);
+        // finish_step without begin_step — step_start is None
+        p.finish_step();
+        // Should record Duration::ZERO for wall time
+        assert_eq!(p.step_count(), 1);
+        assert_eq!(p.total_wall, Duration::ZERO);
+    }
 }

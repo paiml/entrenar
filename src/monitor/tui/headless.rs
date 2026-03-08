@@ -493,4 +493,346 @@ mod tests {
             assert!(!label.is_empty());
         }
     }
+
+    // ── OutputFormat tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_output_format_default() {
+        let fmt = OutputFormat::default();
+        assert_eq!(fmt, OutputFormat::Json);
+    }
+
+    #[test]
+    fn test_output_format_debug() {
+        let fmt = OutputFormat::Json;
+        let debug = format!("{fmt:?}");
+        assert!(debug.contains("Json"));
+    }
+
+    #[test]
+    fn test_output_format_clone_copy() {
+        let fmt = OutputFormat::Text;
+        let cloned = fmt;
+        let copied = fmt;
+        assert_eq!(cloned, copied);
+        assert_eq!(copied, OutputFormat::Text);
+    }
+
+    // ── HeadlessOutput from snapshot ───────────────────────────────
+
+    #[test]
+    fn test_headless_output_from_initializing() {
+        let snapshot =
+            TrainingSnapshot { status: TrainingStatus::Initializing, ..Default::default() };
+        let output = HeadlessOutput::from(&snapshot);
+        assert_eq!(output.status, "Initializing");
+    }
+
+    #[test]
+    fn test_headless_output_from_paused() {
+        let snapshot = TrainingSnapshot { status: TrainingStatus::Paused, ..Default::default() };
+        let output = HeadlessOutput::from(&snapshot);
+        assert_eq!(output.status, "Paused");
+    }
+
+    #[test]
+    fn test_headless_output_from_completed() {
+        let snapshot = TrainingSnapshot { status: TrainingStatus::Completed, ..Default::default() };
+        let output = HeadlessOutput::from(&snapshot);
+        assert_eq!(output.status, "Completed");
+    }
+
+    #[test]
+    fn test_headless_output_from_failed() {
+        let snapshot = TrainingSnapshot {
+            status: TrainingStatus::Failed("OOM".to_string()),
+            ..Default::default()
+        };
+        let output = HeadlessOutput::from(&snapshot);
+        assert_eq!(output.status, "OOM");
+    }
+
+    #[test]
+    fn test_headless_output_with_gpu() {
+        let snapshot = TrainingSnapshot {
+            gpu: Some(super::super::state::GpuTelemetry {
+                device_name: "RTX 4090".to_string(),
+                utilization_percent: 95.0,
+                vram_used_gb: 20.0,
+                vram_total_gb: 24.0,
+                temperature_celsius: 72.0,
+                power_watts: 350.0,
+                power_limit_watts: 400.0,
+                processes: Vec::new(),
+            }),
+            ..Default::default()
+        };
+        let output = HeadlessOutput::from(&snapshot);
+        let gpu = output.gpu.expect("gpu should be present");
+        assert_eq!(gpu.device_name, "RTX 4090");
+        assert!((gpu.utilization_percent - 95.0).abs() < f32::EPSILON);
+        assert!((gpu.vram_total_gb - 24.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_headless_output_with_sample() {
+        let snapshot = TrainingSnapshot {
+            sample: Some(super::super::state::SamplePeek {
+                input_preview: "code".to_string(),
+                target_preview: "test_code".to_string(),
+                generated_preview: "gen_code".to_string(),
+                token_match_percent: 80.0,
+            }),
+            ..Default::default()
+        };
+        let output = HeadlessOutput::from(&snapshot);
+        let sample = output.sample.expect("sample should be present");
+        assert_eq!(sample.input_preview, "code");
+        assert!((sample.token_match_percent - 80.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_headless_output_progress_fields() {
+        let snapshot = TrainingSnapshot {
+            epoch: 3,
+            total_epochs: 10,
+            step: 50,
+            steps_per_epoch: 100,
+            loss: 1.5,
+            learning_rate: 0.001,
+            gradient_norm: 2.0,
+            accuracy: 0.85,
+            tokens_per_second: 1200.0,
+            samples_per_second: 300.0,
+            experiment_id: "exp-001".to_string(),
+            model_name: "test-model".to_string(),
+            optimizer_name: "AdamW".to_string(),
+            batch_size: 4,
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let output = HeadlessOutput::from(&snapshot);
+        assert_eq!(output.epoch, 3);
+        assert_eq!(output.total_epochs, 10);
+        assert_eq!(output.step, 50);
+        assert_eq!(output.steps_per_epoch, 100);
+        assert!((output.loss - 1.5).abs() < f32::EPSILON);
+        assert!((output.accuracy - 0.85).abs() < f32::EPSILON);
+        assert_eq!(output.experiment_id, "exp-001");
+        assert_eq!(output.model_name, "test-model");
+        assert_eq!(output.optimizer_name, "AdamW");
+        assert_eq!(output.batch_size, 4);
+    }
+
+    // ── HeadlessWriter line_count tests ────────────────────────────
+
+    #[test]
+    fn test_headless_writer_line_count_increments() {
+        let snapshot = TrainingSnapshot { status: TrainingStatus::Running, ..Default::default() };
+        let mut buffer = Vec::new();
+        let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Json);
+        assert_eq!(writer.line_count(), 0);
+        writer.write(&snapshot).expect("write should succeed");
+        assert_eq!(writer.line_count(), 1);
+        writer.write(&snapshot).expect("write should succeed");
+        assert_eq!(writer.line_count(), 2);
+    }
+
+    #[test]
+    fn test_headless_writer_text_line_count() {
+        let snapshot = TrainingSnapshot {
+            epoch: 1,
+            total_epochs: 5,
+            step: 10,
+            steps_per_epoch: 50,
+            loss: 2.0,
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let mut buffer = Vec::new();
+        let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Text);
+        writer.write(&snapshot).expect("write should succeed");
+        assert_eq!(writer.line_count(), 1);
+    }
+
+    // ── Text output with GPU telemetry ─────────────────────────────
+
+    #[test]
+    fn test_headless_writer_text_with_gpu() {
+        let snapshot = TrainingSnapshot {
+            epoch: 1,
+            total_epochs: 5,
+            step: 10,
+            steps_per_epoch: 50,
+            loss: 2.0,
+            learning_rate: 0.001,
+            gradient_norm: 1.0,
+            tokens_per_second: 100.0,
+            samples_per_second: 25.0,
+            status: TrainingStatus::Running,
+            gpu: Some(super::super::state::GpuTelemetry {
+                device_name: "RTX 4090".to_string(),
+                utilization_percent: 90.0,
+                vram_used_gb: 18.0,
+                vram_total_gb: 24.0,
+                temperature_celsius: 70.0,
+                power_watts: 300.0,
+                power_limit_watts: 400.0,
+                processes: Vec::new(),
+            }),
+            ..Default::default()
+        };
+        let mut buffer = Vec::new();
+        let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Text);
+        writer.write(&snapshot).expect("write should succeed");
+        let output = String::from_utf8(buffer).expect("valid utf8");
+        assert!(output.contains("GPU:"));
+        assert!(output.contains("RTX 4090"));
+        assert!(output.contains("VRAM:"));
+        assert!(output.contains("sam/s"));
+    }
+
+    #[test]
+    fn test_headless_writer_text_with_zero_vram_total() {
+        let snapshot = TrainingSnapshot {
+            epoch: 1,
+            total_epochs: 5,
+            step: 1,
+            steps_per_epoch: 10,
+            loss: 1.0,
+            status: TrainingStatus::Running,
+            gpu: Some(super::super::state::GpuTelemetry {
+                device_name: "test".to_string(),
+                vram_total_gb: 0.0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut buffer = Vec::new();
+        let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Text);
+        writer.write(&snapshot).expect("write should succeed");
+        let output = String::from_utf8(buffer).expect("valid utf8");
+        assert!(output.contains("0%")); // vram_pct should be 0
+    }
+
+    // ── format_duration edge cases ─────────────────────────────────
+
+    #[test]
+    fn test_format_duration_large() {
+        assert_eq!(format_duration(Duration::from_secs(86400)), "24:00:00"); // 24 hours
+    }
+
+    #[test]
+    fn test_format_duration_exact_hour() {
+        assert_eq!(format_duration(Duration::from_secs(3600)), "01:00:00");
+    }
+
+    #[test]
+    fn test_format_duration_subseconds() {
+        // Duration with milliseconds should be truncated to seconds
+        assert_eq!(format_duration(Duration::from_millis(1500)), "00:00:01");
+    }
+
+    // ── HeadlessMonitor construction ───────────────────────────────
+
+    #[test]
+    fn test_headless_monitor_new() {
+        let monitor = HeadlessMonitor::new(OutputFormat::Json, 500);
+        assert_eq!(monitor.format, OutputFormat::Json);
+        assert_eq!(monitor.refresh_ms, 500);
+        assert!(monitor.output_file.is_none());
+    }
+
+    #[test]
+    fn test_headless_monitor_with_output_file() {
+        let monitor =
+            HeadlessMonitor::with_output_file(OutputFormat::Text, 1000, "/tmp/out.jsonl".into());
+        assert_eq!(monitor.format, OutputFormat::Text);
+        assert_eq!(monitor.refresh_ms, 1000);
+        assert_eq!(monitor.output_file.as_deref(), Some("/tmp/out.jsonl"));
+    }
+
+    // ── JSON serialization round-trip ──────────────────────────────
+
+    #[test]
+    fn test_headless_output_json_roundtrip() {
+        let snapshot = TrainingSnapshot {
+            epoch: 2,
+            total_epochs: 10,
+            step: 25,
+            steps_per_epoch: 50,
+            loss: 1.8,
+            loss_history: vec![3.0, 2.5, 2.0, 1.8],
+            learning_rate: 0.0005,
+            gradient_norm: 1.2,
+            accuracy: 0.72,
+            tokens_per_second: 800.0,
+            samples_per_second: 200.0,
+            status: TrainingStatus::Running,
+            experiment_id: "test".to_string(),
+            model_name: "model".to_string(),
+            ..Default::default()
+        };
+        let mut buffer = Vec::new();
+        let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Json);
+        writer.write(&snapshot).expect("write should succeed");
+        let json_str = String::from_utf8(buffer).expect("valid utf8");
+        // Should be valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(json_str.trim()).expect("valid json");
+        assert_eq!(parsed["epoch"], 2);
+        assert_eq!(parsed["status"], "Running");
+        assert_eq!(parsed["loss_history"].as_array().unwrap().len(), 4);
+    }
+
+    // ── Text output without samples_per_second ─────────────────────
+
+    #[test]
+    fn test_headless_writer_text_no_samples_per_second() {
+        let snapshot = TrainingSnapshot {
+            epoch: 1,
+            total_epochs: 5,
+            step: 1,
+            steps_per_epoch: 50,
+            loss: 3.0,
+            samples_per_second: 0.0,
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let mut buffer = Vec::new();
+        let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Text);
+        writer.write(&snapshot).expect("write should succeed");
+        let output = String::from_utf8(buffer).expect("valid utf8");
+        assert!(!output.contains("sam/s")); // should not show 0.0 sam/s
+    }
+
+    // ── HeadlessGpu and HeadlessSample serialization ───────────────
+
+    #[test]
+    fn test_headless_gpu_serialize() {
+        let gpu = HeadlessGpu {
+            device_name: "RTX 4090".to_string(),
+            utilization_percent: 99.0,
+            vram_used_gb: 23.5,
+            vram_total_gb: 24.0,
+            temperature_celsius: 78.0,
+            power_watts: 390.0,
+            power_limit_watts: 400.0,
+        };
+        let json = serde_json::to_string(&gpu).expect("serialize should succeed");
+        assert!(json.contains("RTX 4090"));
+        assert!(json.contains("99.0") || json.contains("99"));
+    }
+
+    #[test]
+    fn test_headless_sample_serialize() {
+        let sample = HeadlessSample {
+            input_preview: "fn add(a: i32, b: i32)".to_string(),
+            target_preview: "fn test_add()".to_string(),
+            generated_preview: "fn test_add()".to_string(),
+            token_match_percent: 100.0,
+        };
+        let json = serde_json::to_string(&sample).expect("serialize should succeed");
+        assert!(json.contains("fn add"));
+        assert!(json.contains("100"));
+    }
 }
