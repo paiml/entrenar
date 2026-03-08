@@ -1348,11 +1348,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ENT-LoRA-013: Multi-adapter training — N adapters sharing one frozen base model'
-  status: inprogress
+  status: completed
   priority: low
   assigned_to: null
   created: 2026-03-08T13:35:16Z
-  updated: 2026-03-08T14:30:36.235380559+00:00
+  updated: 2026-03-08T14:38:26.126292929+00:00
   spec: null
   acceptance_criteria: []
   phases: []
