@@ -465,16 +465,17 @@ impl TransformerConfig {
 
     /// Per-layer gradient weight VRAM in f32 elements (constant, independent of seq_len).
     ///
-    /// Maps to cuda_block.rs lines 238-258: constant-size gradient buffers.
-    /// NOTE: grad_w_q and grad_w_o use hidden*hidden (not q_dim*hidden) in current code.
+    /// Maps to cuda_block.rs CudaGradWorkspace: constant-size gradient buffers.
+    /// grad_w_q uses q_dim*hidden, grad_w_o uses hidden*q_dim (#262).
     fn per_layer_grad_weight_elements(&self) -> usize {
         let h = self.hidden_size;
+        let q = self.q_dim();
         let kv = self.kv_dim();
         let i = self.intermediate_size;
         // grad_input_norm: h, grad_post_attn_norm: h
         // grad_gate: h*i, grad_up: h*i, grad_down: i*h
-        // grad_w_q: h*h, grad_w_k: h*kv, grad_w_v: h*kv, grad_w_o: h*h
-        h * 2 + h * i * 3 + h * h * 2 + h * kv * 2
+        // grad_w_q: q*h, grad_w_k: h*kv, grad_w_v: h*kv, grad_w_o: h*q
+        h * 2 + h * i * 3 + q * h + h * q + h * kv * 2
     }
 
     /// Per-layer scratch elements that scale linearly with seq_len.
@@ -1059,6 +1060,62 @@ mod tests {
         let config = TransformerConfig::qwen3_4b();
         // Qwen3-4B: q_dim = 4096 but hidden_size = 2560
         assert_ne!(config.q_dim(), config.hidden_size);
+    }
+
+    /// GH-262: Verify Qwen3-4B projection weight shapes match HuggingFace config.json.
+    ///
+    /// config.json fields: hidden_size=2560, num_attention_heads=32,
+    /// num_key_value_heads=8, head_dim=128.
+    ///
+    /// Expected shapes (element counts):
+    ///   q_proj: [4096, 2560] = 10,485,760
+    ///   k_proj: [1024, 2560] = 2,621,440
+    ///   v_proj: [1024, 2560] = 2,621,440
+    ///   o_proj: [2560, 4096] = 10,485,760
+    #[test]
+    fn test_qwen3_4b_projection_shapes() {
+        let config = TransformerConfig::qwen3_4b();
+
+        // Verify base dimensions
+        assert_eq!(config.hidden_size, 2560);
+        assert_eq!(config.num_attention_heads, 32);
+        assert_eq!(config.num_kv_heads, 8);
+        assert_eq!(config.head_dim(), 128);
+        assert_eq!(config.head_dim_override, Some(128));
+
+        // Derived projection dimensions
+        let q_dim = config.q_dim();
+        let kv_dim = config.kv_dim();
+        assert_eq!(q_dim, 4096); // 32 * 128
+        assert_eq!(kv_dim, 1024); // 8 * 128
+
+        // Weight element counts (what validate_weight_shapes checks)
+        let hidden = config.hidden_size;
+        assert_eq!(q_dim * hidden, 10_485_760); // q_proj [4096, 2560]
+        assert_eq!(kv_dim * hidden, 2_621_440); // k_proj [1024, 2560]
+        assert_eq!(kv_dim * hidden, 2_621_440); // v_proj [1024, 2560]
+        assert_eq!(hidden * q_dim, 10_485_760); // o_proj [2560, 4096]
+    }
+
+    /// GH-262: Verify VRAM estimation uses q_dim (not hidden_size) for Q/O grads.
+    #[test]
+    fn test_qwen3_4b_grad_weight_elements_uses_q_dim() {
+        let config = TransformerConfig::qwen3_4b();
+        let h = config.hidden_size; // 2560
+        let q = config.q_dim(); // 4096
+        let kv = config.kv_dim(); // 1024
+        let i = config.intermediate_size; // 9728
+
+        // per_layer_grad_weight_elements must use q*h for Q/O, not h*h
+        let expected = h * 2          // norms
+            + h * i * 3              // gate, up, down
+            + q * h                  // grad_w_q
+            + h * q                  // grad_w_o
+            + h * kv * 2; // grad_w_k, grad_w_v
+        assert_eq!(config.per_layer_grad_weight_elements(), expected);
+
+        // Sanity: h*h would be smaller (2560^2 = 6.5M) vs q*h (4096*2560 = 10.5M)
+        assert!(q * h > h * h, "q_dim*hidden > hidden*hidden for Qwen3-4B");
     }
 
     #[test]

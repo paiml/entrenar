@@ -4408,6 +4408,37 @@ optimizer:
         assert!(tc.use_bias);
     }
 
+    /// GH-262: parse_hf_config for Qwen3-4B must produce correct q_dim and kv_dim.
+    #[test]
+    fn test_parse_hf_config_qwen3_4b_head_dim() {
+        let config = serde_json::json!({
+            "hidden_size": 2560,
+            "num_attention_heads": 32,
+            "num_key_value_heads": 8,
+            "num_hidden_layers": 36,
+            "vocab_size": 151936,
+            "intermediate_size": 9728,
+            "head_dim": 128,
+            "max_position_embeddings": 40960,
+            "rms_norm_eps": 1e-6,
+            "rope_theta": 1000000.0,
+            "attention_bias": false
+        });
+        let tc = parse_hf_config(&config).expect("Qwen3-4B config should parse");
+        assert_eq!(tc.hidden_size, 2560);
+        assert_eq!(tc.num_attention_heads, 32);
+        assert_eq!(tc.num_kv_heads, 8);
+        assert_eq!(tc.head_dim_override, Some(128));
+        assert_eq!(tc.head_dim(), 128);
+        // Key assertion: q_dim != hidden_size for Qwen3-4B
+        assert_eq!(tc.q_dim(), 4096); // 32 * 128
+        assert_ne!(tc.q_dim(), tc.hidden_size); // 4096 != 2560
+                                                // KV dim
+        let kv_dim = tc.num_kv_heads * tc.head_dim();
+        assert_eq!(kv_dim, 1024); // 8 * 128
+        assert!(!tc.use_bias);
+    }
+
     // =========================================================================
     // Helper function tests: should_log, should_save_checkpoint, reached_max_steps
     // =========================================================================

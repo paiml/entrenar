@@ -1941,6 +1941,7 @@ mod tests {
             let dir = TempDir::new().expect("create temp dir");
             let config = TransformerConfig::tiny();
             let hidden = config.hidden_size;
+            let q_dim = config.q_dim();
             let kv_hidden = config.num_kv_heads * config.head_dim();
             let intermediate = config.intermediate_size;
             let vocab = config.vocab_size;
@@ -1971,30 +1972,30 @@ mod tests {
                     vec![hidden],
                 ));
 
-                // WRONG: q_proj has 7 elements instead of hidden*hidden
+                // WRONG: q_proj has 7 elements instead of q_dim*hidden
                 if i == 0 {
                     td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(7, 0.01), vec![7]));
                 } else {
                     td.push((
                         format!("{p}.self_attn.q_proj.weight"),
-                        make_f32(hidden * hidden, 0.01),
-                        vec![hidden, hidden],
+                        make_f32(q_dim * hidden, 0.01),
+                        vec![q_dim, hidden],
                     ));
                 }
                 td.push((
                     format!("{p}.self_attn.k_proj.weight"),
-                    make_f32(hidden * kv_hidden, 0.01),
+                    make_f32(kv_hidden * hidden, 0.01),
                     vec![kv_hidden, hidden],
                 ));
                 td.push((
                     format!("{p}.self_attn.v_proj.weight"),
-                    make_f32(hidden * kv_hidden, 0.01),
+                    make_f32(kv_hidden * hidden, 0.01),
                     vec![kv_hidden, hidden],
                 ));
                 td.push((
                     format!("{p}.self_attn.o_proj.weight"),
-                    make_f32(hidden * hidden, 0.01),
-                    vec![hidden, hidden],
+                    make_f32(hidden * q_dim, 0.01),
+                    vec![hidden, q_dim],
                 ));
                 td.push((
                     format!("{p}.mlp.gate_proj.weight"),
@@ -2173,6 +2174,186 @@ mod tests {
                 Ok(_) => panic!("expected error"),
             };
             assert!(err_msg.contains("Inf"));
+        }
+
+        /// GH-262: Qwen3-4B shape validation with q_dim != hidden_size.
+        ///
+        /// Uses a 1-layer config mimicking Qwen3-4B dimensions to verify
+        /// validate_weight_shapes accepts the correct q_dim-based shapes.
+        #[test]
+        fn test_gh262_qwen3_4b_weight_shapes_q_dim_ne_hidden() {
+            // Minimal Qwen3-like config: q_dim (128) != hidden_size (80)
+            let config = TransformerConfig {
+                hidden_size: 80,
+                num_attention_heads: 4,
+                num_kv_heads: 2,
+                intermediate_size: 128,
+                num_hidden_layers: 1,
+                vocab_size: 256,
+                max_position_embeddings: 512,
+                rms_norm_eps: 1e-6,
+                rope_theta: 10000.0,
+                use_bias: false,
+                head_dim_override: Some(32), // head_dim=32, so q_dim = 4*32 = 128, hidden=80
+                architecture: crate::transformer::config::ModelArchitecture::Decoder,
+                hf_architecture: None,
+                hf_model_type: None,
+                tie_word_embeddings: false,
+            };
+
+            let hidden = config.hidden_size; // 80
+            let q_dim = config.q_dim(); // 4 * 32 = 128
+            let kv_hidden = config.num_kv_heads * config.head_dim(); // 2 * 32 = 64
+            let intermediate = config.intermediate_size; // 128
+            let vocab = config.vocab_size; // 256
+
+            // Verify q_dim != hidden (the Qwen3-4B characteristic)
+            assert_ne!(q_dim, hidden, "test requires q_dim != hidden_size");
+
+            let mut weights = HashMap::new();
+            weights.insert(
+                "model.embed_tokens.weight".to_string(),
+                Tensor::from_vec(vec![0.1; vocab * hidden], true),
+            );
+            weights
+                .insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden], true));
+
+            let p = "model.layers.0";
+            weights.insert(
+                format!("{p}.input_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden], true),
+            );
+            weights.insert(
+                format!("{p}.post_attention_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden], true),
+            );
+            // Q: [q_dim, hidden] — NOT [hidden, hidden]
+            weights.insert(
+                format!("{p}.self_attn.q_proj.weight"),
+                Tensor::from_vec(vec![0.1; q_dim * hidden], true),
+            );
+            // K: [kv_hidden, hidden]
+            weights.insert(
+                format!("{p}.self_attn.k_proj.weight"),
+                Tensor::from_vec(vec![0.1; kv_hidden * hidden], true),
+            );
+            // V: [kv_hidden, hidden]
+            weights.insert(
+                format!("{p}.self_attn.v_proj.weight"),
+                Tensor::from_vec(vec![0.1; kv_hidden * hidden], true),
+            );
+            // O: [hidden, q_dim] — NOT [hidden, hidden]
+            weights.insert(
+                format!("{p}.self_attn.o_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden * q_dim], true),
+            );
+            weights.insert(
+                format!("{p}.mlp.gate_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden * intermediate], true),
+            );
+            weights.insert(
+                format!("{p}.mlp.up_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden * intermediate], true),
+            );
+            weights.insert(
+                format!("{p}.mlp.down_proj.weight"),
+                Tensor::from_vec(vec![0.1; intermediate * hidden], true),
+            );
+
+            // Should pass: shapes use q_dim for Q/O projections
+            let result = Transformer::validate_weight_shapes(&weights, &config);
+            assert!(
+                result.is_ok(),
+                "Qwen3-like shapes (q_dim={q_dim} != hidden={hidden}) should validate: {:?}",
+                result.err()
+            );
+
+            // Should also construct successfully via from_params
+            let model = Transformer::from_params(&config, &weights);
+            assert!(model.is_some(), "Qwen3-like model with q_dim != hidden should construct");
+        }
+
+        /// GH-262: Using hidden_size instead of q_dim for q_proj must fail.
+        #[test]
+        fn test_gh262_wrong_q_proj_size_hidden_instead_of_q_dim() {
+            let config = TransformerConfig {
+                hidden_size: 80,
+                num_attention_heads: 4,
+                num_kv_heads: 2,
+                intermediate_size: 128,
+                num_hidden_layers: 1,
+                vocab_size: 256,
+                max_position_embeddings: 512,
+                rms_norm_eps: 1e-6,
+                rope_theta: 10000.0,
+                use_bias: false,
+                head_dim_override: Some(32), // q_dim=128, hidden=80
+                architecture: crate::transformer::config::ModelArchitecture::Decoder,
+                hf_architecture: None,
+                hf_model_type: None,
+                tie_word_embeddings: false,
+            };
+
+            let hidden = config.hidden_size; // 80
+            let kv_hidden = config.num_kv_heads * config.head_dim(); // 64
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut weights = HashMap::new();
+            weights.insert(
+                "model.embed_tokens.weight".to_string(),
+                Tensor::from_vec(vec![0.1; vocab * hidden], true),
+            );
+            weights
+                .insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden], true));
+
+            let p = "model.layers.0";
+            weights.insert(
+                format!("{p}.input_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden], true),
+            );
+            weights.insert(
+                format!("{p}.post_attention_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden], true),
+            );
+            // BUG: q_proj uses hidden*hidden (6400) instead of q_dim*hidden (10240)
+            weights.insert(
+                format!("{p}.self_attn.q_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden * hidden], true),
+            );
+            weights.insert(
+                format!("{p}.self_attn.k_proj.weight"),
+                Tensor::from_vec(vec![0.1; kv_hidden * hidden], true),
+            );
+            weights.insert(
+                format!("{p}.self_attn.v_proj.weight"),
+                Tensor::from_vec(vec![0.1; kv_hidden * hidden], true),
+            );
+            weights.insert(
+                format!("{p}.self_attn.o_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden * hidden], true),
+            );
+            weights.insert(
+                format!("{p}.mlp.gate_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden * intermediate], true),
+            );
+            weights.insert(
+                format!("{p}.mlp.up_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden * intermediate], true),
+            );
+            weights.insert(
+                format!("{p}.mlp.down_proj.weight"),
+                Tensor::from_vec(vec![0.1; intermediate * hidden], true),
+            );
+
+            // Must fail: q_proj has wrong size
+            let result = Transformer::validate_weight_shapes(&weights, &config);
+            assert!(result.is_err(), "hidden*hidden q_proj should fail when q_dim != hidden");
+            let err_msg = result.err().map(|e| e.to_string()).unwrap_or_default();
+            assert!(
+                err_msg.contains("q_proj") && err_msg.contains("Shape mismatch"),
+                "Error should mention q_proj shape mismatch, got: {err_msg}"
+            );
         }
 
         // -----------------------------------------------------------------
