@@ -60,10 +60,7 @@ impl TransformerTrainer {
             let alpha = config.lora_alpha.unwrap_or(rank as f32 * 2.0);
             let default_targets = vec!["q_proj".to_string(), "v_proj".to_string()];
             // ENT-LoRA-005: Expand shorthand targets ("all_linear", "attention", etc.)
-            let raw_targets = config
-                .lora_target_modules
-                .as_deref()
-                .unwrap_or(&default_targets);
+            let raw_targets = config.lora_target_modules.as_deref().unwrap_or(&default_targets);
             let expanded = crate::lora::LoRAConfig::expand_shorthand(raw_targets);
             let target_modules = expanded.as_slice();
 
@@ -80,38 +77,66 @@ impl TransformerTrainer {
                 // Attention projections (ENT-LoRA-005: flexible targets)
                 if target_modules.iter().any(|m| m == "q_proj") {
                     layers.push(LoRALayer::new(
-                        block.self_attn.w_q.clone(), q_dim, hidden_size, rank, alpha,
+                        block.self_attn.w_q.clone(),
+                        q_dim,
+                        hidden_size,
+                        rank,
+                        alpha,
                     ));
                 }
                 if target_modules.iter().any(|m| m == "k_proj") {
                     layers.push(LoRALayer::new(
-                        block.self_attn.w_k.clone(), kv_hidden_size, hidden_size, rank, alpha,
+                        block.self_attn.w_k.clone(),
+                        kv_hidden_size,
+                        hidden_size,
+                        rank,
+                        alpha,
                     ));
                 }
                 if target_modules.iter().any(|m| m == "v_proj") {
                     layers.push(LoRALayer::new(
-                        block.self_attn.w_v.clone(), kv_hidden_size, hidden_size, rank, alpha,
+                        block.self_attn.w_v.clone(),
+                        kv_hidden_size,
+                        hidden_size,
+                        rank,
+                        alpha,
                     ));
                 }
                 if target_modules.iter().any(|m| m == "o_proj") {
                     layers.push(LoRALayer::new(
-                        block.self_attn.w_o.clone(), hidden_size, q_dim, rank, alpha,
+                        block.self_attn.w_o.clone(),
+                        hidden_size,
+                        q_dim,
+                        rank,
+                        alpha,
                     ));
                 }
                 // MLP projections (ENT-LoRA-005)
                 if target_modules.iter().any(|m| m == "gate_proj") {
                     layers.push(LoRALayer::new(
-                        block.ffn.w_gate.clone(), intermediate, hidden_size, rank, alpha,
+                        block.ffn.w_gate.clone(),
+                        intermediate,
+                        hidden_size,
+                        rank,
+                        alpha,
                     ));
                 }
                 if target_modules.iter().any(|m| m == "up_proj") {
                     layers.push(LoRALayer::new(
-                        block.ffn.w_up.clone(), intermediate, hidden_size, rank, alpha,
+                        block.ffn.w_up.clone(),
+                        intermediate,
+                        hidden_size,
+                        rank,
+                        alpha,
                     ));
                 }
                 if target_modules.iter().any(|m| m == "down_proj") {
                     layers.push(LoRALayer::new(
-                        block.ffn.w_down.clone(), hidden_size, intermediate, rank, alpha,
+                        block.ffn.w_down.clone(),
+                        hidden_size,
+                        intermediate,
+                        rank,
+                        alpha,
                     ));
                 }
             }
@@ -196,9 +221,7 @@ impl TransformerTrainer {
     fn clip_and_step(&mut self) {
         if let Some(max_norm) = self.config.base.max_grad_norm {
             let params = if let Some(ref lora) = self.lora_layers {
-                lora.iter()
-                    .flat_map(|l| vec![l.lora_a(), l.lora_b()])
-                    .collect::<Vec<_>>()
+                lora.iter().flat_map(|l| vec![l.lora_a(), l.lora_b()]).collect::<Vec<_>>()
             } else {
                 self.model.parameters()
             };
@@ -439,16 +462,17 @@ impl TransformerTrainer {
             ("gate_proj", "mlp.gate_proj"),
             ("up_proj", "mlp.up_proj"),
             ("down_proj", "mlp.down_proj"),
-        ].iter()
-            .filter(|(name, _)| expanded.iter().any(|t| t == *name))
-            .copied()
-            .collect();
+        ]
+        .iter()
+        .filter(|(name, _)| expanded.iter().any(|t| t == *name))
+        .copied()
+        .collect();
 
         // Generate full path names for each (block, module) pair
         let all_names: Vec<String> = (0..num_layers)
-            .flat_map(|i| module_paths.iter().map(move |(_, path)| {
-                format!("model.layers.{i}.{path}")
-            }))
+            .flat_map(|i| {
+                module_paths.iter().map(move |(_, path)| format!("model.layers.{i}.{path}"))
+            })
             .collect();
 
         let mut adapters: Vec<(&str, &LoRALayer)> = Vec::new();

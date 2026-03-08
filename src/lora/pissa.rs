@@ -34,7 +34,8 @@ pub fn pissa_init(
     assert!(rank <= d_out.min(d_in), "Rank must be <= min(d_out, d_in)");
 
     // Truncated SVD via power iteration
-    let (u_r, s_r, v_r) = truncated_svd(base_weight.data().as_slice().expect("contiguous"), d_out, d_in, rank);
+    let (u_r, s_r, v_r) =
+        truncated_svd(base_weight.data().as_slice().expect("contiguous"), d_out, d_in, rank);
 
     // Compute A = sqrt(S_r) · V_r^T [rank × d_in]
     let mut a_data = vec![0.0f32; rank * d_in];
@@ -85,7 +86,12 @@ pub fn pissa_init(
 /// - U_r: [d_out × rank] left singular vectors (column-major stored as row-major)
 /// - S_r: [rank] singular values (descending)
 /// - V_r: [rank × d_in] right singular vectors
-fn truncated_svd(w: &[f32], d_out: usize, d_in: usize, rank: usize) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+fn truncated_svd(
+    w: &[f32],
+    d_out: usize,
+    d_in: usize,
+    rank: usize,
+) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let iterations = 20;
     let mut u_r = vec![0.0f32; d_out * rank];
     let mut s_r = vec![0.0f32; rank];
@@ -96,7 +102,8 @@ fn truncated_svd(w: &[f32], d_out: usize, d_in: usize, rank: usize) -> (Vec<f32>
 
     for r in 0..rank {
         // Initialize random vector v
-        let mut v: Vec<f32> = (0..d_in).map(|i| ((i as f32 * 0.7 + r as f32 * 1.3).sin())).collect();
+        let mut v: Vec<f32> =
+            (0..d_in).map(|i| ((i as f32 * 0.7 + r as f32 * 1.3).sin())).collect();
         normalize(&mut v);
 
         let mut u = vec![0.0f32; d_out];

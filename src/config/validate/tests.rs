@@ -149,7 +149,14 @@ fn test_invalid_lora_dropout() {
 #[test]
 fn test_empty_lora_targets() {
     let mut spec = create_valid_spec();
-    spec.lora = Some(LoRASpec { rank: 64, alpha: 16.0, target_modules: vec![], dropout: 0.0, lora_plus_ratio: 1.0, double_quantize: false });
+    spec.lora = Some(LoRASpec {
+        rank: 64,
+        alpha: 16.0,
+        target_modules: vec![],
+        dropout: 0.0,
+        lora_plus_ratio: 1.0,
+        double_quantize: false,
+    });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::EmptyLoRATargets));
 }

@@ -252,12 +252,7 @@ impl TransformerTrainConfig {
     /// - Base weights frozen (requires_grad=false)
     /// - Only LoRA A/B + norms are optimizer targets
     /// - scale = alpha / rank
-    pub fn with_lora(
-        mut self,
-        rank: usize,
-        alpha: f32,
-        target_modules: Vec<String>,
-    ) -> Self {
+    pub fn with_lora(mut self, rank: usize, alpha: f32, target_modules: Vec<String>) -> Self {
         self.lora_rank = Some(rank);
         self.lora_alpha = Some(alpha);
         self.lora_target_modules = Some(target_modules);

@@ -556,18 +556,30 @@ impl MultiHeadAttention {
     /// Get all parameters as a vector
     pub fn parameters(&self) -> Vec<&Tensor> {
         let mut params = vec![&self.w_q, &self.w_k, &self.w_v, &self.w_o];
-        if let Some(ref b) = self.b_q { params.push(b); }
-        if let Some(ref b) = self.b_k { params.push(b); }
-        if let Some(ref b) = self.b_v { params.push(b); }
+        if let Some(ref b) = self.b_q {
+            params.push(b);
+        }
+        if let Some(ref b) = self.b_k {
+            params.push(b);
+        }
+        if let Some(ref b) = self.b_v {
+            params.push(b);
+        }
         params
     }
 
     /// Get all parameters as mutable references for optimizer
     pub fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
         let mut params = vec![&mut self.w_q, &mut self.w_k, &mut self.w_v, &mut self.w_o];
-        if let Some(ref mut b) = self.b_q { params.push(b); }
-        if let Some(ref mut b) = self.b_k { params.push(b); }
-        if let Some(ref mut b) = self.b_v { params.push(b); }
+        if let Some(ref mut b) = self.b_q {
+            params.push(b);
+        }
+        if let Some(ref mut b) = self.b_k {
+            params.push(b);
+        }
+        if let Some(ref mut b) = self.b_v {
+            params.push(b);
+        }
         params
     }
 
@@ -1552,13 +1564,34 @@ mod tests {
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
 
         let mut params = HashMap::new();
-        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-        params.insert("attn.q_proj.bias".to_string(), Tensor::from_vec(vec![0.01; hidden_size], true));
-        params.insert("attn.k_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
-        params.insert("attn.v_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
+        params.insert(
+            "attn.q_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params.insert(
+            "attn.k_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.o_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params.insert(
+            "attn.q_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.01; hidden_size], true),
+        );
+        params.insert(
+            "attn.k_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.01; kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.01; kv_hidden_size], true),
+        );
 
         let attn = MultiHeadAttention::from_params(&config, &params, "attn");
         assert!(attn.is_some());
@@ -1574,13 +1607,34 @@ mod tests {
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
 
         let mut params = HashMap::new();
-        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-        params.insert("attn.q_proj.bias".to_string(), Tensor::from_vec(vec![0.01; hidden_size], true));
-        params.insert("attn.k_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
-        params.insert("attn.v_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
+        params.insert(
+            "attn.q_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params.insert(
+            "attn.k_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.o_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params.insert(
+            "attn.q_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.01; hidden_size], true),
+        );
+        params.insert(
+            "attn.k_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.01; kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.01; kv_hidden_size], true),
+        );
 
         let attn = MultiHeadAttention::from_params(&config, &params, "attn").expect("should load");
         let named = attn.named_parameters("attn");
@@ -1598,13 +1652,32 @@ mod tests {
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
 
         let mut params = HashMap::new();
-        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-        params.insert("attn.q_proj.bias".to_string(), Tensor::from_vec(vec![0.5; hidden_size], true));
-        params.insert("attn.k_proj.bias".to_string(), Tensor::from_vec(vec![0.5; kv_hidden_size], true));
-        params.insert("attn.v_proj.bias".to_string(), Tensor::from_vec(vec![0.5; kv_hidden_size], true));
+        params.insert(
+            "attn.q_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params.insert(
+            "attn.k_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.o_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params
+            .insert("attn.q_proj.bias".to_string(), Tensor::from_vec(vec![0.5; hidden_size], true));
+        params.insert(
+            "attn.k_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.5; kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.bias".to_string(),
+            Tensor::from_vec(vec![0.5; kv_hidden_size], true),
+        );
 
         let attn = MultiHeadAttention::from_params(&config, &params, "attn").expect("should load");
         let x = Tensor::from_vec(vec![0.1; 2 * hidden_size], false);

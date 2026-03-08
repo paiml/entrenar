@@ -141,7 +141,11 @@ impl MultiAdapterManager {
 
     /// Remove adapter by index (returns the removed adapter)
     pub fn remove(&mut self, idx: usize) -> Option<NamedAdapter> {
-        if idx < self.adapters.len() { Some(self.adapters.remove(idx)) } else { None }
+        if idx < self.adapters.len() {
+            Some(self.adapters.remove(idx))
+        } else {
+            None
+        }
     }
 
     /// Iterator over all adapters
@@ -224,10 +228,13 @@ mod tests {
 
     #[test]
     fn test_ent_lora_013_param_count() {
-        let adapter = NamedAdapter::new("test", vec![
-            make_lora_layer(8, 4, 2), // A: 2*4=8, B: 8*2=16 = 24
-            make_lora_layer(4, 8, 2), // A: 2*8=16, B: 4*2=8 = 24
-        ]);
+        let adapter = NamedAdapter::new(
+            "test",
+            vec![
+                make_lora_layer(8, 4, 2), // A: 2*4=8, B: 8*2=16 = 24
+                make_lora_layer(4, 8, 2), // A: 2*8=16, B: 4*2=8 = 24
+            ],
+        );
         assert_eq!(adapter.param_count(), 48);
     }
 

@@ -627,10 +627,8 @@ mod tests {
     #[test]
     fn test_ent_lora_008_double_quant_forward_close_to_single() {
         let d = 64;
-        let base_weight = Tensor::from_vec(
-            (0..d * d).map(|i| ((i as f32 * 0.1).sin() * 2.0)).collect(),
-            false,
-        );
+        let base_weight =
+            Tensor::from_vec((0..d * d).map(|i| ((i as f32 * 0.1).sin() * 2.0)).collect(), false);
         let lora = LoRALayer::new(base_weight, d, d, 4, 8.0);
 
         let single = QLoRALayer::from_lora(lora.clone());
@@ -679,5 +677,151 @@ mod tests {
             double_stats.base_quantized_bytes,
             single_stats.base_quantized_bytes
         );
+    }
+
+    // ========================================================================
+    // COVERAGE GAP TESTS — double-quant merge, accessors, merged forward
+    // ========================================================================
+
+    #[test]
+    fn test_qlora_merge_to_f32_double_quant() {
+        // Covers the double quantization path in merge_to_f32()
+        let d_out = 8;
+        let d_in = 8;
+        let base_weight = Tensor::from_vec(
+            (0..d_out * d_in).map(|i| (i as f32 * 0.2).sin() * 0.5).collect(),
+            false,
+        );
+        let lora = LoRALayer::new(base_weight, d_out, d_in, 2, 4.0);
+        let qlora_dq = QLoRALayer::from_lora_double_quant(lora);
+
+        assert!(qlora_dq.is_double_quantized());
+
+        let merged = qlora_dq.merge_to_f32();
+        assert_eq!(merged.len(), d_out * d_in);
+
+        // All values should be finite
+        for val in &merged {
+            assert!(val.is_finite(), "Merged weight must be finite, got {val}");
+        }
+    }
+
+    #[test]
+    fn test_qlora_merge_to_f32_single_vs_double_close() {
+        // Verify single-quant and double-quant merge paths produce similar results
+        let d_out = 8;
+        let d_in = 8;
+        let base_data: Vec<f32> =
+            (0..d_out * d_in).map(|i| (i as f32 * 0.15).cos() * 0.3).collect();
+        let base_weight = Tensor::from_vec(base_data, false);
+
+        let lora = LoRALayer::new(base_weight, d_out, d_in, 2, 4.0);
+        let single = QLoRALayer::from_lora(lora.clone());
+        let double = QLoRALayer::from_lora_double_quant(lora);
+
+        let merged_single = single.merge_to_f32();
+        let merged_double = double.merge_to_f32();
+
+        assert_eq!(merged_single.len(), merged_double.len());
+        for i in 0..merged_single.len() {
+            let diff = (merged_single[i] - merged_double[i]).abs();
+            let tol = merged_single[i].abs() * 0.05 + 0.2;
+            assert!(
+                diff <= tol,
+                "merge_to_f32 single vs double diverged at [{i}]: single={}, double={}, diff={diff}",
+                merged_single[i],
+                merged_double[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_qlora_base_weight_quantized_accessor() {
+        // Covers base_weight_quantized() accessor
+        let d = 8;
+        let base_weight = Tensor::from_vec(vec![1.0; d * d], false);
+        let qlora = QLoRALayer::new(base_weight, d, d, 2, 4.0);
+
+        let quantized = qlora.base_weight_quantized();
+        // The quantized struct should have data — just verify it exists and has content
+        assert!(quantized.memory_bytes() > 0, "Quantized base weight should use memory");
+    }
+
+    #[test]
+    fn test_qlora_double_quant_forward_with_known_adapter() {
+        // Covers the double-quant forward path with explicit adapter weights
+        let d_out = 4;
+        let d_in = 4;
+        let base_weight = Tensor::from_vec(vec![0.5; d_out * d_in], false);
+        let lora = LoRALayer::new(base_weight, d_out, d_in, 2, 4.0);
+        let mut qlora = QLoRALayer::from_lora_double_quant(lora);
+
+        assert!(qlora.is_double_quantized());
+
+        // Set non-zero adapter weights
+        let a_data: Vec<f32> = (0..2 * d_in).map(|i| (i as f32 * 0.1).sin() * 0.5).collect();
+        let b_data: Vec<f32> = (0..d_out * 2).map(|i| (i as f32 * 0.2).cos() * 0.3).collect();
+        *qlora.lora_a_mut().data_mut() = ndarray::Array1::from_vec(a_data);
+        *qlora.lora_b_mut().data_mut() = ndarray::Array1::from_vec(b_data);
+
+        let x = Tensor::from_vec(vec![1.0; d_in], true);
+        let output = qlora.forward(&x);
+
+        assert_eq!(output.len(), d_out);
+        for val in output.data().iter() {
+            assert!(val.is_finite(), "Forward output must be finite, got {val}");
+        }
+    }
+
+    #[test]
+    fn test_qlora_memory_stats_double_quant() {
+        // Covers the double-quant path in memory_stats()
+        let d = 16;
+        let base_weight = Tensor::from_vec(vec![1.0; d * d], false);
+        let lora = LoRALayer::new(base_weight, d, d, 4, 8.0);
+        let qlora = QLoRALayer::from_lora_double_quant(lora);
+
+        let stats = qlora.memory_stats();
+
+        // Basic sanity checks
+        assert!(stats.base_quantized_bytes > 0);
+        assert!(stats.lora_bytes > 0);
+        assert_eq!(stats.total_bytes, stats.base_quantized_bytes + stats.lora_bytes);
+        assert!(stats.compression_ratio >= 1.0);
+        assert_eq!(stats.base_unquantized_bytes, d * d * 4);
+    }
+
+    #[test]
+    fn test_qlora_memory_stats_clone_and_debug() {
+        // Covers Clone and Debug derives on MemoryStats
+        let base_weight = Tensor::from_vec(vec![1.0; 16], false);
+        let qlora = QLoRALayer::new(base_weight, 4, 4, 2, 4.0);
+
+        let stats = qlora.memory_stats();
+        let stats_clone = stats.clone();
+
+        assert_eq!(stats.total_bytes, stats_clone.total_bytes);
+        assert_eq!(stats.lora_bytes, stats_clone.lora_bytes);
+        assert_eq!(stats.base_quantized_bytes, stats_clone.base_quantized_bytes);
+
+        let debug_str = format!("{:?}", stats_clone);
+        assert!(debug_str.contains("MemoryStats"));
+    }
+
+    #[test]
+    fn test_qlora_lora_a_mut_and_lora_b_mut() {
+        // Explicitly covers lora_a_mut() and lora_b_mut() on QLoRALayer
+        let base_weight = Tensor::from_vec(vec![1.0; 4], false);
+        let mut qlora = QLoRALayer::new(base_weight, 2, 2, 1, 2.0);
+
+        // Mutate A
+        *qlora.lora_a_mut().data_mut() = ndarray::arr1(&[10.0, 20.0]);
+        assert_abs_diff_eq!(qlora.lora_a().data()[0], 10.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(qlora.lora_a().data()[1], 20.0, epsilon = 1e-6);
+
+        // Mutate B
+        *qlora.lora_b_mut().data_mut() = ndarray::arr1(&[30.0, 40.0]);
+        assert_abs_diff_eq!(qlora.lora_b().data()[0], 30.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(qlora.lora_b().data()[1], 40.0, epsilon = 1e-6);
     }
 }

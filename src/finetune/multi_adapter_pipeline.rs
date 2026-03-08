@@ -697,4 +697,573 @@ checkpoint = "ckpt/x"
             lora_step: 0,
         }
     }
+
+    fn dummy_slot_with_data(n_samples: usize) -> AdapterSlot {
+        let samples: Vec<InstructSample> = (0..n_samples)
+            .map(|i| InstructSample {
+                instruction: format!("inst_{i}"),
+                response: format!("resp_{i}"),
+                system: None,
+                metadata: None,
+            })
+            .collect();
+        AdapterSlot {
+            lora_layers: Vec::new(),
+            train_samples: samples,
+            val_samples: Vec::new(),
+            checkpoint_dir: PathBuf::from("/tmp/test"),
+            metrics: Vec::new(),
+            config: InstructConfig::default(),
+            cursor: 0,
+            best_val_loss: f32::INFINITY,
+            #[cfg(feature = "cuda")]
+            optimizer_states: None,
+            #[cfg(feature = "cuda")]
+            lora_step: 0,
+        }
+    }
+
+    // ── Coverage improvement tests ───────────────────────────────
+
+    #[test]
+    fn test_adapter_schedule_default() {
+        let sched: AdapterSchedule = Default::default();
+        assert_eq!(sched, AdapterSchedule::RoundRobin);
+    }
+
+    #[test]
+    fn test_adapter_schedule_debug() {
+        assert_eq!(format!("{:?}", AdapterSchedule::Synchronized), "Synchronized");
+        assert_eq!(format!("{:?}", AdapterSchedule::RoundRobin), "RoundRobin");
+        assert_eq!(format!("{:?}", AdapterSchedule::PriorityValLoss), "PriorityValLoss");
+    }
+
+    #[test]
+    fn test_adapter_schedule_clone() {
+        let sched = AdapterSchedule::PriorityValLoss;
+        let cloned = sched;
+        assert_eq!(sched, cloned);
+    }
+
+    #[test]
+    fn test_adapter_schedule_eq() {
+        assert_eq!(AdapterSchedule::Synchronized, AdapterSchedule::Synchronized);
+        assert_ne!(AdapterSchedule::Synchronized, AdapterSchedule::RoundRobin);
+        assert_ne!(AdapterSchedule::RoundRobin, AdapterSchedule::PriorityValLoss);
+    }
+
+    #[test]
+    fn test_select_next_adapter_synchronized() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::Synchronized,
+            global_step: 0,
+        };
+        // Synchronized always returns Some(0)
+        assert_eq!(pipeline.select_next_adapter(), Some(0));
+    }
+
+    #[test]
+    fn test_select_next_adapter_synchronized_any_step() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::Synchronized,
+            global_step: 42,
+        };
+        assert_eq!(pipeline.select_next_adapter(), Some(0));
+    }
+
+    #[test]
+    fn test_select_next_adapter_round_robin_wraps() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 3,
+        };
+        assert_eq!(pipeline.select_next_adapter(), Some(0)); // 3 % 3 = 0
+    }
+
+    #[test]
+    fn test_select_next_adapter_priority_all_infinity() {
+        // All slots have INFINITY best_val_loss → first one wins (or any, but deterministic)
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::PriorityValLoss,
+            global_step: 0,
+        };
+        let result = pipeline.select_next_adapter();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_select_next_adapter_priority_with_nan() {
+        let mut slot0 = dummy_slot();
+        slot0.best_val_loss = f32::NAN;
+        let mut slot1 = dummy_slot();
+        slot1.best_val_loss = 1.0;
+
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1],
+            schedule: AdapterSchedule::PriorityValLoss,
+            global_step: 0,
+        };
+        // NaN comparison uses Ordering::Equal fallback, so result is deterministic
+        let result = pipeline.select_next_adapter();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_num_adapters() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert_eq!(pipeline.num_adapters(), 3);
+    }
+
+    #[test]
+    fn test_num_adapters_empty() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert_eq!(pipeline.num_adapters(), 0);
+    }
+
+    #[test]
+    fn test_all_exhausted_with_data() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(3), dummy_slot_with_data(2)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert!(!pipeline.all_exhausted());
+    }
+
+    #[test]
+    fn test_all_exhausted_partially() {
+        let mut slot0 = dummy_slot_with_data(3);
+        slot0.cursor = 3; // exhausted
+        let slot1 = dummy_slot_with_data(2); // not exhausted
+
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert!(!pipeline.all_exhausted());
+    }
+
+    #[test]
+    fn test_all_exhausted_all_done() {
+        let mut slot0 = dummy_slot_with_data(3);
+        slot0.cursor = 3;
+        let mut slot1 = dummy_slot_with_data(2);
+        slot1.cursor = 2;
+
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert!(pipeline.all_exhausted());
+    }
+
+    #[test]
+    fn test_reset_epoch() {
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(5), dummy_slot_with_data(3)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        pipeline.adapters[0].cursor = 5;
+        pipeline.adapters[1].cursor = 3;
+
+        pipeline.reset_epoch(42);
+
+        assert_eq!(pipeline.adapters[0].cursor, 0);
+        assert_eq!(pipeline.adapters[1].cursor, 0);
+    }
+
+    #[test]
+    fn test_reset_epoch_shuffle_deterministic() {
+        let mut pipeline1 = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(10)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        let mut pipeline2 = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(10)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+
+        pipeline1.reset_epoch(123);
+        pipeline2.reset_epoch(123);
+
+        // Same seed should produce same shuffle
+        for (s1, s2) in pipeline1.adapters[0]
+            .train_samples
+            .iter()
+            .zip(pipeline2.adapters[0].train_samples.iter())
+        {
+            assert_eq!(s1.instruction, s2.instruction);
+        }
+    }
+
+    #[test]
+    fn test_shuffle_samples_empty() {
+        let mut samples: Vec<InstructSample> = vec![];
+        shuffle_samples(&mut samples, 42);
+        assert!(samples.is_empty());
+    }
+
+    #[test]
+    fn test_shuffle_samples_single() {
+        let mut samples = vec![InstructSample {
+            instruction: "only".into(),
+            response: "one".into(),
+            system: None,
+            metadata: None,
+        }];
+        shuffle_samples(&mut samples, 42);
+        assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].instruction, "only");
+    }
+
+    #[test]
+    fn test_shuffle_samples_different_seeds() {
+        let mut samples1 = vec![
+            InstructSample {
+                instruction: "a".into(),
+                response: "1".into(),
+                system: None,
+                metadata: None,
+            },
+            InstructSample {
+                instruction: "b".into(),
+                response: "2".into(),
+                system: None,
+                metadata: None,
+            },
+            InstructSample {
+                instruction: "c".into(),
+                response: "3".into(),
+                system: None,
+                metadata: None,
+            },
+            InstructSample {
+                instruction: "d".into(),
+                response: "4".into(),
+                system: None,
+                metadata: None,
+            },
+            InstructSample {
+                instruction: "e".into(),
+                response: "5".into(),
+                system: None,
+                metadata: None,
+            },
+        ];
+        let mut samples2 = samples1.clone();
+
+        shuffle_samples(&mut samples1, 1);
+        shuffle_samples(&mut samples2, 999);
+
+        // Different seeds should (very likely) produce different orderings
+        let same =
+            samples1.iter().zip(samples2.iter()).all(|(s1, s2)| s1.instruction == s2.instruction);
+        // With 5! = 120 permutations, probability of same is ~0.83%, so this is safe
+        assert!(!same, "Different seeds should produce different shuffles");
+    }
+
+    #[test]
+    fn test_adapters_config_from_toml_invalid_toml() {
+        let toml = "this is not valid TOML {{{}}}";
+        let result = AdaptersConfigFile::from_toml(toml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("failed to parse"), "Expected parse error, got: {err}");
+    }
+
+    #[test]
+    fn test_adapters_config_from_toml_empty_adapters_array() {
+        // Valid TOML but no [[adapter]] entries → should fail
+        let toml = r#"
+[settings]
+foo = "bar"
+"#;
+        let result = AdaptersConfigFile::from_toml(toml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_adapters_config_from_file_not_found() {
+        let result = AdaptersConfigFile::from_file(Path::new("/tmp/nonexistent_adapters_xyz.toml"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("failed to read"), "Expected read error, got: {err}");
+    }
+
+    #[test]
+    fn test_adapters_config_from_file_valid() {
+        let dir = std::env::temp_dir().join("entrenar_adapter_cfg_test");
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let path = dir.join("adapters.toml");
+        std::fs::write(
+            &path,
+            r#"
+[[adapter]]
+data = "data/a.jsonl"
+checkpoint = "ckpt/a"
+label = "test-adapter"
+"#,
+        )
+        .expect("write file");
+        let config = AdaptersConfigFile::from_file(&path).expect("valid config");
+        assert_eq!(config.adapters.len(), 1);
+        assert_eq!(config.adapters[0].label, Some("test-adapter".to_string()));
+        std::fs::remove_file(&path).expect("cleanup");
+    }
+
+    #[test]
+    fn test_adapter_entry_defaults() {
+        let toml = r#"
+[[adapter]]
+data = "data/x.jsonl"
+checkpoint = "ckpt/x"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let entry = &config.adapters[0];
+        assert!(entry.label.is_none());
+        assert!(entry.rank.is_none());
+        assert!(entry.learning_rate.is_none());
+        assert!(entry.epochs.is_none());
+        assert!(entry.max_seq_len.is_none());
+    }
+
+    #[test]
+    fn test_adapter_entry_all_fields() {
+        let toml = r#"
+[[adapter]]
+data = "data/full.jsonl"
+checkpoint = "ckpt/full"
+label = "full-adapter"
+rank = 64
+learning_rate = 0.001
+epochs = 10
+max_seq_len = 1024
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let entry = &config.adapters[0];
+        assert_eq!(entry.data, PathBuf::from("data/full.jsonl"));
+        assert_eq!(entry.checkpoint, PathBuf::from("ckpt/full"));
+        assert_eq!(entry.label, Some("full-adapter".to_string()));
+        assert_eq!(entry.rank, Some(64));
+        assert_eq!(entry.learning_rate, Some(0.001));
+        assert_eq!(entry.epochs, Some(10));
+        assert_eq!(entry.max_seq_len, Some(1024));
+    }
+
+    #[test]
+    fn test_to_adapter_configs_rank_sets_alpha() {
+        let toml = r#"
+[[adapter]]
+data = "data/a.jsonl"
+checkpoint = "ckpt/a"
+rank = 32
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let base = InstructConfig::default();
+        let adapters = config.to_adapter_configs(&base);
+        // rank=32 → alpha = 32*2.0 = 64.0
+        assert_eq!(adapters[0].instruct_config.lora_rank, 32);
+        assert!((adapters[0].instruct_config.lora_alpha - 64.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_to_adapter_configs_multiple() {
+        let toml = r#"
+[[adapter]]
+data = "a.jsonl"
+checkpoint = "ckpt/a"
+rank = 8
+learning_rate = 0.0001
+
+[[adapter]]
+data = "b.jsonl"
+checkpoint = "ckpt/b"
+epochs = 20
+
+[[adapter]]
+data = "c.jsonl"
+checkpoint = "ckpt/c"
+max_seq_len = 128
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let base = InstructConfig {
+            lora_rank: 16,
+            learning_rate: 0.0002,
+            epochs: 3,
+            max_seq_len: 512,
+            ..Default::default()
+        };
+        let adapters = config.to_adapter_configs(&base);
+        assert_eq!(adapters.len(), 3);
+
+        // First adapter: rank=8, lr=0.0001
+        assert_eq!(adapters[0].instruct_config.lora_rank, 8);
+        assert!((adapters[0].instruct_config.learning_rate - 0.0001).abs() < f32::EPSILON);
+        assert_eq!(adapters[0].instruct_config.epochs, 3); // inherited
+
+        // Second adapter: epochs=20
+        assert_eq!(adapters[1].instruct_config.lora_rank, 16); // inherited
+        assert_eq!(adapters[1].instruct_config.epochs, 20);
+
+        // Third adapter: max_seq_len=128
+        assert_eq!(adapters[2].instruct_config.max_seq_len, 128);
+        assert_eq!(adapters[2].instruct_config.lora_rank, 16); // inherited
+    }
+
+    #[test]
+    fn test_batch_train_step_priority_val_loss() {
+        let mut slot0 = dummy_slot();
+        slot0.best_val_loss = 2.0;
+        let mut slot1 = dummy_slot();
+        slot1.best_val_loss = 5.0; // worst → should be selected
+
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1],
+            schedule: AdapterSchedule::PriorityValLoss,
+            global_step: 0,
+        };
+
+        let results = pipeline.batch_train_step();
+        assert_eq!(results.len(), 2);
+        // No tokenizer → both None, but the function should not panic
+    }
+
+    #[test]
+    fn test_adapter_config_debug() {
+        let config = AdapterConfig {
+            data_path: PathBuf::from("test.jsonl"),
+            checkpoint_dir: PathBuf::from("/tmp/ckpt"),
+            instruct_config: InstructConfig::default(),
+        };
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("AdapterConfig"));
+        assert!(debug.contains("test.jsonl"));
+    }
+
+    #[test]
+    fn test_adapter_config_clone() {
+        let config = AdapterConfig {
+            data_path: PathBuf::from("test.jsonl"),
+            checkpoint_dir: PathBuf::from("/tmp/ckpt"),
+            instruct_config: InstructConfig::default(),
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.data_path, PathBuf::from("test.jsonl"));
+        assert_eq!(cloned.checkpoint_dir, PathBuf::from("/tmp/ckpt"));
+    }
+
+    #[test]
+    fn test_adapters_config_file_debug() {
+        let toml = r#"
+[[adapter]]
+data = "a.jsonl"
+checkpoint = "ckpt/a"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("AdaptersConfigFile"));
+    }
+
+    #[test]
+    fn test_adapter_entry_debug() {
+        let toml = r#"
+[[adapter]]
+data = "a.jsonl"
+checkpoint = "ckpt/a"
+label = "test"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let debug = format!("{:?}", config.adapters[0]);
+        assert!(debug.contains("AdapterEntry"));
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn test_adapter_slot_cursor_tracking() {
+        let mut slot = dummy_slot_with_data(5);
+        assert_eq!(slot.cursor, 0);
+        slot.cursor = 3;
+        assert_eq!(slot.cursor, 3);
+        assert!(slot.cursor < slot.train_samples.len());
+        slot.cursor = 5;
+        assert!(slot.cursor >= slot.train_samples.len());
+    }
+
+    #[test]
+    fn test_adapter_slot_best_val_loss() {
+        let mut slot = dummy_slot();
+        assert_eq!(slot.best_val_loss, f32::INFINITY);
+        slot.best_val_loss = 0.5;
+        assert!((slot.best_val_loss - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_multi_adapter_pipeline_global_step() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert_eq!(pipeline.global_step, 0);
+    }
+
+    #[test]
+    fn test_train_step_adapter_exhausted() {
+        let mut slot = dummy_slot_with_data(2);
+        slot.cursor = 2; // already exhausted
+
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+
+        let result = pipeline.train_step_adapter(0);
+        assert!(result.is_none(), "Exhausted adapter should return None");
+    }
+
+    #[test]
+    fn test_batch_train_step_empty() {
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![],
+            schedule: AdapterSchedule::Synchronized,
+            global_step: 0,
+        };
+        let results = pipeline.batch_train_step();
+        assert!(results.is_empty());
+    }
 }

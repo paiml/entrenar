@@ -610,3 +610,94 @@ fn enc_006_bert_prefix_also_works() {
         "encoder.layers.0.self_attn.q_proj.weight"
     );
 }
+
+// =========================================================================
+// Additional coverage tests
+// =========================================================================
+
+#[test]
+fn test_expected_weight_count_with_biases() {
+    // 2 layers without lm_head
+    assert_eq!(expected_weight_count_with_biases(2, false), 2 + 2 * 12);
+    // 2 layers with lm_head
+    assert_eq!(expected_weight_count_with_biases(2, true), 2 + 2 * 12 + 1);
+    // 24 layers (Qwen2.5-0.5B)
+    assert_eq!(expected_weight_count_with_biases(24, false), 2 + 24 * 12);
+    assert_eq!(expected_weight_count_with_biases(24, true), 2 + 24 * 12 + 1);
+}
+
+#[test]
+fn test_parse_checkpoint_step_from_path() {
+    use std::path::PathBuf;
+
+    // Valid checkpoint
+    let p = PathBuf::from("/tmp/model-step-3000.safetensors");
+    assert_eq!(parse_checkpoint_step_from_path(&p), Some(3000));
+
+    let p = PathBuf::from("model-step-0.safetensors");
+    assert_eq!(parse_checkpoint_step_from_path(&p), Some(0));
+
+    // Not a checkpoint
+    let p = PathBuf::from("model.safetensors");
+    assert_eq!(parse_checkpoint_step_from_path(&p), None);
+
+    let p = PathBuf::from("model-best.safetensors");
+    assert_eq!(parse_checkpoint_step_from_path(&p), None);
+
+    let p = PathBuf::from("model-00001-of-00002.safetensors");
+    assert_eq!(parse_checkpoint_step_from_path(&p), None);
+}
+
+#[test]
+fn test_find_safetensors_checkpoint_files() {
+    let dir = TempDir::new().expect("temp dir creation should succeed");
+
+    // Create checkpoint files
+    std::fs::write(dir.path().join("model-step-1000.safetensors"), b"ckpt1")
+        .expect("file write should succeed");
+    std::fs::write(dir.path().join("model-step-2000.safetensors"), b"ckpt2")
+        .expect("file write should succeed");
+    std::fs::write(dir.path().join("model-step-3000.safetensors"), b"ckpt3")
+        .expect("file write should succeed");
+
+    let files = find_safetensors_files(dir.path()).expect("operation should succeed");
+    // Should return only the latest checkpoint
+    assert_eq!(files.len(), 1);
+    assert!(files[0].to_string_lossy().contains("model-step-3000"));
+}
+
+#[test]
+fn test_architecture_debug() {
+    assert_eq!(format!("{:?}", Architecture::Llama), "Llama");
+    assert_eq!(format!("{:?}", Architecture::Qwen2), "Qwen2");
+    assert_eq!(format!("{:?}", Architecture::Mistral), "Mistral");
+    assert_eq!(format!("{:?}", Architecture::RoBERTa), "RoBERTa");
+    assert_eq!(format!("{:?}", Architecture::Auto), "Auto");
+}
+
+#[test]
+fn test_detect_architecture_roberta() {
+    use safetensors::serialize;
+    use safetensors::tensor::{Dtype, TensorView};
+
+    let dir = TempDir::new().expect("temp file creation should succeed");
+    let file_path = dir.path().join("model.safetensors");
+
+    let data_bytes: Vec<u8> = vec![0.0f32; 4].iter().flat_map(|f| f.to_le_bytes()).collect();
+
+    let view1 =
+        TensorView::new(Dtype::F32, vec![4], &data_bytes).expect("operation should succeed");
+    let view2 =
+        TensorView::new(Dtype::F32, vec![4], &data_bytes).expect("operation should succeed");
+    let data = vec![
+        ("roberta.embeddings.word_embeddings.weight", &view1),
+        ("roberta.encoder.layer.0.attention.self.query.weight", &view2),
+    ];
+
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
+
+    let result = load_safetensors_weights(&file_path, Architecture::Auto);
+    assert!(result.is_ok());
+}

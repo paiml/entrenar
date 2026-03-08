@@ -98,19 +98,33 @@ impl LoRAConfig {
     pub fn expand_shorthand(modules: &[String]) -> Vec<String> {
         if modules.len() == 1 {
             match modules[0].as_str() {
-                "all_linear" => return vec![
-                    "q_proj", "k_proj", "v_proj", "o_proj",
-                    "gate_proj", "up_proj", "down_proj",
-                ].into_iter().map(String::from).collect(),
-                "attention" => return vec![
-                    "q_proj", "k_proj", "v_proj", "o_proj",
-                ].into_iter().map(String::from).collect(),
-                "qv" => return vec![
-                    "q_proj", "v_proj",
-                ].into_iter().map(String::from).collect(),
-                "mlp" => return vec![
-                    "gate_proj", "up_proj", "down_proj",
-                ].into_iter().map(String::from).collect(),
+                "all_linear" => {
+                    return vec![
+                        "q_proj",
+                        "k_proj",
+                        "v_proj",
+                        "o_proj",
+                        "gate_proj",
+                        "up_proj",
+                        "down_proj",
+                    ]
+                    .into_iter()
+                    .map(String::from)
+                    .collect()
+                }
+                "attention" => {
+                    return vec!["q_proj", "k_proj", "v_proj", "o_proj"]
+                        .into_iter()
+                        .map(String::from)
+                        .collect()
+                }
+                "qv" => return vec!["q_proj", "v_proj"].into_iter().map(String::from).collect(),
+                "mlp" => {
+                    return vec!["gate_proj", "up_proj", "down_proj"]
+                        .into_iter()
+                        .map(String::from)
+                        .collect()
+                }
                 _ => {}
             }
         }

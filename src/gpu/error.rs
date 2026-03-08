@@ -53,3 +53,88 @@ impl From<std::io::Error> for GpuError {
         Self::Io(e)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gpu_error_insufficient_memory_display() {
+        let err = GpuError::InsufficientMemory {
+            budget_mb: 8000,
+            available_mb: 4000,
+            reserved_mb: 12000,
+            total_mb: 16000,
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("8000"));
+        assert!(msg.contains("4000"));
+        assert!(msg.contains("12000"));
+        assert!(msg.contains("16000"));
+    }
+
+    #[test]
+    fn test_gpu_error_timeout_display() {
+        let err = GpuError::Timeout { budget_mb: 4000, timeout_secs: 30 };
+        let msg = format!("{err}");
+        assert!(msg.contains("30"));
+        assert!(msg.contains("4000"));
+    }
+
+    #[test]
+    fn test_gpu_error_ledger_corrupt_display() {
+        let err = GpuError::LedgerCorrupt("bad checksum".into());
+        let msg = format!("{err}");
+        assert!(msg.contains("bad checksum"));
+    }
+
+    #[test]
+    fn test_gpu_error_io_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file missing");
+        let err = GpuError::Io(io_err);
+        let msg = format!("{err}");
+        assert!(msg.contains("file missing"));
+    }
+
+    #[test]
+    fn test_gpu_error_source_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let err = GpuError::Io(io_err);
+        assert!(std::error::Error::source(&err).is_some());
+    }
+
+    #[test]
+    fn test_gpu_error_source_non_io() {
+        let err = GpuError::Timeout { budget_mb: 100, timeout_secs: 5 };
+        assert!(std::error::Error::source(&err).is_none());
+
+        let err = GpuError::LedgerCorrupt("test".into());
+        assert!(std::error::Error::source(&err).is_none());
+
+        let err = GpuError::InsufficientMemory {
+            budget_mb: 1,
+            available_mb: 0,
+            reserved_mb: 1,
+            total_mb: 1,
+        };
+        assert!(std::error::Error::source(&err).is_none());
+    }
+
+    #[test]
+    fn test_gpu_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "no access");
+        let err: GpuError = io_err.into();
+        match err {
+            GpuError::Io(e) => assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied),
+            other => panic!("Expected Io variant, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_gpu_error_debug() {
+        let err = GpuError::Timeout { budget_mb: 100, timeout_secs: 5 };
+        let debug = format!("{err:?}");
+        assert!(debug.contains("Timeout"));
+    }
+}

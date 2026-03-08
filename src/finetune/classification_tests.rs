@@ -512,3 +512,384 @@ fn enc_007_pool_dispatch() {
     // Mean = average [(1+5)/2, (2+6)/2, (3+7)/2, (4+8)/2] = [3,4,5,6]
     assert!((mean.data()[0] - 3.0).abs() < 1e-5);
 }
+
+// ── Coverage improvement tests ───────────────────────────────────
+
+#[test]
+#[should_panic(expected = "F-CLASS-004: hidden_size must be > 0")]
+fn test_classification_head_zero_hidden_size() {
+    let _ = ClassificationHead::new(0, 5);
+}
+
+#[test]
+#[should_panic(expected = "F-CLASS-004: num_classes must be >= 2")]
+fn test_classification_head_one_class() {
+    let _ = ClassificationHead::new(64, 1);
+}
+
+#[test]
+#[should_panic(expected = "F-CLASS-004: num_classes must be >= 2")]
+fn test_classification_head_zero_classes() {
+    let _ = ClassificationHead::new(64, 0);
+}
+
+#[test]
+fn test_classification_head_large_dimensions() {
+    let head = ClassificationHead::new(1024, 100);
+    assert_eq!(head.hidden_size(), 1024);
+    assert_eq!(head.num_classes(), 100);
+    assert_eq!(head.num_parameters(), 1024 * 100 + 100);
+}
+
+#[test]
+fn test_classification_head_minimum_valid() {
+    let head = ClassificationHead::new(1, 2);
+    assert_eq!(head.hidden_size(), 1);
+    assert_eq!(head.num_classes(), 2);
+    assert_eq!(head.num_parameters(), 1 * 2 + 2);
+}
+
+#[test]
+fn test_classification_head_forward_single_token() {
+    let head = ClassificationHead::new(8, 3);
+    let hidden = Tensor::from_vec(vec![0.5f32; 8], false);
+    let logits = head.forward(&hidden, 1);
+    assert_eq!(logits.len(), 3);
+    assert!(logits.data().iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn test_classification_head_forward_requires_grad() {
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![0.1f32; 4 * 2], true);
+    let logits = head.forward(&hidden, 2);
+    assert_eq!(logits.len(), 2);
+    // Forward should propagate requires_grad from input
+    assert!(logits.requires_grad());
+}
+
+#[test]
+fn test_classification_head_forward_no_grad_input() {
+    // Even with no-grad input, the head's weight/bias have grad enabled,
+    // so we just verify the forward produces valid finite output
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![0.1f32; 4 * 2], false);
+    let logits = head.forward(&hidden, 2);
+    assert_eq!(logits.len(), 2);
+    assert!(logits.data().iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn test_mean_pool_single_token() {
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], false);
+    let pooled = head.mean_pool(&hidden, 1);
+    let data = pooled.data();
+    let slice = data.as_slice().expect("contiguous");
+    assert_eq!(slice.len(), 4);
+    assert!((slice[0] - 1.0).abs() < 1e-6);
+    assert!((slice[1] - 2.0).abs() < 1e-6);
+    assert!((slice[2] - 3.0).abs() < 1e-6);
+    assert!((slice[3] - 4.0).abs() < 1e-6);
+}
+
+#[test]
+fn test_cls_pool_preserves_grad() {
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
+    let pooled = head.cls_pool(&hidden);
+    assert!(pooled.requires_grad());
+}
+
+#[test]
+fn test_last_token_pool_single_token() {
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![10.0, 20.0, 30.0, 40.0], false);
+    let pooled = head.last_token_pool(&hidden, 1);
+    let data = pooled.data();
+    assert_eq!(data[0], 10.0);
+    assert_eq!(data[1], 20.0);
+}
+
+#[test]
+fn test_forward_with_pooling_mean() {
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![0.1f32; 4 * 3], false);
+    let logits_mean = head.forward_with_pooling(&hidden, 3, PoolingStrategy::Mean);
+    let logits_default = head.forward(&hidden, 3);
+    // Mean pooling via forward_with_pooling should match default forward
+    let mean_data = logits_mean.data();
+    let default_data = logits_default.data();
+    for i in 0..2 {
+        assert!(
+            (mean_data[i] - default_data[i]).abs() < 1e-5,
+            "Mean pooling forward should match default forward"
+        );
+    }
+}
+
+#[test]
+fn test_tokenized_sample_basic() {
+    let sample = TokenizedSample { token_ids: vec![1, 2, 3], label: 0 };
+    assert_eq!(sample.token_ids.len(), 3);
+    assert_eq!(sample.label, 0);
+}
+
+#[test]
+fn test_tokenized_sample_clone() {
+    let sample = TokenizedSample { token_ids: vec![10, 20, 30], label: 2 };
+    let cloned = sample.clone();
+    assert_eq!(cloned.token_ids, vec![10, 20, 30]);
+    assert_eq!(cloned.label, 2);
+}
+
+#[test]
+fn test_safety_sample_input_ids_utf8() {
+    // Multi-byte UTF-8 character: 'ñ' is 0xC3 0xB1
+    let sample = SafetySample { input: "ñ".into(), label: 0 };
+    let ids = sample.input_ids();
+    assert_eq!(ids, vec![0xC3, 0xB1]);
+}
+
+#[test]
+fn test_safety_sample_input_ids_empty() {
+    let sample = SafetySample { input: String::new(), label: 0 };
+    let ids = sample.input_ids();
+    assert!(ids.is_empty());
+}
+
+#[test]
+fn test_multi_label_from_single_label_out_of_range() {
+    // Label >= num_classes: should produce all-zeros
+    let single = SafetySample { input: "bad".into(), label: 10 };
+    let multi = MultiLabelSafetySample::from_single_label(&single, 5);
+    assert_eq!(multi.labels, vec![0.0, 0.0, 0.0, 0.0, 0.0]);
+    assert!(multi.active_classes().is_empty());
+}
+
+#[test]
+fn test_multi_label_from_single_label_boundary() {
+    // Label at last valid index
+    let single = SafetySample { input: "ok".into(), label: 4 };
+    let multi = MultiLabelSafetySample::from_single_label(&single, 5);
+    assert_eq!(multi.labels, vec![0.0, 0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(multi.active_classes(), vec![4]);
+}
+
+#[test]
+fn test_multi_label_from_single_label_first_class() {
+    let single = SafetySample { input: "ok".into(), label: 0 };
+    let multi = MultiLabelSafetySample::from_single_label(&single, 3);
+    assert_eq!(multi.labels, vec![1.0, 0.0, 0.0]);
+    assert_eq!(multi.active_classes(), vec![0]);
+}
+
+#[test]
+fn test_multi_label_active_classes_threshold() {
+    // Values at exactly 0.5 should NOT be active (> 0.5 required)
+    let sample =
+        MultiLabelSafetySample { input: "test".into(), labels: vec![0.5, 0.51, 0.49, 1.0, 0.0] };
+    assert_eq!(sample.active_classes(), vec![1, 3]);
+}
+
+#[test]
+fn test_corpus_stats_avg_input_len() {
+    let samples = vec![
+        SafetySample { input: "ab".into(), label: 0 }, // len 2
+        SafetySample { input: "abcd".into(), label: 0 }, // len 4
+    ];
+    let stats = corpus_stats(&samples, 2);
+    assert_eq!(stats.total, 2);
+    assert_eq!(stats.avg_input_len, 3); // (2+4)/2 = 3
+}
+
+#[test]
+fn test_corpus_stats_out_of_range_labels() {
+    // Labels out of range should not be counted
+    let samples = vec![
+        SafetySample { input: "a".into(), label: 0 },
+        SafetySample { input: "b".into(), label: 10 }, // out of range
+    ];
+    let stats = corpus_stats(&samples, 5);
+    assert_eq!(stats.total, 2);
+    assert_eq!(stats.class_counts[0], 1);
+    assert_eq!(stats.class_counts.iter().sum::<usize>(), 1);
+}
+
+#[test]
+fn test_class_weight_strategy_case_insensitive() {
+    assert_eq!("UNIFORM".parse::<ClassWeightStrategy>().ok(), Some(ClassWeightStrategy::Uniform));
+    assert_eq!(
+        "Inverse_Freq".parse::<ClassWeightStrategy>().ok(),
+        Some(ClassWeightStrategy::InverseFreq)
+    );
+    assert_eq!(
+        "SQRT_INVERSE".parse::<ClassWeightStrategy>().ok(),
+        Some(ClassWeightStrategy::SqrtInverse)
+    );
+    assert_eq!("SQRT".parse::<ClassWeightStrategy>().ok(), Some(ClassWeightStrategy::SqrtInverse));
+    assert_eq!(
+        "INVERSE".parse::<ClassWeightStrategy>().ok(),
+        Some(ClassWeightStrategy::InverseFreq)
+    );
+}
+
+#[test]
+fn test_class_weight_strategy_parse_error_message() {
+    let err = "bogus".parse::<ClassWeightStrategy>().unwrap_err();
+    assert!(err.contains("Unknown class weight strategy"));
+    assert!(err.contains("bogus"));
+}
+
+#[test]
+fn test_compute_class_weights_with_zero_count() {
+    // Zero-count class should be treated as 1 (max(1) path)
+    let stats = SafetyCorpusStats { total: 100, class_counts: vec![50, 50, 0], avg_input_len: 10 };
+    let weights = compute_class_weights(&stats, ClassWeightStrategy::InverseFreq, 3);
+    assert_eq!(weights.len(), 3);
+    // All weights should be finite and positive
+    for &w in &weights {
+        assert!(w > 0.0, "Weight should be positive, got {w}");
+        assert!(w.is_finite(), "Weight should be finite, got {w}");
+    }
+    let sum: f32 = weights.iter().sum();
+    assert!((sum - 3.0).abs() < 1e-4, "F-TUNE-005: weights must sum to num_classes");
+}
+
+#[test]
+fn test_compute_class_weights_sqrt_with_zero_count() {
+    let stats = SafetyCorpusStats { total: 100, class_counts: vec![0, 100, 0], avg_input_len: 10 };
+    let weights = compute_class_weights(&stats, ClassWeightStrategy::SqrtInverse, 3);
+    for &w in &weights {
+        assert!(w > 0.0 && w.is_finite());
+    }
+    let sum: f32 = weights.iter().sum();
+    assert!((sum - 3.0).abs() < 1e-4);
+}
+
+#[test]
+#[should_panic(expected = "F-TUNE-005")]
+fn test_compute_class_weights_mismatched_classes() {
+    let stats = SafetyCorpusStats { total: 10, class_counts: vec![5, 5], avg_input_len: 10 };
+    let _ = compute_class_weights(&stats, ClassWeightStrategy::Uniform, 3);
+}
+
+#[test]
+fn test_bce_with_logits_loss_inf_input() {
+    // Inf logits should trigger the finite fallback (loss = 100.0)
+    let logits = Tensor::from_vec(vec![f32::INFINITY, f32::NEG_INFINITY, 0.0], false);
+    let targets = [1.0, 0.0, 0.5];
+    let loss = bce_with_logits_loss(&logits, &targets, 3);
+    let val = loss.data()[0];
+    assert!(val.is_finite(), "F-CLASS-005: loss must be finite even with Inf input");
+}
+
+#[test]
+fn test_bce_with_logits_loss_nan_input() {
+    let logits = Tensor::from_vec(vec![f32::NAN, 0.0, 0.0], false);
+    let targets = [0.0, 0.0, 0.0];
+    let loss = bce_with_logits_loss(&logits, &targets, 3);
+    let val = loss.data()[0];
+    // NaN in logits should trigger the finite check → clamp to 100.0
+    assert!(val.is_finite(), "F-CLASS-005: loss must be finite even with NaN input");
+}
+
+#[test]
+fn test_cross_entropy_loss_all_same_logits() {
+    // All same logits → loss = log(K)
+    let logits = Tensor::from_vec(vec![5.0, 5.0, 5.0], false);
+    let loss = cross_entropy_loss(&logits, 1, 3);
+    let expected = (3.0f32).ln();
+    assert!((loss.data()[0] - expected).abs() < 1e-4);
+}
+
+#[test]
+fn test_cross_entropy_loss_requires_grad() {
+    let logits = Tensor::from_vec(vec![1.0, 2.0], true);
+    let loss = cross_entropy_loss(&logits, 0, 2);
+    assert!(loss.requires_grad());
+}
+
+#[test]
+fn test_cross_entropy_loss_two_classes() {
+    let logits = Tensor::from_vec(vec![0.0, 0.0], false);
+    let loss = cross_entropy_loss(&logits, 0, 2);
+    let expected = (2.0f32).ln();
+    assert!((loss.data()[0] - expected).abs() < 1e-4);
+}
+
+#[test]
+fn test_bce_all_ones_targets() {
+    let logits = Tensor::from_vec(vec![100.0, 100.0], false);
+    let targets = [1.0, 1.0];
+    let loss = bce_with_logits_loss(&logits, &targets, 2);
+    assert!(loss.data()[0] < 0.01, "Perfect all-ones predictions should have near-zero loss");
+}
+
+#[test]
+fn test_load_multi_label_corpus_empty_lines() {
+    use std::io::Write;
+    let path = std::env::temp_dir().join("entrenar_test_ml_empty_lines.jsonl");
+    {
+        let mut f = std::fs::File::create(&path).expect("create file");
+        writeln!(f).expect("write");
+        writeln!(f, "  ").expect("write");
+        writeln!(f, r#"{{"input":"echo hi","label":0}}"#).expect("write");
+        writeln!(f).expect("write");
+    }
+    let samples = load_multi_label_corpus(&path, 5).expect("valid");
+    assert_eq!(samples.len(), 1);
+    std::fs::remove_file(&path).expect("cleanup");
+}
+
+#[test]
+fn test_pooling_strategy_debug() {
+    let s = format!("{:?}", PoolingStrategy::Mean);
+    assert_eq!(s, "Mean");
+    let s = format!("{:?}", PoolingStrategy::Cls);
+    assert_eq!(s, "Cls");
+    let s = format!("{:?}", PoolingStrategy::LastToken);
+    assert_eq!(s, "LastToken");
+}
+
+#[test]
+fn test_pooling_strategy_clone_eq() {
+    let a = PoolingStrategy::Mean;
+    let b = a;
+    assert_eq!(a, b);
+    let c = PoolingStrategy::Cls;
+    assert_ne!(a, c);
+}
+
+#[test]
+fn test_safety_sample_deserialize() {
+    let json = r#"{"input":"echo $HOME","label":1}"#;
+    let sample: SafetySample = serde_json::from_str(json).expect("deserialize");
+    assert_eq!(sample.input, "echo $HOME");
+    assert_eq!(sample.label, 1);
+}
+
+#[test]
+fn test_multi_label_safety_sample_deserialize() {
+    let json = r#"{"input":"eval $x","labels":[0.0,1.0,0.0]}"#;
+    let sample: MultiLabelSafetySample = serde_json::from_str(json).expect("deserialize");
+    assert_eq!(sample.input, "eval $x");
+    assert_eq!(sample.labels, vec![0.0, 1.0, 0.0]);
+}
+
+#[test]
+fn test_safety_corpus_stats_debug() {
+    let stats = SafetyCorpusStats { total: 10, class_counts: vec![5, 5], avg_input_len: 20 };
+    let debug = format!("{:?}", stats);
+    assert!(debug.contains("SafetyCorpusStats"));
+    assert!(debug.contains("10"));
+}
+
+#[test]
+fn test_safety_corpus_stats_clone() {
+    let stats = SafetyCorpusStats { total: 10, class_counts: vec![5, 5], avg_input_len: 20 };
+    let cloned = stats.clone();
+    assert_eq!(cloned.total, 10);
+    assert_eq!(cloned.class_counts, vec![5, 5]);
+    assert_eq!(cloned.avg_input_len, 20);
+}

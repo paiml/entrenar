@@ -160,8 +160,7 @@ fn inspect_lora_adapter(dir: &Path, level: LogLevel) -> Result<(), String> {
         let size = std::fs::metadata(&adapter_path).map(|m| m.len()).unwrap_or(0);
         log(level, LogLevel::Normal, &format!("  Adapter size: {:.2} MB", size as f64 / 1e6));
 
-        let data =
-            std::fs::read(&adapter_path).map_err(|e| format!("Read adapter: {e}"))?;
+        let data = std::fs::read(&adapter_path).map_err(|e| format!("Read adapter: {e}"))?;
         if let Ok(tensors) = safetensors::SafeTensors::deserialize(&data) {
             let names: Vec<String> = tensors.names().iter().map(|s| (*s).to_string()).collect();
             log(level, LogLevel::Normal, &format!("  Adapter tensors: {}", names.len()));
@@ -170,11 +169,7 @@ fn inspect_lora_adapter(dir: &Path, level: LogLevel) -> Result<(), String> {
                 .filter_map(|n| tensors.tensor(n).ok())
                 .map(|t| t.shape().iter().product::<usize>() as u64)
                 .sum();
-            log(
-                level,
-                LogLevel::Normal,
-                &format!("  Trainable params: {total_params}"),
-            );
+            log(level, LogLevel::Normal, &format!("  Trainable params: {total_params}"));
         }
     } else {
         log(level, LogLevel::Normal, "  (no adapter_model.safetensors found)");

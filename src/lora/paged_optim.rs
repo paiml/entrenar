@@ -102,7 +102,11 @@ impl PagedState {
     /// Memory usage in bytes on CPU
     pub fn cpu_bytes(&self) -> usize {
         // m + v, each Array1<f32> = len * 4 bytes
-        if self.m.is_some() { self.len * 8 } else { 0 }
+        if self.m.is_some() {
+            self.len * 8
+        } else {
+            0
+        }
     }
 
     /// Memory that would be needed on GPU
@@ -131,13 +135,7 @@ pub struct PagedOptimStates {
 impl PagedOptimStates {
     /// Create a new paged optimizer state manager
     pub fn new(budget: VramBudget, strategy: PagingStrategy) -> Self {
-        Self {
-            states: Vec::new(),
-            budget,
-            strategy,
-            page_in_count: 0,
-            page_out_count: 0,
-        }
+        Self { states: Vec::new(), budget, strategy, page_in_count: 0, page_out_count: 0 }
     }
 
     /// Register a parameter group
