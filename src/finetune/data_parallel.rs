@@ -263,6 +263,9 @@ mod tests {
             use_bias: false,
             head_dim_override: None,
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         };
 
         let classify_config =

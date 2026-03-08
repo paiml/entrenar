@@ -2102,8 +2102,8 @@ fn save_config_and_metadata(
 ) -> Result<()> {
     let config_json_path = spec.training.output_dir.join("config.json");
     let config_json = serde_json::json!({
-        "architectures": ["LlamaForCausalLM"],
-        "model_type": "llama",
+        "architectures": [mc.hf_architecture_name()],
+        "model_type": mc.hf_model_type_str(),
         "hidden_size": mc.hidden_size,
         "num_hidden_layers": mc.num_hidden_layers,
         "num_attention_heads": mc.num_attention_heads,
@@ -2113,7 +2113,7 @@ fn save_config_and_metadata(
         "max_position_embeddings": mc.max_position_embeddings,
         "rms_norm_eps": mc.rms_norm_eps,
         "rope_theta": mc.rope_theta,
-        "tie_word_embeddings": false,
+        "tie_word_embeddings": mc.ties_embeddings(),
         "use_cache": true,
     });
     let config_json_str = serde_json::to_string_pretty(&config_json)
@@ -2447,6 +2447,9 @@ fn config_from_overrides(
         use_bias: overrides.use_bias.unwrap_or(false),
         head_dim_override: None,
         architecture: ModelArchitecture::Decoder,
+        hf_architecture: None,
+        hf_model_type: None,
+        tie_word_embeddings: false,
     })
 }
 
@@ -2467,6 +2470,9 @@ fn fallback_demo_config() -> TransformerConfig {
         use_bias: false,
         head_dim_override: None,
         architecture: ModelArchitecture::Decoder,
+        hf_architecture: None,
+        hf_model_type: None,
+        tie_word_embeddings: false,
     }
 }
 
@@ -2545,6 +2551,15 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         _ => ModelArchitecture::Decoder,
     };
 
+    // Preserve HuggingFace architecture metadata for checkpoint config.json (#259)
+    let hf_architecture = hf_config["architectures"]
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let hf_model_type = hf_config["model_type"].as_str().map(String::from);
+    let tie_word_embeddings = hf_config["tie_word_embeddings"].as_bool().unwrap_or(false);
+
     Ok(TransformerConfig {
         hidden_size,
         num_attention_heads,
@@ -2558,6 +2573,9 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         use_bias,
         head_dim_override,
         architecture,
+        hf_architecture,
+        hf_model_type,
+        tie_word_embeddings,
     })
 }
 
