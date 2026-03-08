@@ -193,10 +193,16 @@ impl TransformerTrainer {
             }
         }
 
-        // ENT-LoRA-001: Only update trainable params (LoRA A/B when active)
+        // ENT-LoRA-002: Only update trainable params (LoRA A/B + norms when active)
         if let Some(ref mut lora) = self.lora_layers {
             let mut params: Vec<&mut Tensor> =
                 lora.iter_mut().flat_map(|l| l.trainable_params()).collect();
+            // Also include norm weights (small, critical for adaptation)
+            for layer in &mut self.model.layers {
+                params.push(&mut layer.input_norm.weight);
+                params.push(&mut layer.post_attn_norm.weight);
+            }
+            params.push(&mut self.model.norm.weight);
             self.optimizer.step_refs(&mut params);
         } else {
             let mut params = self.model.parameters_mut();
@@ -220,10 +226,15 @@ impl TransformerTrainer {
         }
 
         if self.accumulated_batches == 0 {
-            // ENT-LoRA-001: Zero grad only on trainable params
+            // ENT-LoRA-002: Zero grad only on trainable params (LoRA A/B + norms)
             if let Some(ref mut lora) = self.lora_layers {
                 let mut params: Vec<&mut Tensor> =
                     lora.iter_mut().flat_map(|l| l.trainable_params()).collect();
+                for layer in &mut self.model.layers {
+                    params.push(&mut layer.input_norm.weight);
+                    params.push(&mut layer.post_attn_norm.weight);
+                }
+                params.push(&mut self.model.norm.weight);
                 self.optimizer.zero_grad_refs(&mut params);
             } else {
                 let mut params = self.model.parameters_mut();
@@ -347,6 +358,59 @@ impl TransformerTrainer {
     /// Get mutable reference to LoRA layers
     pub fn lora_layers_mut(&mut self) -> Option<&mut Vec<LoRALayer>> {
         self.lora_layers.as_mut()
+    }
+
+    /// Save LoRA adapter in PEFT-compatible format (ENT-LoRA-003)
+    ///
+    /// Saves only LoRA A/B weights as `adapter_model.safetensors` + `adapter_config.json`.
+    /// Adapter checkpoint is typically <1% of full model size.
+    ///
+    /// # Arguments
+    /// * `output_dir` - Directory to save adapter files
+    /// * `base_model_name` - Optional HuggingFace model ID for adapter_config.json
+    ///
+    /// # Errors
+    /// Returns error if not in LoRA mode or I/O fails.
+    pub fn save_lora_adapter(
+        &self,
+        output_dir: impl AsRef<Path>,
+        base_model_name: Option<&str>,
+    ) -> crate::Result<()> {
+        let lora = self.lora_layers.as_ref().ok_or_else(|| {
+            crate::error::Error::ConfigError("Cannot save adapter: LoRA not enabled".into())
+        })?;
+
+        let rank = self.config.lora_rank.unwrap_or(8);
+        let alpha = self.config.lora_alpha.unwrap_or(rank as f32 * 2.0);
+        let target_modules = self
+            .config
+            .lora_target_modules
+            .clone()
+            .unwrap_or_else(|| vec!["q_proj".to_string(), "v_proj".to_string()]);
+
+        let lora_config = crate::lora::LoRAConfig::new(rank, alpha)
+            .target_modules(&target_modules.iter().map(String::as_str).collect::<Vec<_>>());
+
+        // Build named adapter pairs: (layer_path, &LoRALayer)
+        let num_layers = self.model.layers.len();
+        let layers_per_block = lora.len() / num_layers;
+        let mut adapters: Vec<(&str, &LoRALayer)> = Vec::new();
+
+        // Use static strings for layer paths to satisfy lifetime requirements
+        let q_names: Vec<String> =
+            (0..num_layers).map(|i| format!("model.layers.{i}.self_attn.q_proj")).collect();
+        let v_names: Vec<String> =
+            (0..num_layers).map(|i| format!("model.layers.{i}.self_attn.v_proj")).collect();
+
+        for (block_idx, chunk) in lora.chunks(layers_per_block).enumerate() {
+            for (j, layer) in chunk.iter().enumerate() {
+                let name = if j == 0 { &q_names[block_idx] } else { &v_names[block_idx] };
+                adapters.push((name, layer));
+            }
+        }
+
+        crate::lora::save_adapter_peft(&adapters, &lora_config, base_model_name, output_dir)
+            .map_err(|e| crate::error::Error::Io(e.to_string()))
     }
 
     /// Save model weights to a SafeTensors file

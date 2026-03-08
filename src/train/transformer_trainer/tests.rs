@@ -748,7 +748,8 @@ fn test_ent_lora_001_lora_train_batch() {
 
 #[test]
 fn test_ent_lora_001_lora_updates_only_adapters() {
-    // FALSIFY-LoRA-FREEZE-001: Base weights must NOT change during LoRA training
+    // FALSIFY-LoRA-FREEZE-001: Base attention/FFN weights must NOT change during LoRA training
+    // Norm weights ARE allowed to change (they're trainable in LoRA mode)
     let model_config = TransformerConfig::tiny();
     let config = TransformerTrainConfig::new(model_config.clone()).with_lora(
         4,
@@ -756,12 +757,12 @@ fn test_ent_lora_001_lora_updates_only_adapters() {
         vec!["q_proj".to_string(), "v_proj".to_string()],
     );
 
-    // Snapshot base model weights before training
+    // Snapshot named parameters before training
     let model_before = Transformer::new(&model_config);
-    let base_weights_before: Vec<Vec<f32>> = model_before
-        .parameters()
-        .iter()
-        .map(|p| p.data().to_vec())
+    let named_before: Vec<(String, Vec<f32>)> = model_before
+        .named_parameters()
+        .into_iter()
+        .map(|(name, t)| (name, t.data().to_vec()))
         .collect();
 
     let mut trainer = TransformerTrainer::with_model(model_before, config);
@@ -772,20 +773,24 @@ fn test_ent_lora_001_lora_updates_only_adapters() {
         trainer.train_batch(&batch);
     }
 
-    // Base model weights should be unchanged
-    let base_weights_after: Vec<Vec<f32>> = trainer
+    // Check named parameters
+    let named_after: Vec<(String, Vec<f32>)> = trainer
         .model()
-        .parameters()
-        .iter()
-        .map(|p| p.data().to_vec())
+        .named_parameters()
+        .into_iter()
+        .map(|(name, t)| (name, t.data().to_vec()))
         .collect();
 
-    for (i, (before, after)) in
-        base_weights_before.iter().zip(&base_weights_after).enumerate()
-    {
+    for ((name_b, data_b), (name_a, data_a)) in named_before.iter().zip(&named_after) {
+        assert_eq!(name_b, name_a);
+        // Norm weights are allowed to change (ENT-LoRA-002)
+        if name_b.contains("layernorm") || name_b.contains("norm.weight") {
+            continue;
+        }
+        // Attention and FFN base weights must NOT change
         assert_eq!(
-            before, after,
-            "Base model weight [{i}] changed during LoRA training"
+            data_b, data_a,
+            "Base weight '{name_b}' changed during LoRA training"
         );
     }
 }
@@ -803,4 +808,83 @@ fn test_ent_lora_001_with_model_creates_lora() {
 
     assert!(trainer.is_lora());
     assert!(trainer.lora_layers().is_some());
+}
+
+#[test]
+fn test_ent_lora_002_norm_weights_trainable() {
+    // ENT-LoRA-002: Norm weights should change during LoRA training
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config.clone()).with_lora(
+        4,
+        8.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+
+    let model = Transformer::new(&model_config);
+    let norm_before: Vec<f32> = model.norm.weight.data().to_vec();
+
+    let mut trainer = TransformerTrainer::with_model(model, config);
+
+    // Train enough batches to change norm weights
+    for _ in 0..5 {
+        let batch = LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]);
+        trainer.train_batch(&batch);
+    }
+
+    let norm_after: Vec<f32> = trainer.model().norm.weight.data().to_vec();
+    // At least some norm weights should have changed
+    let any_changed = norm_before
+        .iter()
+        .zip(&norm_after)
+        .any(|(b, a)| (b - a).abs() > 1e-10);
+    assert!(any_changed, "Norm weights should be trainable during LoRA fine-tuning");
+}
+
+#[test]
+fn test_ent_lora_003_save_adapter() {
+    // ENT-LoRA-003: Adapter checkpoint saves only LoRA weights
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config).with_lora(
+        4,
+        8.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+
+    let mut trainer = TransformerTrainer::new(config);
+
+    // Train briefly
+    let batch = LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]);
+    trainer.train_batch(&batch);
+
+    // Save adapter
+    let tmp_dir = std::env::temp_dir().join("test_lora_adapter_save");
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
+
+    trainer
+        .save_lora_adapter(&tmp_dir, Some("test-model"))
+        .expect("save adapter should succeed");
+
+    // Verify PEFT files exist
+    assert!(tmp_dir.join("adapter_config.json").exists());
+    assert!(tmp_dir.join("adapter_model.safetensors").exists());
+
+    // Adapter should be much smaller than full model
+    let adapter_size = std::fs::metadata(tmp_dir.join("adapter_model.safetensors"))
+        .expect("adapter file")
+        .len();
+    // Adapter for tiny model with rank=4 should be very small
+    assert!(adapter_size < 100_000, "Adapter should be small, got {adapter_size} bytes");
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+#[test]
+fn test_ent_lora_003_save_adapter_without_lora_fails() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    let trainer = TransformerTrainer::new(config);
+
+    let result = trainer.save_lora_adapter("/tmp/no_lora", None::<&str>);
+    assert!(result.is_err(), "Saving adapter without LoRA should fail");
 }
