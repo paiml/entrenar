@@ -640,4 +640,271 @@ mod tests {
             prop_assert!((restored.learning_rate - lr).abs() < 1e-10);
         }
     }
+
+    // ── Additional coverage tests ──
+
+    #[test]
+    fn test_gpu_telemetry_vram_percent_zero_total() {
+        let gpu = GpuTelemetry { vram_used_gb: 4.0, vram_total_gb: 0.0, ..Default::default() };
+        assert!((gpu.vram_percent() - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_gpu_telemetry_thermal_throttling() {
+        let gpu = GpuTelemetry { temperature_celsius: 84.0, ..Default::default() };
+        assert!(gpu.is_thermal_throttling());
+
+        let gpu2 = GpuTelemetry { temperature_celsius: 83.0, ..Default::default() };
+        assert!(!gpu2.is_thermal_throttling());
+
+        let gpu3 = GpuTelemetry { temperature_celsius: 70.0, ..Default::default() };
+        assert!(!gpu3.is_thermal_throttling());
+    }
+
+    #[test]
+    fn test_gpu_telemetry_power_limited() {
+        let gpu =
+            GpuTelemetry { power_watts: 380.0, power_limit_watts: 400.0, ..Default::default() };
+        assert!(gpu.is_power_limited()); // 380 >= 400*0.95 = 380
+
+        let gpu2 =
+            GpuTelemetry { power_watts: 300.0, power_limit_watts: 400.0, ..Default::default() };
+        assert!(!gpu2.is_power_limited());
+    }
+
+    #[test]
+    fn test_training_snapshot_elapsed() {
+        let snapshot =
+            TrainingSnapshot { start_timestamp_ms: 1000, timestamp_ms: 6000, ..Default::default() };
+        assert_eq!(snapshot.elapsed(), Duration::from_millis(5000));
+    }
+
+    #[test]
+    fn test_training_snapshot_elapsed_same_time() {
+        let snapshot =
+            TrainingSnapshot { start_timestamp_ms: 5000, timestamp_ms: 5000, ..Default::default() };
+        assert_eq!(snapshot.elapsed(), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_training_snapshot_estimated_remaining_none_zero_tps() {
+        let snapshot = TrainingSnapshot { tokens_per_second: 0.0, ..Default::default() };
+        assert!(snapshot.estimated_remaining().is_none());
+    }
+
+    #[test]
+    fn test_training_snapshot_estimated_remaining_none_zero_steps() {
+        let snapshot = TrainingSnapshot {
+            tokens_per_second: 100.0,
+            total_epochs: 0,
+            steps_per_epoch: 0,
+            ..Default::default()
+        };
+        assert!(snapshot.estimated_remaining().is_none());
+    }
+
+    #[test]
+    fn test_training_snapshot_estimated_remaining_completed() {
+        let snapshot = TrainingSnapshot {
+            tokens_per_second: 100.0,
+            epoch: 10,
+            total_epochs: 10,
+            step: 100,
+            steps_per_epoch: 100,
+            start_timestamp_ms: 1000,
+            timestamp_ms: 11000,
+            ..Default::default()
+        };
+        let remaining = snapshot.estimated_remaining();
+        assert!(remaining.is_some());
+        assert_eq!(remaining.unwrap(), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_training_snapshot_estimated_remaining_halfway() {
+        let snapshot = TrainingSnapshot {
+            tokens_per_second: 100.0,
+            epoch: 5,
+            total_epochs: 10,
+            step: 50,
+            steps_per_epoch: 100,
+            start_timestamp_ms: 0,
+            timestamp_ms: 10000,
+            ..Default::default()
+        };
+        let remaining = snapshot.estimated_remaining();
+        assert!(remaining.is_some());
+        // 50% complete at 10s elapsed -> ~10s remaining
+        let rem_ms = remaining.unwrap().as_millis();
+        assert!(rem_ms > 5000 && rem_ms < 30000);
+    }
+
+    #[test]
+    fn test_training_snapshot_global_step() {
+        let snapshot =
+            TrainingSnapshot { epoch: 3, steps_per_epoch: 100, step: 42, ..Default::default() };
+        // global_step = (3-1)*100 + 42 = 242
+        assert_eq!(snapshot.global_step(), 242);
+    }
+
+    #[test]
+    fn test_training_snapshot_global_step_first_epoch() {
+        let snapshot =
+            TrainingSnapshot { epoch: 1, steps_per_epoch: 50, step: 10, ..Default::default() };
+        // global_step = (1-1)*50 + 10 = 10
+        assert_eq!(snapshot.global_step(), 10);
+    }
+
+    #[test]
+    fn test_training_snapshot_progress_zero() {
+        let snapshot =
+            TrainingSnapshot { total_epochs: 0, steps_per_epoch: 0, ..Default::default() };
+        assert!((snapshot.progress_percent() - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_loss_trend_unknown_few_samples() {
+        let snapshot = TrainingSnapshot { loss_history: vec![1.0, 2.0, 3.0], ..Default::default() };
+        assert_eq!(snapshot.loss_trend(), LossTrend::Unknown);
+    }
+
+    #[test]
+    fn test_loss_trend_decreasing() {
+        let snapshot = TrainingSnapshot {
+            loss_history: vec![10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+            ..Default::default()
+        };
+        assert_eq!(snapshot.loss_trend(), LossTrend::Decreasing);
+    }
+
+    #[test]
+    fn test_loss_trend_increasing() {
+        let snapshot = TrainingSnapshot {
+            loss_history: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+            ..Default::default()
+        };
+        assert_eq!(snapshot.loss_trend(), LossTrend::Increasing);
+    }
+
+    #[test]
+    fn test_loss_trend_stable() {
+        let snapshot = TrainingSnapshot {
+            loss_history: vec![5.0, 5.01, 4.99, 5.0, 5.01, 4.99, 5.0, 5.01, 4.99, 5.0],
+            ..Default::default()
+        };
+        assert_eq!(snapshot.loss_trend(), LossTrend::Stable);
+    }
+
+    #[test]
+    fn test_loss_trend_arrow() {
+        assert_eq!(LossTrend::Decreasing.arrow(), "\u{2193}");
+        assert_eq!(LossTrend::Stable.arrow(), "\u{2192}");
+        assert_eq!(LossTrend::Increasing.arrow(), "\u{2191}");
+        assert_eq!(LossTrend::Unknown.arrow(), "?");
+    }
+
+    #[test]
+    fn test_loss_trend_description() {
+        assert_eq!(LossTrend::Decreasing.description(), "decreasing");
+        assert_eq!(LossTrend::Stable.description(), "stable");
+        assert_eq!(LossTrend::Increasing.description(), "increasing");
+        assert_eq!(LossTrend::Unknown.description(), "unknown");
+    }
+
+    #[test]
+    fn test_training_state_new_path() {
+        let state = TrainingState::new("/tmp/test-exp");
+        assert_eq!(state.path(), std::path::Path::new("/tmp/test-exp/training_state.json"));
+    }
+
+    #[test]
+    fn test_training_state_exists_missing() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let state = TrainingState::new(temp_dir.path().join("nonexistent"));
+        assert!(!state.exists());
+    }
+
+    #[test]
+    fn test_training_state_read_missing_file() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut state = TrainingState::new(temp_dir.path().join("nonexistent"));
+        let result = state.read().expect("should not error for missing file");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_training_state_wait_for_state_already_exists() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut state = TrainingState::new(temp_dir.path());
+        let snapshot = TrainingSnapshot::default();
+        state.write(&snapshot).expect("write should succeed");
+
+        let found = state.wait_for_state(Duration::from_millis(100)).expect("ok");
+        assert!(found);
+    }
+
+    #[test]
+    fn test_training_state_wait_for_state_timeout() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut state = TrainingState::new(temp_dir.path().join("never-exists"));
+        let found = state.wait_for_state(Duration::from_millis(200)).expect("ok");
+        assert!(!found);
+    }
+
+    #[test]
+    fn test_gpu_process_info_default() {
+        let info = GpuProcessInfo::default();
+        assert_eq!(info.pid, 0);
+        assert!(info.exe_path.is_empty());
+        assert_eq!(info.gpu_memory_mb, 0);
+    }
+
+    #[test]
+    fn test_sample_peek_default() {
+        let sample = SamplePeek::default();
+        assert!(sample.input_preview.is_empty());
+        assert!(sample.target_preview.is_empty());
+        assert!(sample.generated_preview.is_empty());
+        assert!((sample.token_match_percent - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_training_status_equality() {
+        assert_eq!(TrainingStatus::Running, TrainingStatus::Running);
+        assert_eq!(TrainingStatus::Completed, TrainingStatus::Completed);
+        assert_ne!(TrainingStatus::Running, TrainingStatus::Completed);
+        assert_eq!(
+            TrainingStatus::Failed("a".to_string()),
+            TrainingStatus::Failed("a".to_string())
+        );
+        assert_ne!(
+            TrainingStatus::Failed("a".to_string()),
+            TrainingStatus::Failed("b".to_string())
+        );
+    }
+
+    #[test]
+    fn test_gpu_telemetry_serde_roundtrip() {
+        let gpu = GpuTelemetry {
+            device_name: "RTX 4090".to_string(),
+            utilization_percent: 95.0,
+            vram_used_gb: 20.0,
+            vram_total_gb: 24.0,
+            temperature_celsius: 72.0,
+            power_watts: 350.0,
+            power_limit_watts: 400.0,
+            processes: vec![GpuProcessInfo {
+                pid: 1234,
+                exe_path: "/usr/bin/python3".to_string(),
+                gpu_memory_mb: 19000,
+                cpu_percent: 50.0,
+                rss_mb: 4096,
+            }],
+        };
+        let json = serde_json::to_string(&gpu).expect("serialize");
+        let restored: GpuTelemetry = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored.device_name, "RTX 4090");
+        assert_eq!(restored.processes.len(), 1);
+        assert_eq!(restored.processes[0].pid, 1234);
+    }
 }

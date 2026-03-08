@@ -492,4 +492,228 @@ mod tests {
             }
         }
     }
+
+    // ── Additional coverage tests ──
+
+    #[test]
+    fn test_str_to_status_all_variants() {
+        assert_eq!(str_to_status("pending"), crate::storage::RunStatus::Pending);
+        assert_eq!(str_to_status("running"), crate::storage::RunStatus::Running);
+        assert_eq!(str_to_status("completed"), crate::storage::RunStatus::Success);
+        assert_eq!(str_to_status("failed"), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status("cancelled"), crate::storage::RunStatus::Cancelled);
+    }
+
+    #[test]
+    fn test_str_to_status_unknown_defaults_to_failed() {
+        assert_eq!(str_to_status("unknown"), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status(""), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status("RUNNING"), crate::storage::RunStatus::Failed);
+    }
+
+    #[test]
+    fn test_parse_timestamp_valid() {
+        let ts = parse_timestamp("2026-03-08T12:00:00Z");
+        assert_eq!(ts.year(), 2026);
+        assert_eq!(ts.month(), 3);
+    }
+
+    #[test]
+    fn test_parse_timestamp_invalid_falls_back() {
+        let ts = parse_timestamp("not-a-date");
+        // Should fall back to now
+        let now = chrono::Utc::now();
+        let diff = (now - ts).num_seconds().abs();
+        assert!(diff < 5); // Within 5 seconds of now
+    }
+
+    #[test]
+    fn test_param_matches_int_all_ops() {
+        let v5 = ParameterValue::Int(5);
+        let v3 = ParameterValue::Int(3);
+        let v5_dup = ParameterValue::Int(5);
+        let v7 = ParameterValue::Int(7);
+
+        assert!(SqliteBackend::param_matches(&v5, &FilterOp::Eq, &v5_dup));
+        assert!(!SqliteBackend::param_matches(&v5, &FilterOp::Eq, &v3));
+
+        assert!(!SqliteBackend::param_matches(&v5, &FilterOp::Ne, &v5_dup));
+        assert!(SqliteBackend::param_matches(&v5, &FilterOp::Ne, &v3));
+
+        assert!(SqliteBackend::param_matches(&v5, &FilterOp::Gt, &v3));
+        assert!(!SqliteBackend::param_matches(&v3, &FilterOp::Gt, &v5));
+        assert!(!SqliteBackend::param_matches(&v5, &FilterOp::Gt, &v5_dup));
+
+        assert!(SqliteBackend::param_matches(&v3, &FilterOp::Lt, &v5));
+        assert!(!SqliteBackend::param_matches(&v5, &FilterOp::Lt, &v3));
+
+        assert!(SqliteBackend::param_matches(&v5, &FilterOp::Gte, &v5_dup));
+        assert!(SqliteBackend::param_matches(&v7, &FilterOp::Gte, &v5));
+        assert!(!SqliteBackend::param_matches(&v3, &FilterOp::Gte, &v5));
+
+        assert!(SqliteBackend::param_matches(&v5, &FilterOp::Lte, &v5_dup));
+        assert!(SqliteBackend::param_matches(&v3, &FilterOp::Lte, &v5));
+        assert!(!SqliteBackend::param_matches(&v7, &FilterOp::Lte, &v5));
+    }
+
+    #[test]
+    fn test_param_matches_string_eq_ne() {
+        let hello = ParameterValue::String("hello".to_string());
+        let world = ParameterValue::String("world".to_string());
+        let hello_dup = ParameterValue::String("hello".to_string());
+
+        assert!(SqliteBackend::param_matches(&hello, &FilterOp::Eq, &hello_dup));
+        assert!(!SqliteBackend::param_matches(&hello, &FilterOp::Eq, &world));
+
+        assert!(!SqliteBackend::param_matches(&hello, &FilterOp::Ne, &hello_dup));
+        assert!(SqliteBackend::param_matches(&hello, &FilterOp::Ne, &world));
+    }
+
+    #[test]
+    fn test_param_matches_string_contains() {
+        let full = ParameterValue::String("hello world".to_string());
+        let sub = ParameterValue::String("world".to_string());
+        let missing = ParameterValue::String("xyz".to_string());
+
+        assert!(SqliteBackend::param_matches(&full, &FilterOp::Contains, &sub));
+        assert!(!SqliteBackend::param_matches(&full, &FilterOp::Contains, &missing));
+    }
+
+    #[test]
+    fn test_param_matches_string_starts_with() {
+        let full = ParameterValue::String("hello world".to_string());
+        let prefix = ParameterValue::String("hello".to_string());
+        let wrong = ParameterValue::String("world".to_string());
+
+        assert!(SqliteBackend::param_matches(&full, &FilterOp::StartsWith, &prefix));
+        assert!(!SqliteBackend::param_matches(&full, &FilterOp::StartsWith, &wrong));
+    }
+
+    #[test]
+    fn test_param_matches_bool_eq_ne() {
+        let t = ParameterValue::Bool(true);
+        let f = ParameterValue::Bool(false);
+        let t_dup = ParameterValue::Bool(true);
+
+        assert!(SqliteBackend::param_matches(&t, &FilterOp::Eq, &t_dup));
+        assert!(!SqliteBackend::param_matches(&t, &FilterOp::Eq, &f));
+
+        assert!(!SqliteBackend::param_matches(&t, &FilterOp::Ne, &t_dup));
+        assert!(SqliteBackend::param_matches(&t, &FilterOp::Ne, &f));
+    }
+
+    #[test]
+    fn test_param_matches_float_gt_lt() {
+        let f5 = ParameterValue::Float(5.0);
+        let f3 = ParameterValue::Float(3.0);
+
+        assert!(SqliteBackend::param_matches(&f5, &FilterOp::Gt, &f3));
+        assert!(!SqliteBackend::param_matches(&f3, &FilterOp::Gt, &f5));
+
+        assert!(SqliteBackend::param_matches(&f3, &FilterOp::Lt, &f5));
+        assert!(!SqliteBackend::param_matches(&f5, &FilterOp::Lt, &f3));
+    }
+
+    #[test]
+    fn test_param_matches_float_gte_lte() {
+        let f5 = ParameterValue::Float(5.0);
+        let f5_dup = ParameterValue::Float(5.0);
+        let f3 = ParameterValue::Float(3.0);
+
+        assert!(SqliteBackend::param_matches(&f5, &FilterOp::Gte, &f5_dup));
+        assert!(SqliteBackend::param_matches(&f5, &FilterOp::Gte, &f3));
+        assert!(!SqliteBackend::param_matches(&f3, &FilterOp::Gte, &f5));
+
+        assert!(SqliteBackend::param_matches(&f5, &FilterOp::Lte, &f5_dup));
+        assert!(SqliteBackend::param_matches(&f3, &FilterOp::Lte, &f5));
+        assert!(!SqliteBackend::param_matches(&f5, &FilterOp::Lte, &f3));
+    }
+
+    #[test]
+    fn test_param_matches_unsupported_ops_return_false() {
+        // String with Gt/Lt/Gte/Lte should return false
+        let s = ParameterValue::String("hello".to_string());
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Gt, &s));
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Lt, &s));
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Gte, &s));
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Lte, &s));
+
+        // Bool with Gt/Lt/Gte/Lte/Contains/StartsWith should return false
+        let b = ParameterValue::Bool(true);
+        assert!(!SqliteBackend::param_matches(&b, &FilterOp::Gt, &b));
+        assert!(!SqliteBackend::param_matches(&b, &FilterOp::Lt, &b));
+        assert!(!SqliteBackend::param_matches(&b, &FilterOp::Contains, &b));
+        assert!(!SqliteBackend::param_matches(&b, &FilterOp::StartsWith, &b));
+
+        // Int with Contains/StartsWith should return false
+        let i = ParameterValue::Int(42);
+        assert!(!SqliteBackend::param_matches(&i, &FilterOp::Contains, &i));
+        assert!(!SqliteBackend::param_matches(&i, &FilterOp::StartsWith, &i));
+    }
+
+    #[test]
+    fn test_row_to_run_with_all_fields() {
+        let now = chrono::Utc::now().to_rfc3339();
+        let tags_json = serde_json::json!({"env": "prod"}).to_string();
+        let row = (
+            "run-123".to_string(),
+            "exp-456".to_string(),
+            "running".to_string(),
+            Some(now.clone()),
+            Some(now.clone()),
+            Some(tags_json),
+        );
+        let run = SqliteBackend::row_to_run(row);
+        assert_eq!(run.id, "run-123");
+        assert_eq!(run.experiment_id, "exp-456");
+        assert_eq!(run.status, crate::storage::RunStatus::Running);
+        assert!(run.end_time.is_some());
+        assert_eq!(run.tags.get("env").map(String::as_str), Some("prod"));
+    }
+
+    #[test]
+    fn test_row_to_run_with_none_fields() {
+        let row =
+            ("run-1".to_string(), "exp-1".to_string(), "pending".to_string(), None, None, None);
+        let run = SqliteBackend::row_to_run(row);
+        assert_eq!(run.id, "run-1");
+        assert_eq!(run.status, crate::storage::RunStatus::Pending);
+        assert!(run.end_time.is_none());
+        assert!(run.tags.is_empty());
+    }
+
+    #[test]
+    fn test_row_to_run_invalid_tags_json() {
+        let row = (
+            "run-1".to_string(),
+            "exp-1".to_string(),
+            "completed".to_string(),
+            Some(chrono::Utc::now().to_rfc3339()),
+            None,
+            Some("not-valid-json".to_string()),
+        );
+        let run = SqliteBackend::row_to_run(row);
+        // Invalid JSON for tags should result in empty HashMap
+        assert!(run.tags.is_empty());
+    }
+
+    #[test]
+    fn test_param_matches_float_ne() {
+        let f5 = ParameterValue::Float(5.0);
+        let f3 = ParameterValue::Float(3.0);
+        let f5_dup = ParameterValue::Float(5.0);
+
+        assert!(SqliteBackend::param_matches(&f5, &FilterOp::Ne, &f3));
+        assert!(!SqliteBackend::param_matches(&f5, &FilterOp::Ne, &f5_dup));
+    }
+
+    use chrono::Datelike;
+
+    #[test]
+    fn test_parse_timestamp_rfc3339() {
+        let ts = parse_timestamp("2025-06-15T10:30:00+00:00");
+        assert_eq!(ts.year(), 2025);
+        assert_eq!(ts.month(), 6);
+        assert_eq!(ts.day(), 15);
+    }
 }

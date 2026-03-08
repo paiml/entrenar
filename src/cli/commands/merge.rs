@@ -801,4 +801,496 @@ mod tests {
         };
         assert!(run_merge(a, LogLevel::Quiet).unwrap_err().contains("--base required"));
     }
+
+    // ── perform_merge routing tests ─────────────────────────────────────
+
+    #[test]
+    fn test_perform_merge_ties_route() {
+        let models =
+            vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.1, 2.1])]), mk(&[("w", &[1.2, 2.2])])];
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Ties,
+            weight: None,
+            density: Some(0.5),
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(perform_merge(&models, &a).is_ok());
+    }
+
+    #[test]
+    fn test_perform_merge_dare_route() {
+        let models = vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.5, 2.5])])];
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Dare,
+            weight: None,
+            density: Some(0.3),
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(perform_merge(&models, &a).is_ok());
+    }
+
+    #[test]
+    fn test_perform_merge_slerp_route() {
+        let models = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Slerp,
+            weight: Some(0.5),
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(perform_merge(&models, &a).is_ok());
+    }
+
+    #[test]
+    fn test_perform_merge_average_route() {
+        let models = vec![mk(&[("w", &[2.0])]), mk(&[("w", &[4.0])])];
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        let result = perform_merge(&models, &a).unwrap();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
+        assert!((vals[0] - 3.0).abs() < 1e-6);
+    }
+
+    // ── slerp merge with exactly 2 models ───────────────────────────────
+
+    #[test]
+    fn test_slerp_merge_two_models_ok() {
+        let ms = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Slerp,
+            weight: Some(0.3),
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(perform_slerp_merge(&ms, &a).is_ok());
+    }
+
+    #[test]
+    fn test_slerp_merge_default_weight() {
+        let ms = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Slerp,
+            weight: None, // defaults to 0.5
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(perform_slerp_merge(&ms, &a).is_ok());
+    }
+
+    // ── ties merge with density ─────────────────────────────────────────
+
+    #[test]
+    fn test_ties_merge_with_density() {
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Ties,
+            weight: None,
+            density: Some(0.8),
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        let models =
+            vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.5, 2.5])]), mk(&[("w", &[1.2, 2.2])])];
+        let result = perform_ties_merge(&models, &a);
+        assert!(result.is_ok());
+    }
+
+    // ── dare merge with density ─────────────────────────────────────────
+
+    #[test]
+    fn test_dare_merge_with_density() {
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Dare,
+            weight: None,
+            density: Some(0.9),
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        let models = vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.5, 2.5])])];
+        assert!(perform_dare_merge(&models, &a).is_ok());
+    }
+
+    // ── average merge with explicit weights ─────────────────────────────
+
+    #[test]
+    fn test_average_merge_with_weights() {
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: Some("0.8,0.2".to_string()),
+            base: None,
+            adapter: None,
+        };
+        let models = vec![mk(&[("w", &[10.0])]), mk(&[("w", &[0.0])])];
+        let result = perform_average_merge(&models, &a).unwrap();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
+        // 0.8 * 10.0 + 0.2 * 0.0 = 8.0
+        assert!((vals[0] - 8.0).abs() < 1e-4);
+    }
+
+    // ── build_ensemble_config edge cases ────────────────────────────────
+
+    #[test]
+    fn test_build_ensemble_config_single_weight() {
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o.json"),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: Some("1.0".to_string()),
+            base: None,
+            adapter: None,
+        };
+        let config = build_ensemble_config(&a);
+        assert!(config.is_ok());
+    }
+
+    #[test]
+    fn test_build_ensemble_config_three_weights() {
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o.json"),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: Some("0.2, 0.3, 0.5".to_string()),
+            base: None,
+            adapter: None,
+        };
+        let config = build_ensemble_config(&a);
+        assert!(config.is_ok());
+    }
+
+    #[test]
+    fn test_build_ensemble_config_empty_weights_string() {
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o.json"),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: Some(String::new()),
+            base: None,
+            adapter: None,
+        };
+        // Empty string should fail to parse as f32
+        assert!(build_ensemble_config(&a).is_err());
+    }
+
+    // ── validate_model_count edge cases ─────────────────────────────────
+
+    #[test]
+    fn test_validate_model_count_one() {
+        let a = MergeArgs {
+            models: vec![PathBuf::from("a")],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Ties,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(validate_model_count(&a).is_err());
+    }
+
+    #[test]
+    fn test_validate_model_count_three() {
+        let a = MergeArgs {
+            models: vec![PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Ties,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(validate_model_count(&a).is_ok());
+    }
+
+    // ── export_merged_model extension detection ─────────────────────────
+
+    #[test]
+    fn test_export_merged_model_no_extension() {
+        let m = mk(&[("w", &[1.0])]);
+        let t = std::env::temp_dir().join("ent_merge_noext");
+        let a = MergeArgs {
+            models: vec![],
+            output: t.clone(),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        // Should fall through to JSON export (default)
+        assert!(export_merged_model(&m, &a).is_ok());
+        let _ = std::fs::remove_file(&t);
+    }
+
+    // ── bytes_to_f32 additional edge cases ──────────────────────────────
+
+    #[test]
+    fn test_bytes_to_f32_f32_multiple() {
+        let vals = vec![1.0f32, 2.0, 3.5, -1.0];
+        let bytes: Vec<u8> = vals.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F32);
+        assert_eq!(result.len(), 4);
+        assert!((result[0] - 1.0).abs() < 1e-6);
+        assert!((result[1] - 2.0).abs() < 1e-6);
+        assert!((result[2] - 3.5).abs() < 1e-6);
+        assert!((result[3] - (-1.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_bytes_to_f32_f16_multiple() {
+        let vals = vec![half::f16::from_f32(0.5), half::f16::from_f32(1.5)];
+        let bytes: Vec<u8> = vals.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F16);
+        assert_eq!(result.len(), 2);
+        assert!((result[0] - 0.5).abs() < 0.01);
+        assert!((result[1] - 1.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_bytes_to_f32_bf16_multiple() {
+        let vals = vec![half::bf16::from_f32(3.0), half::bf16::from_f32(-1.0)];
+        let bytes: Vec<u8> = vals.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::BF16);
+        assert_eq!(result.len(), 2);
+        assert!((result[0] - 3.0).abs() < 0.1);
+        assert!((result[1] - (-1.0)).abs() < 0.1);
+    }
+
+    // ── build_safetensor_metadata tests ─────────────────────────────────
+
+    #[test]
+    fn test_safetensor_metadata_ties() {
+        let m = mk(&[("a", &[1.0]), ("b", &[2.0]), ("c", &[3.0])]);
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o.st"),
+            method: MergeMethod::Ties,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        let md = build_safetensor_metadata(&m, &a);
+        assert_eq!(md["name"], "merged-model");
+        assert_eq!(md["tensor_count"], "3");
+        assert!(md["merge_method"].contains("Ties"));
+    }
+
+    #[test]
+    fn test_safetensor_metadata_slerp() {
+        let m = mk(&[("x", &[1.0])]);
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o.st"),
+            method: MergeMethod::Slerp,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        let md = build_safetensor_metadata(&m, &a);
+        assert!(md["merge_method"].contains("Slerp"));
+    }
+
+    // ── log_merge_start and log_merge_complete with different levels ────
+
+    #[test]
+    fn test_log_merge_start_normal() {
+        let a = MergeArgs {
+            models: vec![PathBuf::from("m1"), PathBuf::from("m2")],
+            output: PathBuf::from("out"),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        log_merge_start(&a, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_log_merge_complete_verbose() {
+        let m = mk(&[("a", &[1.0, 2.0])]);
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("merged.json"),
+            method: MergeMethod::Dare,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        log_merge_complete(&m, &a, LogLevel::Verbose);
+    }
+
+    // ── LoRA merge error paths ──────────────────────────────────────────
+
+    #[test]
+    fn test_lora_adapter_config_not_found() {
+        // adapter dir exists but no adapter_config.json inside
+        let dir = tempfile::tempdir().unwrap();
+        // Create a fake base file
+        let base_file = dir.path().join("base.safetensors");
+        std::fs::write(&base_file, b"fake").unwrap();
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::LoraAdapter,
+            weight: None,
+            density: None,
+            weights: None,
+            base: Some(base_file),
+            adapter: Some(dir.path().to_path_buf()),
+        };
+        let err = run_lora_adapter_merge(&a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("adapter_config.json"), "Error: {err}");
+    }
+
+    #[test]
+    fn test_lora_adapter_model_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_file = dir.path().join("base.safetensors");
+        std::fs::write(&base_file, b"fake").unwrap();
+        // Create adapter_config.json but not adapter_model.safetensors
+        std::fs::write(dir.path().join("adapter_config.json"), r#"{"r": 8, "lora_alpha": 16}"#)
+            .unwrap();
+        let a = MergeArgs {
+            models: vec![],
+            output: PathBuf::from("o"),
+            method: MergeMethod::LoraAdapter,
+            weight: None,
+            density: None,
+            weights: None,
+            base: Some(base_file),
+            adapter: Some(dir.path().to_path_buf()),
+        };
+        let err = run_lora_adapter_merge(&a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("adapter_model.safetensors"), "Error: {err}");
+    }
+
+    // ── run_merge with nonexistent model files ──────────────────────────
+
+    #[test]
+    fn test_run_merge_nonexistent_models() {
+        let a = MergeArgs {
+            models: vec![PathBuf::from("/no/m1"), PathBuf::from("/no/m2")],
+            output: PathBuf::from("o"),
+            method: MergeMethod::Ties,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        let err = run_merge(a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("Failed to read"), "Error: {err}");
+    }
+
+    // ── mk helper verify ────────────────────────────────────────────────
+
+    #[test]
+    fn test_mk_helper_creates_model() {
+        let model = mk(&[("a", &[1.0, 2.0, 3.0]), ("b", &[4.0])]);
+        assert_eq!(model.len(), 2);
+        assert!(model.contains_key("a"));
+        assert!(model.contains_key("b"));
+        assert_eq!(model["a"].len(), 3);
+        assert_eq!(model["b"].len(), 1);
+    }
+
+    // ── export safetensors with multiple tensors ────────────────────────
+
+    #[test]
+    fn test_export_safetensors_multiple_tensors() {
+        let m = mk(&[("w1", &[1.0, 2.0]), ("w2", &[3.0, 4.0, 5.0])]);
+        let t = std::env::temp_dir().join("ent_merge_multi.safetensors");
+        let a = MergeArgs {
+            models: vec![],
+            output: t.clone(),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(export_merged_model(&m, &a).is_ok());
+        // Verify file was created and has content
+        assert!(t.exists());
+        let _ = std::fs::remove_file(&t);
+    }
+
+    // ── export json roundtrip ───────────────────────────────────────────
+
+    #[test]
+    fn test_export_json_roundtrip() {
+        let m = mk(&[("w1", &[1.0, 2.0]), ("w2", &[3.0])]);
+        let t = std::env::temp_dir().join("ent_merge_roundtrip.json");
+        let a = MergeArgs {
+            models: vec![],
+            output: t.clone(),
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        };
+        assert!(export_merged_model(&m, &a).is_ok());
+        let content = std::fs::read_to_string(&t).unwrap();
+        let parsed: HashMap<String, Vec<f32>> = serde_json::from_str(&content).unwrap();
+        assert!(parsed.contains_key("w1"));
+        assert!(parsed.contains_key("w2"));
+        assert_eq!(parsed["w1"].len(), 2);
+        let _ = std::fs::remove_file(&t);
+    }
 }

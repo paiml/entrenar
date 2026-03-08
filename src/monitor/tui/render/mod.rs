@@ -412,4 +412,379 @@ mod tests {
         let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
         assert!(layout.contains("FAIL"));
     }
+
+    // ── Additional coverage tests ──
+
+    #[test]
+    fn test_render_layout_colored_mono() {
+        let snapshot = TrainingSnapshot {
+            epoch: 2,
+            total_epochs: 5,
+            step: 3,
+            steps_per_epoch: 10,
+            loss: 1.5,
+            loss_history: vec![3.0, 2.5, 2.0, 1.5],
+            learning_rate: 0.0001,
+            gradient_norm: 0.5,
+            tokens_per_second: 50.0,
+            model_name: "TestModel".to_string(),
+            optimizer_name: "SGD".to_string(),
+            batch_size: 8,
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 100, ColorMode::Mono);
+        assert!(layout.contains("ENTRENAR"));
+        assert!(layout.contains("Running"));
+        assert!(layout.contains("Epoch"));
+        assert!(layout.contains("Step"));
+        assert!(layout.contains("Loss"));
+        assert!(layout.contains("Config"));
+    }
+
+    #[test]
+    fn test_render_layout_with_gpu() {
+        let snapshot = TrainingSnapshot {
+            epoch: 1,
+            total_epochs: 3,
+            step: 5,
+            steps_per_epoch: 20,
+            loss: 2.0,
+            loss_history: vec![3.0, 2.5, 2.0],
+            learning_rate: 0.001,
+            gradient_norm: 1.0,
+            tokens_per_second: 200.0,
+            model_name: "GPUModel".to_string(),
+            status: TrainingStatus::Running,
+            gpu: Some(super::super::state::GpuTelemetry {
+                device_name: "RTX 4090".to_string(),
+                utilization_percent: 95.0,
+                vram_used_gb: 20.0,
+                vram_total_gb: 24.0,
+                temperature_celsius: 72.0,
+                power_watts: 350.0,
+                power_limit_watts: 400.0,
+                processes: vec![],
+            }),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 100, ColorMode::Mono);
+        assert!(layout.contains("GPU:"));
+        assert!(layout.contains("RTX 4090"));
+        assert!(layout.contains("VRAM:"));
+    }
+
+    #[test]
+    fn test_render_layout_no_gpu() {
+        let snapshot = TrainingSnapshot {
+            epoch: 1,
+            total_epochs: 1,
+            step: 1,
+            steps_per_epoch: 1,
+            loss: 1.0,
+            model_name: "NoGPU".to_string(),
+            status: TrainingStatus::Running,
+            gpu: None,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("GPU: N/A"));
+    }
+
+    #[test]
+    fn test_render_layout_empty_model_name() {
+        let snapshot = TrainingSnapshot {
+            model_name: String::new(),
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("N/A"));
+    }
+
+    #[test]
+    fn test_render_layout_long_model_name() {
+        let snapshot = TrainingSnapshot {
+            model_name: "A".repeat(50),
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        // Long model names should be truncated with ...
+        assert!(layout.contains("..."));
+    }
+
+    #[test]
+    fn test_render_progress_zero_epochs() {
+        let snapshot = TrainingSnapshot {
+            epoch: 0,
+            total_epochs: 0,
+            step: 0,
+            steps_per_epoch: 0,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Epoch"));
+    }
+
+    #[test]
+    fn test_render_metrics_nan_loss() {
+        let snapshot = TrainingSnapshot {
+            loss: f32::NAN,
+            learning_rate: 0.001,
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("???"));
+    }
+
+    #[test]
+    fn test_render_metrics_infinite_loss() {
+        let snapshot = TrainingSnapshot {
+            loss: f32::INFINITY,
+            learning_rate: 0.001,
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("???"));
+    }
+
+    #[test]
+    fn test_render_loss_sparkline_empty() {
+        let snapshot = TrainingSnapshot {
+            loss_history: vec![],
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        // Empty loss_history should not produce a "Loss History" section
+        assert!(!layout.contains("Loss History"));
+    }
+
+    #[test]
+    fn test_render_epoch_table_no_data() {
+        let snapshot = TrainingSnapshot {
+            loss_history: vec![],
+            steps_per_epoch: 0,
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("waiting for epoch data"));
+    }
+
+    #[test]
+    fn test_render_epoch_table_with_epochs() {
+        let snapshot = TrainingSnapshot {
+            steps_per_epoch: 3,
+            loss_history: vec![5.0, 4.0, 3.0, 2.5, 2.0, 1.5],
+            learning_rate: 0.001,
+            tokens_per_second: 100.0,
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Epoch"));
+        assert!(layout.contains("Loss"));
+    }
+
+    #[test]
+    fn test_render_epoch_table_many_epochs_truncation() {
+        // 20 epochs, max_rows=6 means some should be hidden
+        let snapshot = TrainingSnapshot {
+            steps_per_epoch: 1,
+            loss_history: (0..20).map(|i| 10.0 - (i as f32 * 0.5)).collect(),
+            learning_rate: 0.001,
+            tokens_per_second: 100.0,
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("earlier epochs"));
+    }
+
+    #[test]
+    fn test_render_config_footer_empty_optimizer() {
+        let snapshot = TrainingSnapshot {
+            optimizer_name: String::new(),
+            batch_size: 0,
+            checkpoint_path: String::new(),
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Config:"));
+    }
+
+    #[test]
+    fn test_render_config_footer_with_values() {
+        let snapshot = TrainingSnapshot {
+            optimizer_name: "AdamW".to_string(),
+            batch_size: 16,
+            checkpoint_path: "/tmp/checkpoints".to_string(),
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 100, ColorMode::Mono);
+        assert!(layout.contains("AdamW"));
+        assert!(layout.contains("16"));
+        assert!(layout.contains("/tmp/checkpoints"));
+    }
+
+    #[test]
+    fn test_render_gpu_temp_warning() {
+        let snapshot = TrainingSnapshot {
+            gpu: Some(super::super::state::GpuTelemetry {
+                device_name: "RTX 4090".to_string(),
+                utilization_percent: 90.0,
+                vram_used_gb: 20.0,
+                vram_total_gb: 24.0,
+                temperature_celsius: 75.0, // Warning range
+                power_watts: 300.0,
+                power_limit_watts: 400.0,
+                processes: vec![],
+            }),
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 100, ColorMode::Mono);
+        assert!(layout.contains("75"));
+    }
+
+    #[test]
+    fn test_render_gpu_temp_error() {
+        let snapshot = TrainingSnapshot {
+            gpu: Some(super::super::state::GpuTelemetry {
+                device_name: "RTX 4090".to_string(),
+                utilization_percent: 90.0,
+                vram_used_gb: 20.0,
+                vram_total_gb: 24.0,
+                temperature_celsius: 85.0, // Error range (>80)
+                power_watts: 300.0,
+                power_limit_watts: 400.0,
+                processes: vec![],
+            }),
+            status: TrainingStatus::Running,
+            model_name: "test".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 100, ColorMode::Mono);
+        assert!(layout.contains("85"));
+    }
+
+    #[test]
+    fn test_epoch_trend_arrow_first_epoch_no_start_idx() {
+        let result = epoch_trend_arrow(0, 0, &[], ColorMode::Mono);
+        assert_eq!(result, " ");
+    }
+
+    #[test]
+    fn test_epoch_trend_arrow_with_start_idx() {
+        let summaries = vec![
+            EpochSummary {
+                epoch: 1,
+                avg_loss: 5.0,
+                min_loss: 4.0,
+                max_loss: 6.0,
+                end_loss: 4.5,
+                avg_grad: 1.0,
+                lr: 0.001,
+                tokens_per_sec: 100.0,
+            },
+            EpochSummary {
+                epoch: 2,
+                avg_loss: 3.0,
+                min_loss: 2.5,
+                max_loss: 3.5,
+                end_loss: 2.8,
+                avg_grad: 0.8,
+                lr: 0.001,
+                tokens_per_sec: 100.0,
+            },
+        ];
+        // i=0, start_idx=1 -> should compare with prev
+        let result = epoch_trend_arrow(0, 1, &summaries, ColorMode::Mono);
+        // summaries[1] vs summaries[0]: 3.0 vs 5.0 -> decreasing
+        assert!(result.contains("\u{2193}")); // down arrow
+    }
+
+    #[test]
+    fn test_epoch_trend_arrow_no_prev() {
+        let summaries: Vec<EpochSummary> = vec![];
+        // i=0, start_idx=1, but no element at prev_idx -> space
+        let result = epoch_trend_arrow(0, 1, &summaries, ColorMode::Mono);
+        assert_eq!(result, " ");
+    }
+
+    #[test]
+    fn test_render_layout_minimum_width() {
+        // Width less than 80 should be clamped to 80
+        let snapshot = TrainingSnapshot {
+            model_name: "test".to_string(),
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 40, ColorMode::Mono);
+        // Should not panic and should contain basic elements
+        assert!(layout.contains("ENTRENAR"));
+    }
+
+    #[test]
+    fn test_render_with_truecolor() {
+        let snapshot = TrainingSnapshot {
+            epoch: 2,
+            total_epochs: 5,
+            step: 3,
+            steps_per_epoch: 10,
+            loss: 1.5,
+            loss_history: vec![3.0, 2.5, 2.0, 1.5],
+            learning_rate: 0.0001,
+            gradient_norm: 0.5,
+            tokens_per_second: 50.0,
+            model_name: "TestModel".to_string(),
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 100, ColorMode::TrueColor);
+        // Should contain ANSI color codes
+        assert!(layout.contains("\x1b["));
+    }
+
+    #[test]
+    fn test_render_best_loss_all_nan() {
+        let snapshot = TrainingSnapshot {
+            loss: 1.0,
+            loss_history: vec![f32::NAN, f32::NAN, f32::NAN],
+            learning_rate: 0.001,
+            model_name: "test".to_string(),
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Best ---"));
+    }
+
+    #[test]
+    fn test_render_eta_no_tps() {
+        let snapshot = TrainingSnapshot {
+            tokens_per_second: 0.0,
+            learning_rate: 0.001,
+            model_name: "test".to_string(),
+            status: TrainingStatus::Running,
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("ETA --:--:--"));
+    }
 }

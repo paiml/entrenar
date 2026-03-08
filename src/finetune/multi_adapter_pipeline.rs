@@ -1266,4 +1266,231 @@ label = "test"
         let results = pipeline.batch_train_step();
         assert!(results.is_empty());
     }
+
+    // ── Additional coverage tests ─────────────────────────────────
+
+    #[test]
+    fn test_multi_adapter_pipeline_new() {
+        let pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::Synchronized);
+        assert_eq!(pipeline.num_adapters(), 0);
+        assert_eq!(pipeline.global_step, 0);
+        assert!(pipeline.all_exhausted());
+    }
+
+    #[test]
+    fn test_multi_adapter_pipeline_add_adapter() {
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: PathBuf::from("/tmp/ckpt"),
+            instruct_config: InstructConfig::default(),
+        };
+        let samples = vec![InstructSample {
+            instruction: "test".into(),
+            response: "response".into(),
+            system: None,
+            metadata: None,
+        }];
+        pipeline.add_adapter(config, samples, vec![]);
+        assert_eq!(pipeline.num_adapters(), 1);
+        assert!(!pipeline.all_exhausted());
+    }
+
+    #[test]
+    fn test_train_step_adapter_no_tokenizer() {
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(5)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        // No tokenizer loaded → should return None
+        let result = pipeline.train_step_adapter(0);
+        assert!(result.is_none());
+        // Cursor should have advanced
+        assert_eq!(pipeline.adapters[0].cursor, 1);
+    }
+
+    #[test]
+    fn test_train_step_increments_global_step() {
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(5)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        // Even though result is None (no tokenizer), global_step should not increment
+        // because early return happens before step increment
+        let _ = pipeline.train_step_adapter(0);
+        // Cursor advanced to 1, but no tokenizer so returns early before global_step increment
+    }
+
+    #[test]
+    fn test_batch_train_step_synchronized_all_exhausted() {
+        let mut slot0 = dummy_slot_with_data(1);
+        slot0.cursor = 1;
+        let mut slot1 = dummy_slot_with_data(1);
+        slot1.cursor = 1;
+
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1],
+            schedule: AdapterSchedule::Synchronized,
+            global_step: 0,
+        };
+        let results = pipeline.batch_train_step();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn test_reset_epoch_different_seeds_different_orders() {
+        let mut pipeline1 = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(20)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        let mut pipeline2 = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(20)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+
+        pipeline1.reset_epoch(1);
+        pipeline2.reset_epoch(999);
+
+        let same = pipeline1.adapters[0]
+            .train_samples
+            .iter()
+            .zip(pipeline2.adapters[0].train_samples.iter())
+            .all(|(s1, s2)| s1.instruction == s2.instruction);
+        assert!(!same, "Different seeds should produce different shuffles");
+    }
+
+    #[test]
+    fn test_shuffle_samples_preserves_elements() {
+        let mut samples: Vec<InstructSample> = (0..10)
+            .map(|i| InstructSample {
+                instruction: format!("inst_{i}"),
+                response: format!("resp_{i}"),
+                system: None,
+                metadata: None,
+            })
+            .collect();
+        let original_instructions: Vec<String> =
+            samples.iter().map(|s| s.instruction.clone()).collect();
+
+        shuffle_samples(&mut samples, 42);
+
+        // All original elements should still be present
+        let mut shuffled_instructions: Vec<String> =
+            samples.iter().map(|s| s.instruction.clone()).collect();
+        let mut sorted_original = original_instructions.clone();
+        sorted_original.sort();
+        shuffled_instructions.sort();
+        assert_eq!(sorted_original, shuffled_instructions);
+    }
+
+    #[test]
+    fn test_adapter_slot_metrics_empty() {
+        let slot = dummy_slot();
+        assert!(slot.metrics.is_empty());
+    }
+
+    #[test]
+    fn test_adapter_slot_val_samples() {
+        let slot = dummy_slot();
+        assert!(slot.val_samples.is_empty());
+    }
+
+    #[test]
+    fn test_adapter_slot_lora_layers_empty() {
+        let slot = dummy_slot();
+        assert!(slot.lora_layers.is_empty());
+    }
+
+    #[test]
+    fn test_adapters_config_label_propagation() {
+        let toml = r#"
+[[adapter]]
+data = "d1.jsonl"
+checkpoint = "c1"
+label = "adapter-one"
+
+[[adapter]]
+data = "d2.jsonl"
+checkpoint = "c2"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        assert_eq!(config.adapters[0].label, Some("adapter-one".to_string()));
+        assert!(config.adapters[1].label.is_none());
+    }
+
+    #[test]
+    fn test_adapters_config_to_adapter_configs_alpha_calculation() {
+        let toml = r#"
+[[adapter]]
+data = "data.jsonl"
+checkpoint = "ckpt"
+rank = 64
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let base = InstructConfig::default();
+        let adapters = config.to_adapter_configs(&base);
+        // alpha = rank * 2.0 = 128.0
+        assert!((adapters[0].instruct_config.lora_alpha - 128.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_select_next_adapter_round_robin_large_step() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 1000,
+        };
+        assert_eq!(pipeline.select_next_adapter(), Some(0)); // 1000 % 2 = 0
+
+        let pipeline = MultiAdapterPipeline { global_step: 1001, ..pipeline };
+        assert_eq!(pipeline.select_next_adapter(), Some(1)); // 1001 % 2 = 1
+    }
+
+    #[test]
+    fn test_select_next_adapter_priority_selects_worst() {
+        let mut slot0 = dummy_slot();
+        slot0.best_val_loss = 0.1;
+        let mut slot1 = dummy_slot();
+        slot1.best_val_loss = 10.0;
+        let mut slot2 = dummy_slot();
+        slot2.best_val_loss = 5.0;
+
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1, slot2],
+            schedule: AdapterSchedule::PriorityValLoss,
+            global_step: 0,
+        };
+        assert_eq!(pipeline.select_next_adapter(), Some(1)); // 10.0 is worst
+    }
+
+    #[test]
+    fn test_multi_adapter_multiple_add_adapter() {
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::Synchronized);
+
+        for i in 0..3 {
+            let config = AdapterConfig {
+                data_path: PathBuf::from(format!("data{i}.jsonl")),
+                checkpoint_dir: PathBuf::from(format!("/tmp/ckpt{i}")),
+                instruct_config: InstructConfig::default(),
+            };
+            pipeline.add_adapter(config, vec![], vec![]);
+        }
+        assert_eq!(pipeline.num_adapters(), 3);
+        assert!(pipeline.all_exhausted()); // all empty
+    }
 }

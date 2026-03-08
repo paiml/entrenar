@@ -938,4 +938,439 @@ mod tests {
             shared_budget as f64 / 1e9
         );
     }
+
+    // ── Additional coverage tests ─────────────────────────────────
+
+    #[test]
+    fn test_model_architecture_default() {
+        let arch: ModelArchitecture = Default::default();
+        assert_eq!(arch, ModelArchitecture::Decoder);
+    }
+
+    #[test]
+    fn test_model_architecture_serialization() {
+        let encoder = ModelArchitecture::Encoder;
+        let json = serde_json::to_string(&encoder).expect("serialize");
+        assert_eq!(json, "\"encoder\"");
+        let decoder = ModelArchitecture::Decoder;
+        let json = serde_json::to_string(&decoder).expect("serialize");
+        assert_eq!(json, "\"decoder\"");
+
+        let restored: ModelArchitecture = serde_json::from_str("\"encoder\"").expect("deserialize");
+        assert_eq!(restored, ModelArchitecture::Encoder);
+    }
+
+    #[test]
+    fn test_codebert_config() {
+        let config = TransformerConfig::codebert();
+        assert_eq!(config.hidden_size, 768);
+        assert_eq!(config.num_attention_heads, 12);
+        assert_eq!(config.num_kv_heads, 12);
+        assert_eq!(config.intermediate_size, 3072);
+        assert_eq!(config.num_hidden_layers, 12);
+        assert_eq!(config.vocab_size, 50265);
+        assert_eq!(config.max_position_embeddings, 514);
+        assert!(config.use_bias);
+        assert_eq!(config.architecture, ModelArchitecture::Encoder);
+        assert!(config.is_encoder());
+        assert_eq!(config.head_dim(), 64); // 768 / 12
+    }
+
+    #[test]
+    fn test_is_encoder() {
+        assert!(TransformerConfig::codebert().is_encoder());
+        assert!(!TransformerConfig::llama2_7b().is_encoder());
+        assert!(!TransformerConfig::tiny().is_encoder());
+        assert!(!TransformerConfig::qwen2_0_5b().is_encoder());
+    }
+
+    #[test]
+    fn test_hf_architecture_name_inferred() {
+        // Encoder
+        assert_eq!(TransformerConfig::codebert().hf_architecture_name(), "BertModel");
+        // Qwen2 (bias + large vocab)
+        assert_eq!(TransformerConfig::qwen2_0_5b().hf_architecture_name(), "Qwen2ForCausalLM");
+        // LLaMA (no bias)
+        assert_eq!(TransformerConfig::llama2_7b().hf_architecture_name(), "LlamaForCausalLM");
+    }
+
+    #[test]
+    fn test_hf_architecture_name_override() {
+        let mut config = TransformerConfig::tiny();
+        config.hf_architecture = Some("CustomModel".to_string());
+        assert_eq!(config.hf_architecture_name(), "CustomModel");
+    }
+
+    #[test]
+    fn test_hf_model_type_str_inferred() {
+        assert_eq!(TransformerConfig::codebert().hf_model_type_str(), "roberta");
+        assert_eq!(TransformerConfig::qwen2_0_5b().hf_model_type_str(), "qwen2");
+        assert_eq!(TransformerConfig::llama2_7b().hf_model_type_str(), "llama");
+    }
+
+    #[test]
+    fn test_hf_model_type_str_override() {
+        let mut config = TransformerConfig::tiny();
+        config.hf_model_type = Some("custom_type".to_string());
+        assert_eq!(config.hf_model_type_str(), "custom_type");
+    }
+
+    #[test]
+    fn test_ties_embeddings() {
+        // Qwen2 ties embeddings (bias + large vocab)
+        assert!(TransformerConfig::qwen2_0_5b().ties_embeddings());
+        // LLaMA does not
+        assert!(!TransformerConfig::llama2_7b().ties_embeddings());
+        // Explicit flag override
+        let mut config = TransformerConfig::llama2_7b();
+        config.tie_word_embeddings = true;
+        assert!(config.ties_embeddings());
+    }
+
+    #[test]
+    fn test_head_dim_override() {
+        let config = TransformerConfig::qwen3_4b();
+        assert_eq!(config.head_dim_override, Some(128));
+        assert_eq!(config.head_dim(), 128);
+        // Without override: 2560 / 32 = 80 (but override gives 128)
+        assert_ne!(config.hidden_size / config.num_attention_heads, 128);
+    }
+
+    #[test]
+    fn test_head_dim_no_override() {
+        let config = TransformerConfig::llama2_7b();
+        assert!(config.head_dim_override.is_none());
+        assert_eq!(config.head_dim(), 128); // 4096 / 32
+    }
+
+    #[test]
+    fn test_q_dim() {
+        let config = TransformerConfig::qwen3_4b();
+        // 32 heads * 128 head_dim = 4096
+        assert_eq!(config.q_dim(), 4096);
+
+        let config = TransformerConfig::llama2_7b();
+        // 32 heads * 128 = 4096 = hidden_size
+        assert_eq!(config.q_dim(), 4096);
+    }
+
+    #[test]
+    fn test_q_dim_differs_from_hidden() {
+        let config = TransformerConfig::qwen3_4b();
+        // Qwen3-4B: q_dim = 4096 but hidden_size = 2560
+        assert_ne!(config.q_dim(), config.hidden_size);
+    }
+
+    #[test]
+    fn test_from_size_str_known_sizes() {
+        assert!(TransformerConfig::from_size_str("codebert").is_ok());
+        assert!(TransformerConfig::from_size_str("codebert-base").is_ok());
+        assert!(TransformerConfig::from_size_str("125M").is_ok());
+        assert!(TransformerConfig::from_size_str("0.5B").is_ok());
+        assert!(TransformerConfig::from_size_str("500M").is_ok());
+        assert!(TransformerConfig::from_size_str("qwen2-0.5b").is_ok());
+        assert!(TransformerConfig::from_size_str("7B").is_ok());
+        assert!(TransformerConfig::from_size_str("qwen2.5-7b").is_ok());
+        assert!(TransformerConfig::from_size_str("4B").is_ok());
+        assert!(TransformerConfig::from_size_str("qwen3-4b").is_ok());
+        assert!(TransformerConfig::from_size_str("qwen3").is_ok());
+        assert!(TransformerConfig::from_size_str("9B").is_ok());
+        assert!(TransformerConfig::from_size_str("qwen3.5-9b").is_ok());
+        assert!(TransformerConfig::from_size_str("qwen3_5").is_ok());
+        assert!(TransformerConfig::from_size_str("qwen3.5").is_ok());
+    }
+
+    #[test]
+    fn test_from_size_str_unknown() {
+        let err = TransformerConfig::from_size_str("99B").unwrap_err();
+        assert!(err.contains("Unknown model size"));
+        assert!(err.contains("99B"));
+    }
+
+    #[test]
+    fn test_from_size_str_configs_correct() {
+        let codebert = TransformerConfig::from_size_str("codebert").unwrap();
+        assert_eq!(codebert.hidden_size, 768);
+        assert!(codebert.is_encoder());
+
+        let qwen2 = TransformerConfig::from_size_str("0.5B").unwrap();
+        assert_eq!(qwen2.hidden_size, 896);
+        assert!(qwen2.use_bias);
+
+        let qwen3 = TransformerConfig::from_size_str("4B").unwrap();
+        assert_eq!(qwen3.hidden_size, 2560);
+        assert!(!qwen3.use_bias);
+    }
+
+    #[test]
+    fn test_from_apr_metadata_missing_num_heads() {
+        assert!(TransformerConfig::from_apr_metadata(
+            Some(4096),
+            None, // missing heads
+            Some(8),
+            Some(12288),
+            Some(36),
+            Some(151936),
+            None,
+            None,
+            None,
+            None,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_from_apr_metadata_missing_vocab_size() {
+        assert!(TransformerConfig::from_apr_metadata(
+            Some(4096),
+            Some(32),
+            Some(8),
+            Some(12288),
+            Some(36),
+            None, // missing vocab
+            None,
+            None,
+            None,
+            None,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_from_apr_metadata_missing_intermediate_size() {
+        assert!(TransformerConfig::from_apr_metadata(
+            Some(4096),
+            Some(32),
+            Some(8),
+            None, // missing intermediate
+            Some(36),
+            Some(151936),
+            None,
+            None,
+            None,
+            None,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_from_apr_metadata_defaults() {
+        let config = TransformerConfig::from_apr_metadata(
+            Some(512),
+            Some(8),
+            None, // defaults to num_heads
+            Some(2048),
+            Some(6),
+            Some(32000),
+            None, // defaults to 32768
+            None, // defaults to 1e-6
+            None, // defaults to 10000.0
+            None, // defaults to Decoder
+        )
+        .unwrap();
+
+        assert_eq!(config.num_kv_heads, 8); // defaults to num_heads
+        assert_eq!(config.max_position_embeddings, 32768);
+        assert!((config.rms_norm_eps - 1e-6).abs() < 1e-10);
+        assert!((config.rope_theta - 10000.0).abs() < 0.1);
+        assert_eq!(config.architecture, ModelArchitecture::Decoder);
+        assert!(!config.use_bias);
+    }
+
+    #[test]
+    fn test_from_apr_metadata_encoder_architecture() {
+        let config = TransformerConfig::from_apr_metadata(
+            Some(768),
+            Some(12),
+            Some(12),
+            Some(3072),
+            Some(12),
+            Some(50265),
+            Some(514),
+            Some(1e-5),
+            Some(0.0),
+            Some("codebert"),
+        )
+        .unwrap();
+        assert_eq!(config.architecture, ModelArchitecture::Encoder);
+    }
+
+    #[test]
+    fn test_from_apr_metadata_roberta_architecture() {
+        let config = TransformerConfig::from_apr_metadata(
+            Some(768),
+            Some(12),
+            Some(12),
+            Some(3072),
+            Some(12),
+            Some(50265),
+            None,
+            None,
+            None,
+            Some("roberta"),
+        )
+        .unwrap();
+        assert_eq!(config.architecture, ModelArchitecture::Encoder);
+    }
+
+    #[test]
+    fn test_from_apr_metadata_qwen3_head_dim_override() {
+        // Qwen3-4B: hidden=2560, 32 heads → 2560/32=80 != 128, so override needed
+        let config = TransformerConfig::from_apr_metadata(
+            Some(2560),
+            Some(32),
+            Some(8),
+            Some(9728),
+            Some(36),
+            Some(151936),
+            Some(40960),
+            Some(1e-6),
+            Some(1e6),
+            Some("qwen3-4b"),
+        )
+        .unwrap();
+        assert_eq!(config.head_dim_override, Some(128));
+        assert_eq!(config.head_dim(), 128);
+        assert!(!config.use_bias);
+    }
+
+    #[test]
+    fn test_from_apr_metadata_qwen3_no_override_needed() {
+        // If hidden/heads = 128, no override needed
+        let config = TransformerConfig::from_apr_metadata(
+            Some(4096),
+            Some(32),
+            Some(8),
+            Some(12288),
+            Some(36),
+            Some(151936),
+            None,
+            None,
+            None,
+            Some("qwen3-8b"),
+        )
+        .unwrap();
+        assert!(config.head_dim_override.is_none());
+        assert_eq!(config.head_dim(), 128);
+    }
+
+    #[test]
+    fn test_qwen2_7b_config() {
+        let config = TransformerConfig::qwen2_7b();
+        assert_eq!(config.hidden_size, 3584);
+        assert_eq!(config.num_attention_heads, 28);
+        assert_eq!(config.num_kv_heads, 4);
+        assert_eq!(config.intermediate_size, 18944);
+        assert_eq!(config.num_hidden_layers, 28);
+        assert_eq!(config.vocab_size, 152064);
+        assert!(config.use_bias);
+        assert_eq!(config.head_dim(), 128); // 3584 / 28
+    }
+
+    #[test]
+    fn test_qwen3_4b_config() {
+        let config = TransformerConfig::qwen3_4b();
+        assert_eq!(config.hidden_size, 2560);
+        assert_eq!(config.num_attention_heads, 32);
+        assert_eq!(config.num_kv_heads, 8);
+        assert_eq!(config.intermediate_size, 9728);
+        assert_eq!(config.num_hidden_layers, 36);
+        assert!(!config.use_bias);
+        assert_eq!(config.head_dim(), 128);
+    }
+
+    #[test]
+    fn test_per_layer_weight_elements_positive() {
+        for config in [
+            TransformerConfig::tiny(),
+            TransformerConfig::codebert(),
+            TransformerConfig::qwen2_0_5b(),
+            TransformerConfig::qwen3_4b(),
+        ] {
+            assert!(config.per_layer_weight_elements() > 0);
+        }
+    }
+
+    #[test]
+    fn test_vram_shared_less_than_per_layer() {
+        let config = TransformerConfig::qwen2_0_5b();
+        let per_layer = config.total_training_vram_bytes(128);
+        let shared = config.total_training_vram_bytes_shared(128);
+        // Shared should be less for multi-layer models
+        assert!(
+            shared < per_layer,
+            "Shared ({shared}) should be less than per-layer ({per_layer})"
+        );
+    }
+
+    #[test]
+    fn test_vram_shared_monotonic() {
+        let config = TransformerConfig::qwen2_0_5b();
+        let mut prev = config.total_training_vram_bytes_shared(1);
+        for s in [2, 4, 8, 16, 32, 64, 128] {
+            let cur = config.total_training_vram_bytes_shared(s);
+            assert!(cur > prev, "Shared VRAM must increase: seq_len={s}");
+            prev = cur;
+        }
+    }
+
+    #[test]
+    fn test_max_seq_len_for_vram_shared() {
+        let config = TransformerConfig::qwen2_0_5b();
+        let budget = 8 * 1024 * 1024 * 1024_usize; // 8 GB
+        let max_s = config.max_seq_len_for_vram_shared(budget);
+        assert!(max_s.is_some());
+        let s = max_s.unwrap();
+        assert!(config.total_training_vram_bytes_shared(s) <= budget);
+    }
+
+    #[test]
+    fn test_max_seq_len_for_vram_shared_impossible() {
+        let config = TransformerConfig::qwen3_4b();
+        let tiny_budget = 1024; // 1 KB
+        assert!(config.max_seq_len_for_vram_shared(tiny_budget).is_none());
+    }
+
+    #[test]
+    fn test_max_seq_len_for_vram_shared_tightness() {
+        let config = TransformerConfig::tiny();
+        let budget = 10 * 1024 * 1024_usize; // 10 MB
+        if let Some(s) = config.max_seq_len_for_vram_shared(budget) {
+            assert!(config.total_training_vram_bytes_shared(s) <= budget);
+            if s < config.max_position_embeddings {
+                assert!(config.total_training_vram_bytes_shared(s + 1) > budget);
+            }
+        }
+    }
+
+    #[test]
+    fn test_kv_dim() {
+        let config = TransformerConfig::qwen3_4b();
+        // num_kv_heads=8, head_dim=128 → kv_dim=1024
+        assert_eq!(config.kv_dim(), 1024);
+
+        let config = TransformerConfig::llama2_7b();
+        // num_kv_heads=32, head_dim=128 → kv_dim=4096
+        assert_eq!(config.kv_dim(), 4096);
+    }
+
+    #[test]
+    fn test_per_layer_scratch_linear_coeff_positive() {
+        let config = TransformerConfig::tiny();
+        assert!(config.per_layer_scratch_linear_coeff() > 0);
+    }
+
+    #[test]
+    fn test_per_layer_scratch_quadratic_coeff() {
+        let config = TransformerConfig::tiny();
+        let (n_quad, n_hd_linear) = config.per_layer_scratch_quadratic_coeff();
+        assert!(n_quad > 0);
+        assert!(n_hd_linear > 0);
+    }
+
+    #[test]
+    fn test_per_layer_grad_weight_elements_positive() {
+        let config = TransformerConfig::tiny();
+        assert!(config.per_layer_grad_weight_elements() > 0);
+    }
 }
