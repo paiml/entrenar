@@ -638,3 +638,169 @@ fn test_per_block_gradient_accumulator_sizes() {
     assert_eq!(accum.embedding_grad.len(), model_config.vocab_size * h);
     assert!(!accum.has_non_finite());
 }
+
+// ============================================================================
+// ENT-LoRA-001: LoRA wiring falsification tests
+// ============================================================================
+
+#[test]
+fn test_ent_lora_001_config_wiring() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_lora(
+        16,
+        32.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+
+    assert!(config.is_lora());
+    assert_eq!(config.lora_rank, Some(16));
+    assert_eq!(config.lora_alpha, Some(32.0));
+    assert_eq!(
+        config.lora_target_modules.as_deref(),
+        Some(&["q_proj".to_string(), "v_proj".to_string()][..])
+    );
+}
+
+#[test]
+fn test_ent_lora_001_no_lora_by_default() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!(!config.is_lora());
+    assert_eq!(config.lora_rank, None);
+}
+
+#[test]
+fn test_ent_lora_001_trainer_creates_lora_layers() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_lora(
+        8,
+        16.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+    let trainer = TransformerTrainer::new(config);
+
+    assert!(trainer.is_lora());
+    let lora = trainer.lora_layers().expect("LoRA layers should exist");
+    // 2 layers (tiny config) * 2 projections (q, v) = 4 LoRA layers
+    assert_eq!(lora.len(), 4);
+}
+
+#[test]
+fn test_ent_lora_001_no_lora_layers_without_config() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    let trainer = TransformerTrainer::new(config);
+
+    assert!(!trainer.is_lora());
+    assert!(trainer.lora_layers().is_none());
+}
+
+#[test]
+fn test_ent_lora_001_lora_b_initialized_zeros() {
+    // FALSIFY-LoRA-MATH-001: B must be zeros at init (ΔW = 0)
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_lora(
+        4,
+        8.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+    let trainer = TransformerTrainer::new(config);
+    let lora = trainer.lora_layers().expect("LoRA layers should exist");
+
+    for (i, layer) in lora.iter().enumerate() {
+        let b_data = layer.lora_b().data();
+        let max_b = b_data.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
+        assert!(
+            max_b < 1e-10,
+            "LoRA B[{i}] should be zeros at init, max value: {max_b}"
+        );
+    }
+}
+
+#[test]
+fn test_ent_lora_001_lora_forward_produces_logits() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_lora(
+        4,
+        8.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+    let trainer = TransformerTrainer::new(config);
+
+    let input_ids = vec![1u32, 2, 3];
+    let target_ids = vec![2u32, 3, 4];
+    let (loss_val, _loss, logits) = trainer.forward_single(&input_ids, &target_ids);
+
+    assert!(loss_val > 0.0, "Loss should be positive");
+    let vocab_size = TransformerConfig::tiny().vocab_size;
+    assert_eq!(logits.len(), 3 * vocab_size);
+}
+
+#[test]
+fn test_ent_lora_001_lora_train_batch() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_lora(
+        4,
+        8.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+    let mut trainer = TransformerTrainer::new(config);
+
+    let batch = LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]);
+    let loss = trainer.train_batch(&batch);
+
+    assert!(loss > 0.0, "LoRA training should produce non-zero loss");
+    assert_eq!(trainer.step(), 1, "Step should increment after batch");
+}
+
+#[test]
+fn test_ent_lora_001_lora_updates_only_adapters() {
+    // FALSIFY-LoRA-FREEZE-001: Base weights must NOT change during LoRA training
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config.clone()).with_lora(
+        4,
+        8.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+
+    // Snapshot base model weights before training
+    let model_before = Transformer::new(&model_config);
+    let base_weights_before: Vec<Vec<f32>> = model_before
+        .parameters()
+        .iter()
+        .map(|p| p.data().to_vec())
+        .collect();
+
+    let mut trainer = TransformerTrainer::with_model(model_before, config);
+
+    // Train a few batches
+    for _ in 0..3 {
+        let batch = LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]);
+        trainer.train_batch(&batch);
+    }
+
+    // Base model weights should be unchanged
+    let base_weights_after: Vec<Vec<f32>> = trainer
+        .model()
+        .parameters()
+        .iter()
+        .map(|p| p.data().to_vec())
+        .collect();
+
+    for (i, (before, after)) in
+        base_weights_before.iter().zip(&base_weights_after).enumerate()
+    {
+        assert_eq!(
+            before, after,
+            "Base model weight [{i}] changed during LoRA training"
+        );
+    }
+}
+
+#[test]
+fn test_ent_lora_001_with_model_creates_lora() {
+    let model_config = TransformerConfig::tiny();
+    let model = Transformer::new(&model_config);
+    let config = TransformerTrainConfig::new(model_config).with_lora(
+        8,
+        16.0,
+        vec!["q_proj".to_string(), "v_proj".to_string()],
+    );
+    let trainer = TransformerTrainer::with_model(model, config);
+
+    assert!(trainer.is_lora());
+    assert!(trainer.lora_layers().is_some());
+}

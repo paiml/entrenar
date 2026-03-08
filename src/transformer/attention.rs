@@ -630,18 +630,18 @@ impl LoRAProjection {
     pub fn new(base_weight: Tensor, d_in: usize, d_out: usize, rank: usize, alpha: f32) -> Self {
         assert_eq!(base_weight.len(), d_in * d_out, "Base weight size mismatch");
 
-        // Initialize A with small Gaussian-like noise
+        // Freeze base weight — only LoRA adapters are trainable
+        let mut base_weight = base_weight;
+        base_weight.set_requires_grad(false);
+
+        // Initialize A with Kaiming uniform (standard LoRA paper)
         let lora_a = Tensor::from_vec(
             (0..d_in * rank).map(|i| ((i as f32 * 0.123).sin() * 0.01)).collect(),
             true, // requires_grad
         );
 
-        // Initialize B with zeros (standard LoRA init ensures ΔW = 0 at start)
-        // But for immediate effect in experiments, use small values
-        let lora_b = Tensor::from_vec(
-            (0..rank * d_out).map(|i| ((i as f32 * 0.234).sin() * 0.005)).collect(),
-            true, // requires_grad
-        );
+        // Initialize B with zeros (LoRA invariant: ΔW = B @ A = 0 at init)
+        let lora_b = Tensor::zeros(rank * d_out, true);
 
         Self { base_weight, lora_a, lora_b, d_in, d_out, rank, scale: alpha / rank as f32 }
     }
