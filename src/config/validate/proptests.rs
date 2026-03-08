@@ -107,6 +107,7 @@ proptest! {
             alpha,
             target_modules: vec!["q_proj".to_string()],
             dropout,
+            lora_plus_ratio: 1.0,
         });
         prop_assert!(validate_config(&spec).is_ok());
     }
@@ -119,6 +120,7 @@ proptest! {
             alpha: 16.0,
             target_modules: vec!["q_proj".to_string()],
             dropout: 0.0,
+            lora_plus_ratio: 1.0,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -137,6 +139,7 @@ proptest! {
             alpha: 16.0,
             target_modules: vec!["q_proj".to_string()],
             dropout: 0.0,
+            lora_plus_ratio: 1.0,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -152,6 +155,7 @@ proptest! {
             alpha: 0.0,
             target_modules: vec!["q_proj".to_string()],
             dropout: 0.0,
+            lora_plus_ratio: 1.0,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -170,6 +174,7 @@ proptest! {
             alpha: neg_alpha,
             target_modules: vec!["q_proj".to_string()],
             dropout: 0.0,
+            lora_plus_ratio: 1.0,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -185,6 +190,7 @@ proptest! {
             alpha: 16.0,
             target_modules: vec!["q_proj".to_string()],
             dropout: 1.0,
+            lora_plus_ratio: 1.0,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -203,6 +209,7 @@ proptest! {
             alpha: 16.0,
             target_modules: vec!["q_proj".to_string()],
             dropout: neg_dropout,
+            lora_plus_ratio: 1.0,
         });
         prop_assert!(matches!(
             validate_config(&spec),

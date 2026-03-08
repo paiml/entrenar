@@ -888,3 +888,60 @@ fn test_ent_lora_003_save_adapter_without_lora_fails() {
     let result = trainer.save_lora_adapter("/tmp/no_lora", None::<&str>);
     assert!(result.is_err(), "Saving adapter without LoRA should fail");
 }
+
+// ============================================================================
+// ENT-LoRA-005: Flexible target modules
+// ============================================================================
+
+#[test]
+fn test_ent_lora_005_all_linear_creates_7_layers_per_block() {
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config)
+        .with_lora(4, 8.0, vec!["all_linear".to_string()]);
+
+    let trainer = TransformerTrainer::new(config);
+    let lora = trainer.lora_layers().expect("LoRA should be active");
+    // tiny() has 2 layers, all_linear = 7 modules (q/k/v/o/gate/up/down)
+    assert_eq!(lora.len(), 2 * 7, "Should have 14 LoRA layers (2 blocks × 7 modules)");
+}
+
+#[test]
+fn test_ent_lora_005_attention_shorthand() {
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config)
+        .with_lora(4, 8.0, vec!["attention".to_string()]);
+
+    let trainer = TransformerTrainer::new(config);
+    let lora = trainer.lora_layers().expect("LoRA should be active");
+    // 2 layers × 4 attention modules (q/k/v/o)
+    assert_eq!(lora.len(), 2 * 4);
+}
+
+#[test]
+fn test_ent_lora_005_mlp_shorthand() {
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config)
+        .with_lora(4, 8.0, vec!["mlp".to_string()]);
+
+    let trainer = TransformerTrainer::new(config);
+    let lora = trainer.lora_layers().expect("LoRA should be active");
+    // 2 layers × 3 MLP modules (gate/up/down)
+    assert_eq!(lora.len(), 2 * 3);
+}
+
+// ============================================================================
+// ENT-LoRA-006: LoRA+ optimizer (separate LR for A and B)
+// ============================================================================
+
+#[test]
+fn test_ent_lora_006_config_default_ratio() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!((config.lora_plus_ratio - 1.0).abs() < 1e-6, "Default ratio should be 1.0");
+}
+
+#[test]
+fn test_ent_lora_006_config_with_ratio() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_lora_plus_ratio(16.0);
+    assert!((config.lora_plus_ratio - 16.0).abs() < 1e-6);
+}

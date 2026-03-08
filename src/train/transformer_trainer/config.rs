@@ -96,6 +96,9 @@ pub struct TransformerTrainConfig {
     pub lora_alpha: Option<f32>,
     /// LoRA target modules (e.g., ["q_proj", "v_proj"])
     pub lora_target_modules: Option<Vec<String>>,
+    /// LoRA+ ratio: LR multiplier for B matrices (ENT-LoRA-006)
+    /// Default 1.0 = standard LoRA. 16.0 = LoRA+ (Hayou et al. ICML 2024)
+    pub lora_plus_ratio: f32,
 }
 
 impl TransformerTrainConfig {
@@ -122,6 +125,7 @@ impl TransformerTrainConfig {
             lora_rank: None,
             lora_alpha: None,
             lora_target_modules: None,
+            lora_plus_ratio: 1.0,
         }
     }
 
@@ -253,6 +257,15 @@ impl TransformerTrainConfig {
         self.lora_rank = Some(rank);
         self.lora_alpha = Some(alpha);
         self.lora_target_modules = Some(target_modules);
+        self
+    }
+
+    /// Set LoRA+ ratio (ENT-LoRA-006)
+    ///
+    /// LR multiplier for B matrices. Default 1.0 = standard LoRA.
+    /// 16.0 = LoRA+ (Hayou et al. ICML 2024) — B learns 16x faster than A.
+    pub fn with_lora_plus_ratio(mut self, ratio: f32) -> Self {
+        self.lora_plus_ratio = ratio;
         self
     }
 
