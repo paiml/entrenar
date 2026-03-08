@@ -14,4 +14,7 @@ mod core;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod falsify_tests;
+
 pub use self::core::{LoRALayer, LoRAScaling};
