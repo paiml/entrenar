@@ -151,6 +151,7 @@ citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG
 server = ["axum", "tower", "tower-http", "tokio"]  # REST/HTTP API server
 tracing = ["renacer"]  # Renacer distributed tracing integration
 ruchy-sessions = []  # Ruchy session bridge for preserving training history
+dhat-heap = ["dep:dhat"]  # Heap profiling via dhat-rs
 kani = []  # Formal verification proofs via kani (cargo kani)
 gpu = ["trueno/gpu", "tokio"]  # GPU-accelerated training via wgpu
 cuda = ["realizar/cuda", "trueno-gpu/cuda", "tokio"]  # NVIDIA CUDA compute via realizar
@@ -206,6 +207,7 @@ arrow = { version = "57", default-features = false, optional = true }  # Arrow a
 nvml-wrapper = { version = "0.10", optional = true }  # NVIDIA NVML bindings for GPU monitoring
 hostname = "0.4.2"
 ctrlc = "3.4"  # Signal handling for graceful shutdown (R-008)
+dhat = { version = "0.3", optional = true }  # Heap profiling
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 hf-hub = { version = "0.4", optional = true }  # HuggingFace Hub API (gated behind hub feature)

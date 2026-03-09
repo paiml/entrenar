@@ -959,7 +959,13 @@ impl CudaTransformerTrainer {
 
         // Steps 1-6: GPU forward pass — logits stay GPU-resident (KAIZEN-050)
         // (sub-phases embed, h2d, forward, norm_lm instrumented inside gpu_forward)
-        self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
+        if self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size).is_none() {
+            eprintln!(
+                "[train_step_inner] gpu_forward returned None (seq_len={seq_len}, \
+                 hidden={hidden_size}, vocab={vocab_size}) — CUDA context likely poisoned"
+            );
+            return None;
+        }
 
         // Step 7: Fused GPU cross-entropy loss + softmax backward (KAIZEN-050)
         // Eliminates: logits D2H (77.8MB) + CPU softmax (40ms) + grad H2D (77.8MB)
@@ -1043,7 +1049,10 @@ impl CudaTransformerTrainer {
         self.profiler.begin(StepProfiler::H2D);
         self.h2d_staging[..hidden_slice.len()].copy_from_slice(hidden_slice);
         self.h2d_staging[hidden_slice.len()..].fill(0.0);
-        self.fwd_scratch_a.copy_from_host(&self.h2d_staging).ok()?;
+        if let Err(e) = self.fwd_scratch_a.copy_from_host(&self.h2d_staging) {
+            eprintln!("[gpu_forward] H2D copy failed: {e:?} — CUDA context may be poisoned");
+            return None;
+        }
         self.profiler.end(StepProfiler::H2D);
 
         // Forward through CUDA blocks using pre-allocated ping-pong buffers.
@@ -1430,20 +1439,27 @@ impl CudaTransformerTrainer {
                 };
                 // We need a separate output_scratch. Reuse blocks_output as scratch since
                 // it was already consumed for norm backward above.
-                self.cuda_blocks[layer_idx]
-                    .backward_nf4(
-                        &self.gpu_training.layer_inputs[layer_idx],
-                        grad_output,
-                        grad_input,
-                        &mut self.gpu_training.blocks_output, // reuse as output_scratch
-                        seq_len,
-                        stream,
-                        self.nf4_shared_scratch.as_mut().expect("NF4 requires shared scratch"),
-                        self.nf4_lora_grad_workspace
-                            .as_mut()
-                            .expect("NF4 requires LoRA grad workspace"),
-                    )
-                    .ok()?;
+                match self.cuda_blocks[layer_idx].backward_nf4(
+                    &self.gpu_training.layer_inputs[layer_idx],
+                    grad_output,
+                    grad_input,
+                    &mut self.gpu_training.blocks_output, // reuse as output_scratch
+                    seq_len,
+                    stream,
+                    self.nf4_shared_scratch.as_mut().expect("NF4 requires shared scratch"),
+                    self.nf4_lora_grad_workspace
+                        .as_mut()
+                        .expect("NF4 requires LoRA grad workspace"),
+                ) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        eprintln!(
+                            "[backward_nf4] Layer {} FAILED: {:?} (seq_len={}, hidden={})",
+                            layer_idx, e, seq_len, self.config.model_config.hidden_size
+                        );
+                        return None;
+                    }
+                }
 
                 // NF4 LoRA optimizer step — always runs, even during accumulation.
                 //

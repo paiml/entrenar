@@ -2950,7 +2950,13 @@ impl CudaNf4TransformerBlock {
 
         // === Step 0: Activation checkpointing — re-run forward ===
         // This repopulates scratch with all intermediates needed for backward.
-        self.forward(layer_input, output_scratch, seq_len, stream, scratch)?;
+        self.forward(layer_input, output_scratch, seq_len, stream, scratch).map_err(|e| {
+            eprintln!(
+                "[backward] Layer {} activation-checkpoint forward FAILED: {e:?}",
+                self.layer_idx
+            );
+            e
+        })?;
 
         // === Step 1: FFN backward (NF4 transpose, no weight grads for frozen projections) ===
         self.backward_nf4_ffn(
@@ -3068,6 +3074,17 @@ impl CudaNf4TransformerBlock {
             i_size, // m=S, n=H (reduction), k=I (output cols)
             stream,
         )?;
+
+        // DEBUG: Sync after first NF4 transpose to catch async CUDA errors immediately
+        stream.synchronize().map_err(|e| {
+            eprintln!(
+                "[backward_nf4_ffn] CUDA sync after down_proj transpose FAILED: {e:?} \
+                 (seq_len={seq_len}, hidden={hidden_size}, inter={intermediate_size})"
+            );
+            crate::autograd::cuda_tensor::CudaTensorError::KernelError(format!(
+                "NF4 backward sync failed after down_proj: {e:?}"
+            ))
+        })?;
 
         // Step 2: SwiGLU backward: swiglu = silu(gate) * up
         // d_gate = d_swiglu * up * silu'(gate)

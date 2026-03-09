@@ -2596,6 +2596,9 @@ fn apply_architecture_overrides(
     if let Some(v) = overrides.use_bias {
         config.use_bias = v;
     }
+    if let Some(v) = overrides.head_dim {
+        config.head_dim_override = Some(v);
+    }
 }
 
 /// Build TransformerConfig from TrainSpec
@@ -2603,8 +2606,18 @@ fn apply_architecture_overrides(
 /// Uses config file if specified, otherwise defaults to a small model.
 /// Architecture overrides from the YAML manifest are applied on top.
 fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerConfig> {
-    // Check if config file is specified
-    let mut config = if let Some(config_path) = &spec.model.config {
+    // Check if config file is specified (explicit path or auto-detect from model dir)
+    let config_path_resolved = spec.model.config.clone().or_else(|| {
+        // Auto-detect config.json in model directory
+        let model_config = spec.model.path.join("config.json");
+        if model_config.exists() {
+            Some(model_config.to_string_lossy().into_owned())
+        } else {
+            None
+        }
+    });
+
+    let mut config = if let Some(config_path) = &config_path_resolved {
         let config_file = std::path::Path::new(config_path);
         if config_file.exists() {
             let config_content = std::fs::read_to_string(config_file)
@@ -2659,7 +2672,7 @@ fn config_from_overrides(
         rms_norm_eps: overrides.rms_norm_eps.unwrap_or(1e-5),
         rope_theta: overrides.rope_theta.unwrap_or(10000.0),
         use_bias: overrides.use_bias.unwrap_or(false),
-        head_dim_override: None,
+        head_dim_override: overrides.head_dim,
         architecture: ModelArchitecture::Decoder,
         hf_architecture: None,
         hf_model_type: None,
@@ -3581,6 +3594,7 @@ mod tests {
                     rms_norm_eps: Some(1e-5),
                     rope_theta: Some(500_000.0),
                     use_bias: Some(true),
+                    head_dim: None,
                 }),
                 ..Default::default()
             },
@@ -4934,6 +4948,7 @@ optimizer:
             rms_norm_eps: Some(1e-6),
             rope_theta: Some(500000.0),
             use_bias: Some(true),
+            head_dim: None,
         };
         let config =
             config_from_overrides(&overrides).expect("should build from complete overrides");
@@ -4973,6 +4988,7 @@ optimizer:
             rms_norm_eps: None,            // defaults to 1e-5
             rope_theta: None,              // defaults to 10000.0
             use_bias: None,                // defaults to false
+            head_dim: None,                // defaults to hidden_size / num_heads
         };
         let config = config_from_overrides(&overrides).expect("should build");
         assert_eq!(config.num_kv_heads, 8); // same as num_attention_heads
