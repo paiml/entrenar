@@ -2664,8 +2664,9 @@ impl CudaTransformerTrainer {
                 );
             }
 
+            // ALB-099: write_into consumes the writer — zero-copy f32→bytes on LE
             writer
-                .write(path)
+                .write_into(path)
                 .map_err(|e| crate::error::Error::Serialization(format!("APR save failed: {e}")))?;
 
             Ok(())
