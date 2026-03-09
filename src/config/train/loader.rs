@@ -3450,7 +3450,7 @@ mod tests {
         assert_eq!(batches.len(), 4);
         // Each batch should have valid data
         for batch in &batches {
-            assert!(!batch.input_ids.is_empty());
+            assert!(batch.has_tokens());
         }
     }
 
