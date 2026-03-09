@@ -2640,24 +2640,26 @@ impl CudaTransformerTrainer {
                 .find(|(n, _)| n.ends_with("layernorm.weight") || n == "model.norm.weight")
                 .map_or(0, |(_, d)| d.len());
 
-            // Model weight tensors
-            for (tensor_name, data) in &param_data {
-                let shape = infer_tensor_shape(tensor_name, data.len(), hidden_size);
-                writer.add_tensor_f32(tensor_name, shape, data);
+            // ALB-099: Model weight tensors — consume by value to avoid copying
+            for (tensor_name, data) in param_data {
+                let shape = infer_tensor_shape(&tensor_name, data.len(), hidden_size);
+                writer.add_tensor_f32_owned(tensor_name, shape, data);
             }
 
-            // Optimizer state tensors (__training__ namespace)
-            for (i, m_data) in embed_m.iter().enumerate() {
-                writer.add_tensor_f32(
+            // ALB-099: Optimizer state tensors — consume by value
+            for (i, m_data) in embed_m.into_iter().enumerate() {
+                let len = m_data.len();
+                writer.add_tensor_f32_owned(
                     format!("__training__.embed_optimizer.m.{i}"),
-                    vec![m_data.len()],
+                    vec![len],
                     m_data,
                 );
             }
-            for (i, v_data) in embed_v.iter().enumerate() {
-                writer.add_tensor_f32(
+            for (i, v_data) in embed_v.into_iter().enumerate() {
+                let len = v_data.len();
+                writer.add_tensor_f32_owned(
                     format!("__training__.embed_optimizer.v.{i}"),
-                    vec![v_data.len()],
+                    vec![len],
                     v_data,
                 );
             }
