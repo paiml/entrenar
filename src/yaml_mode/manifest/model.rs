@@ -116,6 +116,14 @@ pub struct ArchitectureConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub use_bias: Option<bool>,
 
+    /// Per-head dimension override (for models where head_dim != hidden_size / num_heads)
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_human_usize_opt"
+    )]
+    pub head_dim: Option<usize>,
+
     /// Sequential layers (for sequential architecture type)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layers: Option<Vec<HashMap<String, serde_json::Value>>>,

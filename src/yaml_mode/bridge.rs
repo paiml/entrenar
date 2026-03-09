@@ -108,6 +108,7 @@ fn convert_model(
             rms_norm_eps: arch.rms_norm_eps,
             rope_theta: arch.rope_theta,
             use_bias: arch.use_bias,
+            head_dim: arch.head_dim,
         })
         .filter(|o| !o.is_empty());
 

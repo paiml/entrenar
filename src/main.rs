@@ -28,7 +28,14 @@ use clap::Parser;
 use entrenar::cli::{run_command, Cli};
 use std::process::ExitCode;
 
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() -> ExitCode {
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = dhat::Profiler::new_heap();
+
     let cli = Cli::parse();
 
     match run_command(cli) {

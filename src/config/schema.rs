@@ -128,10 +128,10 @@ pub struct ArchitectureOverrides {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden_size: Option<usize>,
     /// Number of transformer layers
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "num_layers")]
     pub num_hidden_layers: Option<usize>,
     /// Number of attention heads
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "num_heads")]
     pub num_attention_heads: Option<usize>,
     /// Number of key-value heads (for grouped-query attention)
     #[serde(default, skip_serializing_if = "Option::is_none", alias = "num_key_value_heads")]
@@ -143,7 +143,7 @@ pub struct ArchitectureOverrides {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vocab_size: Option<usize>,
     /// Maximum sequence/position length
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_seq_length")]
     pub max_position_embeddings: Option<usize>,
     /// RMS normalization epsilon
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -154,6 +154,9 @@ pub struct ArchitectureOverrides {
     /// Whether to use bias in linear layers
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub use_bias: Option<bool>,
+    /// Per-head dimension override (for models where head_dim != hidden_size / num_heads)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_dim: Option<usize>,
 }
 
 impl ArchitectureOverrides {
@@ -169,6 +172,7 @@ impl ArchitectureOverrides {
             && self.rms_norm_eps.is_none()
             && self.rope_theta.is_none()
             && self.use_bias.is_none()
+            && self.head_dim.is_none()
     }
 }
 
