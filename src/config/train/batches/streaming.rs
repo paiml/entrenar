@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Streaming Parquet data loader with file-level sharding for distributed training.
 //!
 //! # Architecture
@@ -147,6 +146,43 @@ impl StreamingParquetLoader {
         self.seq_len
     }
 
+    /// Load the next shard file and return its `LMBatch`es.
+    ///
+    /// Returns `Ok(None)` when all shards for this epoch are exhausted.
+    /// Each call loads one Parquet file, extracts pre-tokenized sequences,
+    /// creates `LMBatch`es, and drops the raw data. Peak memory = one shard.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+    pub fn next_batches(
+        &mut self,
+    ) -> std::result::Result<Option<Vec<crate::train::LMBatch>>, String> {
+        use crate::train::LMBatch;
+
+        if self.next_file_idx >= self.my_files.len() {
+            return Ok(None);
+        }
+
+        let path = &self.my_files[self.next_file_idx];
+        self.next_file_idx += 1;
+
+        // Load and extract pre-tokenized sequences from this shard
+        let sequences = load_pretokenized_from_parquet(path)?;
+
+        if sequences.is_empty() {
+            return Ok(Some(Vec::new()));
+        }
+
+        // Create LMBatches from sequences (sequences dropped after this)
+        let pad_id = 0u32;
+        let eos_id = 2u32;
+        let num_batches = (sequences.len() + self.batch_size - 1) / self.batch_size;
+        let mut batches = Vec::with_capacity(num_batches);
+        for chunk in sequences.chunks(self.batch_size) {
+            batches.push(LMBatch::from_sequences(chunk, pad_id, eos_id));
+        }
+
+        Ok(Some(batches))
+    }
+
     /// Check if all files have been consumed for this epoch.
     pub fn is_epoch_exhausted(&self) -> bool {
         self.next_file_idx >= self.my_files.len() && self.buffer.is_empty()
@@ -207,6 +243,79 @@ fn shuffle_files(files: &mut [PathBuf], base_seed: u64, epoch: usize) {
             .wrapping_add(1_442_695_040_888_963_407);
         let j = (rng_state >> 33) as usize % (i + 1);
         files.swap(i, j);
+    }
+}
+
+/// Load pre-tokenized sequences from a single Parquet file.
+///
+/// Looks for `input_ids` or `token_ids` columns containing integer list arrays.
+/// Returns the sequences as `Vec<Vec<u32>>`. The `ArrowDataset` is dropped before
+/// returning, so only the extracted token IDs remain in memory.
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn load_pretokenized_from_parquet(path: &Path) -> std::result::Result<Vec<Vec<u32>>, String> {
+    use alimentar::{ArrowDataset, Dataset};
+    use arrow::array::{Array, ListArray};
+
+    let dataset = ArrowDataset::from_parquet(path)
+        .map_err(|e| format!("Failed to load parquet {}: {e}", path.display()))?;
+
+    let schema = dataset.schema();
+    let column_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+
+    let token_col = column_names
+        .iter()
+        .find(|&&n| n == "input_ids" || n == "token_ids")
+        .copied();
+
+    let token_col = match token_col {
+        Some(col) => col,
+        None => {
+            return Err(format!(
+                "No pre-tokenized column (input_ids/token_ids) in {}",
+                path.display()
+            ));
+        }
+    };
+
+    let col_idx = schema
+        .index_of(token_col)
+        .map_err(|e| format!("Column index error: {e}"))?;
+
+    let mut sequences = Vec::with_capacity(dataset.len());
+
+    for batch in dataset.iter() {
+        let col = batch.column(col_idx);
+        if let Some(list_arr) = col.as_any().downcast_ref::<ListArray>() {
+            for i in 0..list_arr.len() {
+                if list_arr.is_null(i) {
+                    continue;
+                }
+                let values = list_arr.value(i);
+                let seq = extract_u32_values(&*values);
+                if !seq.is_empty() {
+                    sequences.push(seq);
+                }
+            }
+        }
+    }
+    // dataset dropped here — Arrow memory freed
+
+    Ok(sequences)
+}
+
+/// Extract u32 token IDs from an Arrow array (inner values of a ListArray).
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn extract_u32_values(array: &dyn arrow::array::Array) -> Vec<u32> {
+    use arrow::array::{Int32Array, Int64Array, UInt32Array};
+
+    if let Some(arr) = array.as_any().downcast_ref::<UInt32Array>() {
+        arr.values().to_vec()
+    } else if let Some(arr) = array.as_any().downcast_ref::<Int32Array>() {
+        arr.values().iter().map(|&v| v as u32).collect()
+    } else if let Some(arr) = array.as_any().downcast_ref::<Int64Array>() {
+        arr.values().iter().map(|&v| v as u32).collect()
+    } else {
+        Vec::new()
     }
 }
 

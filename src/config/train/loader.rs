@@ -3143,38 +3143,47 @@ fn load_lm_batches_from_parquet(
     Err(Error::ConfigError("No pre-tokenized or text column found".into()))
 }
 
-/// Load LM batches from a directory of Parquet shard files (ALB-007)
+/// Load LM batches from a directory of Parquet shard files (ALB-007, ALB-101)
+///
+/// Uses `StreamingParquetLoader` to process shards one at a time, keeping only
+/// one shard's worth of raw Arrow data in memory at any point. The resulting
+/// `LMBatch`es are still accumulated into a single Vec (full streaming during
+/// training is a future enhancement).
 #[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
 fn load_lm_batches_from_parquet_dir(
     dir: &std::path::Path,
-    tokenizer: &HfTokenizer,
+    _tokenizer: &HfTokenizer,
     batch_size: usize,
     seq_len: usize,
-    text_column: &str,
+    _text_column: &str,
 ) -> Result<Vec<LMBatch>> {
-    let mut parquet_files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map_err(|e| Error::ConfigError(format!("Cannot read directory {}: {e}", dir.display())))?
-        .filter_map(std::result::Result::ok)
-        .map(|entry| entry.path())
-        .filter(|p| p.extension().is_some_and(|ext| ext == "parquet"))
-        .collect();
+    use crate::config::train::batches::streaming::{ShardConfig, StreamingParquetLoader};
 
-    parquet_files.sort();
+    let mut loader = StreamingParquetLoader::new(dir, ShardConfig::single(), batch_size, seq_len)
+        .map_err(|e| Error::ConfigError(e))?;
 
-    if parquet_files.is_empty() {
-        return Err(Error::ConfigError(format!("No .parquet files found in {}", dir.display())));
-    }
-
-    println!("  Loading {} Parquet shard(s) from {}", parquet_files.len(), dir.display());
+    let total_shards = loader.total_files();
+    println!(
+        "  Streaming {} Parquet shard(s) from {} (ALB-101)",
+        total_shards,
+        dir.display()
+    );
 
     let mut all_batches = Vec::new();
-    for file in &parquet_files {
-        let shard_batches =
-            load_lm_batches_from_parquet(file, tokenizer, batch_size, seq_len, text_column)?;
+    let mut shard_idx = 0usize;
+
+    while let Some(shard_batches) = loader.next_batches().map_err(|e| Error::ConfigError(e))? {
+        shard_idx += 1;
+        let n = shard_batches.len();
         all_batches.extend(shard_batches);
+        // shard Arrow data already dropped inside next_batches()
+        println!(
+            "    shard {}/{}: {} batches (cumulative: {})",
+            shard_idx, total_shards, n, all_batches.len()
+        );
     }
 
-    println!("  Total: {} batches from {} shards", all_batches.len(), parquet_files.len());
+    println!("  Total: {} batches from {} shards", all_batches.len(), total_shards);
     Ok(all_batches)
 }
 
