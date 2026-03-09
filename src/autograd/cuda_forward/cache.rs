@@ -14,7 +14,8 @@ use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel, BatchedTransposeKernel,
     BatchedVectorizedRmsNormKernel, ElementwiseMulKernel, FusedSwigluKernel, GemmKernel,
-    InterleavedToBatchedKernel, Kernel, Nf4GemmKernel, ResidualAddKernel, ScaleKernel, SiluKernel,
+    InterleavedToBatchedKernel, Kernel, Nf4GemmKernel, Nf4GemmTransposeKernel, ResidualAddKernel,
+    ScaleKernel, SiluKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -270,8 +271,30 @@ impl ForwardKernelCache {
         }
 
         // 19-22. NF4 transposed GEMM for QLoRA backward (ENT-153).
-        // NOTE: Nf4GemmTransposeKernel removed — not yet exported by trueno-gpu.
-        // Backward NF4 path uses fp32 dequant + regular GEMM instead.
+        // C[M×K] = A[M×N] @ B[K×N]^T — gradient propagation through frozen NF4 layers.
+        if h.is_multiple_of(64) {
+            // O_proj backward: grad[S,N=q_dim] @ W_o[K=hidden,N=q_dim]^T → [S,hidden]
+            warm!(format!("nf4_gemm_transpose_{s}_{h}_{h}"), Nf4GemmTransposeKernel::new(s, h, h));
+            if kv_h != h && kv_h.is_multiple_of(64) {
+                // K/V proj backward: grad[S,kv_h] @ W_k[K=hidden,kv_h]^T → [S,hidden]
+                warm!(
+                    format!("nf4_gemm_transpose_{s}_{kv_h}_{h}"),
+                    Nf4GemmTransposeKernel::new(s, kv_h, h)
+                );
+            }
+            if i.is_multiple_of(64) {
+                // Gate/Up backward: grad[S,I] @ W_gate[K=hidden,I]^T → [S,hidden]
+                warm!(
+                    format!("nf4_gemm_transpose_{s}_{i}_{h}"),
+                    Nf4GemmTransposeKernel::new(s, i, h)
+                );
+                // Down backward: grad[S,H] @ W_down[K=I,H]^T → [S,I]
+                warm!(
+                    format!("nf4_gemm_transpose_{s}_{h}_{i}"),
+                    Nf4GemmTransposeKernel::new(s, h, i)
+                );
+            }
+        }
 
         eprintln!("[CUDA] Pre-warmed {count} forward kernels (JIT compiled before block upload)");
         Ok(())

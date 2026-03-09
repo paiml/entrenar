@@ -8,6 +8,7 @@ use trueno_gpu::driver::{CublasHandle, CudaStream, GemmOp, GpuBuffer, LaunchConf
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel,
+    Nf4GemmTransposeKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -609,9 +610,51 @@ pub fn gemm_nf4_backward_a(
     k: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let _cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
 
-    // Nf4GemmTransposeKernel — not yet available in trueno-gpu
-    let _ = (grad_output, w_nf4, w_scales, grad_input, m, n, k, stream);
-    Err(CudaTensorError::KernelError("NF4 GEMM transpose not yet implemented".to_string()))
+    let kernel = Nf4GemmTransposeKernel::new(m, n, k);
+    let tile_size = kernel.tile_size;
+
+    let key = format!("nf4_gemm_transpose_{m}_{n}_{k}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    // Output is [M × K], tiled with tile_size
+    let config = LaunchConfig {
+        grid: (k.div_ceil(tile_size), m.div_ceil(tile_size), 1),
+        block: (tile_size * tile_size, 1, 1),
+        shared_mem: 16 * 4, // NF4 codebook LUT
+    };
+
+    let a_ptr = grad_output.as_ptr();
+    let b_nf4_ptr = w_nf4.as_ptr();
+    let b_scales_ptr = w_scales.as_ptr();
+    let c_ptr = grad_input.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 7] = [
+        &a_ptr as *const _ as *mut _,
+        &b_nf4_ptr as *const _ as *mut _,
+        &b_scales_ptr as *const _ as *mut _,
+        &c_ptr as *const _ as *mut _,
+        &m as *const _ as *mut _,
+        &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations.
+    unsafe {
+        stream.launch_kernel(module, "nf4_gemm_transpose", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("NF4 GEMM transpose launch failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
 }
