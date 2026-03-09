@@ -3107,25 +3107,40 @@ fn load_lm_batches_from_parquet(
 
     println!("  Loading Parquet LM data: {}", path.display());
 
-    let dataset = ArrowDataset::from_parquet(path).map_err(|e| {
-        Error::ConfigError(format!("Failed to load parquet {}: {e}", path.display()))
-    })?;
+    // ALB-099: Scope ArrowDataset so it drops before LMBatch construction,
+    // avoiding triple materialization (Arrow + Vec<Vec<u32>> + LMBatch).
+    let (sequences, texts) = {
+        let dataset = ArrowDataset::from_parquet(path).map_err(|e| {
+            Error::ConfigError(format!("Failed to load parquet {}: {e}", path.display()))
+        })?;
 
-    println!("  Loaded {} rows from Parquet", dataset.len());
+        println!("  Loaded {} rows from Parquet", dataset.len());
 
-    let schema = dataset.schema();
-    let column_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        let schema = dataset.schema();
+        let column_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
 
-    // Try pre-tokenized first (input_ids column with integer list type)
-    if let Some(sequences) = try_extract_pretokenized(&dataset, &column_names) {
+        // Try pre-tokenized first (input_ids column with integer list type)
+        let seqs = try_extract_pretokenized(&dataset, &column_names);
+        let txts = if seqs.is_none() {
+            Some(extract_text_column(&dataset, text_column, &column_names)?)
+        } else {
+            None
+        };
+        (seqs, txts)
+        // dataset dropped here — frees Arrow RecordBatch memory
+    };
+
+    if let Some(sequences) = sequences {
         println!("  Found pre-tokenized column, loaded {} sequences", sequences.len());
         return create_lm_batches_from_sequences(&sequences, batch_size, seq_len);
     }
 
-    // Fall back to text column + tokenization
-    let texts = extract_text_column(&dataset, text_column, &column_names)?;
-    println!("  Extracted {} text rows, tokenizing...", texts.len());
-    tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len)
+    if let Some(texts) = texts {
+        println!("  Extracted {} text rows, tokenizing...", texts.len());
+        return tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len);
+    }
+
+    Err(Error::ConfigError("No pre-tokenized or text column found".into()))
 }
 
 /// Load LM batches from a directory of Parquet shard files (ALB-007)
@@ -3179,7 +3194,8 @@ fn try_extract_pretokenized(
     let schema = dataset.schema();
     let col_idx = schema.index_of(token_col).ok()?;
 
-    let mut all_sequences = Vec::new();
+    // ALB-099: Pre-allocate with known row count
+    let mut all_sequences = Vec::with_capacity(dataset.len());
 
     for batch in dataset.iter() {
         let col = batch.column(col_idx);
@@ -3333,7 +3349,9 @@ fn create_lm_batches_from_sequences(
     batch_size: usize,
     _seq_len: usize,
 ) -> Result<Vec<LMBatch>> {
-    let mut batches = Vec::new();
+    // ALB-099: Pre-allocate with known batch count
+    let num_batches = (sequences.len() + batch_size - 1) / batch_size;
+    let mut batches = Vec::with_capacity(num_batches);
     let pad_id = 0u32; // Standard pad token
     let eos_id = 2u32; // Standard EOS token
 
