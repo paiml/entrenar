@@ -52,8 +52,13 @@ pub struct TraceMeasurement {
 }
 
 /// Thread-safe tracer for collecting timing measurements.
+/// ALB-099: Uses aggregated counters instead of unbounded Vec to prevent
+/// memory leak during long training runs (was ~2.8 GB at 28K steps).
 pub struct Tracer {
+    /// Legacy per-measurement storage (kept for backward compat, bounded)
     measurements: Mutex<Vec<TraceMeasurement>>,
+    /// ALB-099: Aggregated totals — O(1) memory regardless of training length
+    aggregated: Mutex<HashMap<TraceStep, (usize, Duration)>>,
     active_spans: Mutex<HashMap<TraceStep, Instant>>,
     enabled: Mutex<bool>,
 }
@@ -63,6 +68,7 @@ impl Tracer {
     pub fn new() -> Self {
         Self {
             measurements: Mutex::new(Vec::new()),
+            aggregated: Mutex::new(HashMap::new()),
             active_spans: Mutex::new(HashMap::new()),
             enabled: Mutex::new(false), // Disabled by default for performance
         }
@@ -93,15 +99,18 @@ impl Tracer {
     }
 
     /// End a timing span and record measurement.
-    pub fn end(&self, step: TraceStep, metadata: impl Into<String>) {
+    /// ALB-099: Aggregates into counters (O(1) memory) instead of appending to Vec.
+    pub fn end(&self, step: TraceStep, _metadata: impl Into<String>) {
         if !self.is_enabled() {
             return;
         }
         let mut spans = self.active_spans.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(start) = spans.remove(&step) {
             let duration = start.elapsed();
-            let mut measurements = self.measurements.lock().unwrap_or_else(PoisonError::into_inner);
-            measurements.push(TraceMeasurement { step, duration, metadata: metadata.into() });
+            let mut agg = self.aggregated.lock().unwrap_or_else(PoisonError::into_inner);
+            let entry = agg.entry(step).or_insert((0, Duration::ZERO));
+            entry.0 += 1;
+            entry.1 += duration;
         }
     }
 
@@ -123,13 +132,15 @@ impl Tracer {
     /// Clear all measurements.
     pub fn clear(&self) {
         self.measurements.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        self.aggregated.lock().unwrap_or_else(PoisonError::into_inner).clear();
         self.active_spans.lock().unwrap_or_else(PoisonError::into_inner).clear();
     }
 
     /// Generate a report with Dr. Popper analysis.
+    /// ALB-099: Reads from aggregated counters (O(1) memory).
     pub fn report(&self) -> String {
-        let measurements = self.measurements.lock().unwrap_or_else(PoisonError::into_inner);
-        if measurements.is_empty() {
+        let agg = self.aggregated.lock().unwrap_or_else(PoisonError::into_inner);
+        if agg.is_empty() {
             return "No measurements recorded. Enable tracing with TRACER.enable()".to_string();
         }
 
@@ -137,10 +148,10 @@ impl Tracer {
         let mut counts: HashMap<TraceStep, usize> = HashMap::new();
         let mut total_time = Duration::ZERO;
 
-        for m in measurements.iter() {
-            *totals.entry(m.step).or_default() += m.duration;
-            *counts.entry(m.step).or_default() += 1;
-            total_time += m.duration;
+        for (&step, &(count, duration)) in agg.iter() {
+            totals.insert(step, duration);
+            counts.insert(step, count);
+            total_time += duration;
         }
 
         let mut output =
