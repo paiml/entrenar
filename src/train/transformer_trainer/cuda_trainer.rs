@@ -2640,33 +2640,33 @@ impl CudaTransformerTrainer {
                 .find(|(n, _)| n.ends_with("layernorm.weight") || n == "model.norm.weight")
                 .map_or(0, |(_, d)| d.len());
 
-            // ALB-099: Model weight tensors — consume by value to avoid copying
-            for (tensor_name, data) in param_data {
-                let shape = infer_tensor_shape(&tensor_name, data.len(), hidden_size);
-                writer.add_tensor_f32_owned(tensor_name, shape, data);
+            // Model weight tensors
+            for (tensor_name, data) in &param_data {
+                let shape = infer_tensor_shape(tensor_name, data.len(), hidden_size);
+                writer.add_tensor_f32(tensor_name.clone(), shape, data);
             }
 
-            // ALB-099: Optimizer state tensors — consume by value
-            for (i, m_data) in embed_m.into_iter().enumerate() {
+            // Optimizer state tensors
+            for (i, m_data) in embed_m.iter().enumerate() {
                 let len = m_data.len();
-                writer.add_tensor_f32_owned(
+                writer.add_tensor_f32(
                     format!("__training__.embed_optimizer.m.{i}"),
                     vec![len],
                     m_data,
                 );
             }
-            for (i, v_data) in embed_v.into_iter().enumerate() {
+            for (i, v_data) in embed_v.iter().enumerate() {
                 let len = v_data.len();
-                writer.add_tensor_f32_owned(
+                writer.add_tensor_f32(
                     format!("__training__.embed_optimizer.v.{i}"),
                     vec![len],
                     v_data,
                 );
             }
 
-            // ALB-099: write_into consumes the writer — zero-copy f32→bytes on LE
+            // Write APR checkpoint to file
             writer
-                .write_into(path)
+                .write(path)
                 .map_err(|e| crate::error::Error::Serialization(format!("APR save failed: {e}")))?;
 
             Ok(())
