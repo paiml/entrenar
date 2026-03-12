@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Streaming Parquet data loader with file-level sharding for distributed training.
 //!
 //! # Architecture
@@ -262,10 +263,7 @@ fn load_pretokenized_from_parquet(path: &Path) -> std::result::Result<Vec<Vec<u3
     let schema = dataset.schema();
     let column_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
 
-    let token_col = column_names
-        .iter()
-        .find(|&&n| n == "input_ids" || n == "token_ids")
-        .copied();
+    let token_col = column_names.iter().find(|&&n| n == "input_ids" || n == "token_ids").copied();
 
     let token_col = match token_col {
         Some(col) => col,
@@ -277,9 +275,7 @@ fn load_pretokenized_from_parquet(path: &Path) -> std::result::Result<Vec<Vec<u3
         }
     };
 
-    let col_idx = schema
-        .index_of(token_col)
-        .map_err(|e| format!("Column index error: {e}"))?;
+    let col_idx = schema.index_of(token_col).map_err(|e| format!("Column index error: {e}"))?;
 
     let mut sequences = Vec::with_capacity(dataset.len());
 
