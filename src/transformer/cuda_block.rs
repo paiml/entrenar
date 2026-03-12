@@ -2958,6 +2958,7 @@ impl CudaNf4TransformerBlock {
             e
         })?;
 
+
         // === Step 1: FFN backward (NF4 transpose, no weight grads for frozen projections) ===
         self.backward_nf4_ffn(
             grad_output,
@@ -3075,17 +3076,6 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // DEBUG: Sync after first NF4 transpose to catch async CUDA errors immediately
-        stream.synchronize().map_err(|e| {
-            eprintln!(
-                "[backward_nf4_ffn] CUDA sync after down_proj transpose FAILED: {e:?} \
-                 (seq_len={seq_len}, hidden={hidden_size}, inter={intermediate_size})"
-            );
-            crate::autograd::cuda_tensor::CudaTensorError::KernelError(format!(
-                "NF4 backward sync failed after down_proj: {e:?}"
-            ))
-        })?;
-
         // Step 2: SwiGLU backward: swiglu = silu(gate) * up
         // d_gate = d_swiglu * up * silu'(gate)
         // d_up   = d_swiglu * silu(gate)
@@ -3110,12 +3100,12 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // d_up = d_swiglu * silu(gate) → store in gate_out (reuse)
-        // Compute silu(gate) into ffn_out (scratch)
-        silu_forward(&scratch.gate_out, &mut scratch.ffn_out, n_inter, stream)?;
+        // Compute silu(gate) into swiglu_out (scratch) — NOT ffn_out which is [S,H] (too small)
+        silu_forward(&scratch.gate_out, &mut scratch.swiglu_out, n_inter, stream)?;
         // d_up = d_swiglu * silu(gate)
         elementwise_mul_forward(
             &scratch.grad_swiglu,
-            &scratch.ffn_out,
+            &scratch.swiglu_out,
             &mut scratch.gate_out, // d_up stored here
             n_inter,
             stream,

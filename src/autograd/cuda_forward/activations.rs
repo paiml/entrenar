@@ -30,7 +30,7 @@ pub fn relu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("relu_forward_{n}");
+    let key = "relu_forward".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -82,7 +82,7 @@ pub fn softmax_forward(
     let kernel = SoftmaxKernel::new(length);
     let kernel_name = kernel.name();
 
-    let key = format!("softmax_forward_{length}");
+    let key = "softmax_forward".to_string(); // PTX is length-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -128,7 +128,7 @@ pub fn gelu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("gelu_forward_{n}");
+    let key = "gelu_forward".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -175,7 +175,7 @@ pub fn silu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("silu_forward_{n}");
+    let key = "silu_forward".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
