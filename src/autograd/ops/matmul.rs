@@ -10,27 +10,27 @@ use ndarray::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 use std::sync::{Mutex, OnceLock};
 
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 use realizar::cuda::CudaExecutor;
 
 /// Once a realizador CUDA matmul fails (typically JIT OOM after GPU VRAM is filled
 /// by NF4 block upload), disable all further attempts. Without this flag, every
 /// matmul call re-attempts CUDA, fails, and falls back to CPU — producing thousands
 /// of log lines per training step and adding ~100ms overhead per call.
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 static CUDA_MATMUL_DISABLED: AtomicBool = AtomicBool::new(false);
 
 /// Global CUDA executor (singleton, initialized once)
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 static CUDA_EXECUTOR: OnceLock<Option<Mutex<CudaExecutor>>> = OnceLock::new();
 
 /// Get or initialize CUDA executor
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 fn get_cuda_executor() -> Option<&'static Mutex<CudaExecutor>> {
     CUDA_EXECUTOR
         .get_or_init(|| match CudaExecutor::new(0) {
@@ -150,7 +150,7 @@ fn transpose_simple(src: &[f32], dst: &mut [f32], rows: usize, cols: usize) {
 ///
 /// After the first CUDA failure (typically JIT OOM when VRAM is occupied by NF4
 /// block uploads), all subsequent calls skip CUDA entirely and use trueno SIMD.
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     // Fast path: skip CUDA entirely once disabled (common during QLoRA training
     // where NF4 blocks fill VRAM before realizador can JIT-compile gemm_tiled)
@@ -199,7 +199,7 @@ pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec
 /// - Classifier head
 ///
 /// Call this BEFORE uploading transformer blocks (C-PREWARM-001).
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 pub fn pre_warm_realizador_gemm(
     seq_len: usize,
     hidden_size: usize,
@@ -281,7 +281,7 @@ pub fn pre_warm_realizador_gemm(
 }
 
 /// CUDA matrix multiplication via realizar's CudaExecutor
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 fn cuda_matmul(
     executor: &mut CudaExecutor,
     a: &[f32],
@@ -348,7 +348,7 @@ pub fn unsuppress_per_op_wgpu() {
 /// Tries wgpu GPU matmul first (Vulkan/Metal/DX12), falls back to rayon-parallel
 /// trueno BLIS GEMM on CPU. The wgpu path uses trueno's GpuDevice for cross-platform
 /// GPU compute on AMD, Intel, and Apple GPUs.
-#[cfg(not(feature = "cuda"))]
+#[cfg(not(feature = "realizar"))]
 pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     #[cfg(feature = "gpu")]
     {
