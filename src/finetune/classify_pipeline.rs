@@ -36,7 +36,7 @@ use crate::autograd::cuda_forward::{pre_warm_forward_kernels, pre_warm_lora_back
 use crate::autograd::cuda_optim::pre_warm_lora_adamw_kernels;
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
-#[cfg(feature = "cuda")]
+#[cfg(feature = "realizar")]
 use crate::autograd::ops::pre_warm_realizador_gemm;
 #[cfg(feature = "cuda")]
 use crate::gpu::guard::VramGuard;
@@ -1276,17 +1276,6 @@ impl ClassifyPipeline {
             return false;
         }
 
-        let realizador_warmed = pre_warm_realizador_gemm(
-            max_seq_len,
-            model_config.hidden_size,
-            model_config.num_kv_heads * head_dim,
-            model_config.intermediate_size,
-            classify_config.lora_rank,
-            classify_config.num_classes,
-        );
-        if realizador_warmed > 0 {
-            eprintln!("[CUDA] Pre-warmed {realizador_warmed} realizador GEMM shapes");
-        }
 
         true
     }
