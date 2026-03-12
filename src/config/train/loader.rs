@@ -200,7 +200,11 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 
     // Try to load model weights if path exists (ENT-117)
     // ALB-097: Check output_dir first for checkpoint resume, then model_path for initial weights
+    #[cfg(feature = "cuda")]
     let (transformer, checkpoint_step) =
+        load_transformer_model(&resolved_path, &model_config, &spec.training.output_dir)?;
+    #[cfg(not(feature = "cuda"))]
+    let (transformer, _checkpoint_step) =
         load_transformer_model(&resolved_path, &model_config, &spec.training.output_dir)?;
 
     // Build TransformerTrainConfig from YAML spec fields
@@ -3163,11 +3167,7 @@ fn load_lm_batches_from_parquet_dir(
         .map_err(|e| Error::ConfigError(e))?;
 
     let total_shards = loader.total_files();
-    println!(
-        "  Streaming {} Parquet shard(s) from {} (ALB-101)",
-        total_shards,
-        dir.display()
-    );
+    println!("  Streaming {} Parquet shard(s) from {} (ALB-101)", total_shards, dir.display());
 
     let mut all_batches = Vec::new();
     let mut shard_idx = 0usize;
@@ -3179,7 +3179,10 @@ fn load_lm_batches_from_parquet_dir(
         // shard Arrow data already dropped inside next_batches()
         println!(
             "    shard {}/{}: {} batches (cumulative: {})",
-            shard_idx, total_shards, n, all_batches.len()
+            shard_idx,
+            total_shards,
+            n,
+            all_batches.len()
         );
     }
 
