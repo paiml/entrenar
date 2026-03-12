@@ -33,7 +33,7 @@ pub fn fused_swiglu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("fused_swiglu_forward_{n}");
+    let key = "fused_swiglu_forward".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -363,7 +363,11 @@ pub fn gemm_nf4_forward(
     let kernel = Nf4GemmKernel::new(m, n, k);
     let tile_size = kernel.tile_size;
 
-    let key = format!("nf4_gemm_forward_{m}_{k}_{n}");
+    // Cache key excludes M (seq_len) — PTX is shape-independent (m/n/k are
+    // runtime params, only tile_size is baked in). Including M causes cache misses
+    // when actual seq_len differs from max_seq_len used during pre-warming,
+    // triggering on-demand JIT that fails on Blackwell (trueno#184).
+    let key = format!("nf4_gemm_forward_{k}_{n}");
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -618,7 +622,8 @@ pub fn gemm_nf4_backward_a(
     let kernel = Nf4GemmTransposeKernel::new(m, n, k);
     let tile_size = kernel.tile_size;
 
-    let key = format!("nf4_gemm_transpose_{m}_{n}_{k}");
+    // Cache key excludes M (seq_len) — PTX is shape-independent (trueno#184).
+    let key = format!("nf4_gemm_transpose_{n}_{k}");
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {

@@ -38,7 +38,7 @@ pub fn residual_add_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("residual_add_forward_{n}");
+    let key = "residual_add_forward".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -91,7 +91,7 @@ pub fn inplace_add_gpu(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("inplace_add_{n}");
+    let key = "inplace_add".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -150,7 +150,7 @@ pub fn elementwise_mul_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("elementwise_mul_forward_{n}");
+    let key = "elementwise_mul_forward".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -206,7 +206,7 @@ pub fn scale_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("scale_forward_{n}");
+    let key = "scale_forward".to_string(); // PTX is n-independent (trueno#184)
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {

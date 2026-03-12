@@ -153,6 +153,7 @@ impl ForwardKernelCache {
     ) -> Result<()> {
         let s = max_seq_len as u32;
         let h = hidden_size as u32;
+        let q_dim = (num_heads * head_dim) as u32; // Q/O projection dim (may differ from h)
         let kv_h = (num_kv_heads * head_dim) as u32;
         let i = intermediate_size as u32;
         let nh = num_heads as u32;
@@ -192,10 +193,10 @@ impl ForwardKernelCache {
         warm!(format!("gemm_forward_{s}_{i}_{h}"), GemmKernel::naive(s, h, i));
 
         // 6. Fused SwiGLU
-        warm!(format!("fused_swiglu_forward_{si}"), FusedSwigluKernel::new(si));
+        warm!("fused_swiglu_forward".to_string(), FusedSwigluKernel::new(si));
 
         // 7. Residual add (seq * hidden)
-        warm!(format!("residual_add_forward_{sh}"), ResidualAddKernel::new(sh));
+        warm!("residual_add_forward".to_string(), ResidualAddKernel::new(sh));
 
         // 8. Interleaved-to-batched: Q (S, NH, HD) and K/V (S, NKV, HD)
         warm!(
@@ -223,7 +224,7 @@ impl ForwardKernelCache {
 
         // 11. Scale: attention scores (NH * S * S)
         let score_n = nh * s * s;
-        warm!(format!("scale_forward_{score_n}"), ScaleKernel::new(score_n));
+        warm!("scale_forward".to_string(), ScaleKernel::new(score_n));
 
         // 12. Batched softmax: (NH * S rows, S cols)
         let softmax_rows = nh * s;
@@ -251,46 +252,62 @@ impl ForwardKernelCache {
         );
 
         // 15. Element-wise multiply (used in FFN backward for SwiGLU gate * up)
-        warm!(format!("elementwise_mul_forward_{si}"), ElementwiseMulKernel::new(si));
+        warm!("elementwise_mul_forward".to_string(), ElementwiseMulKernel::new(si));
 
         // 16. SiLU forward activation (standalone, used in LoRA FFN path)
-        warm!(format!("silu_forward_{si}"), SiluKernel::new(si));
+        warm!("silu_forward".to_string(), SiluKernel::new(si));
 
         // 17-20. NF4 quantized GEMM variants (trueno#108: QLoRA support)
         // Same 4 GEMM shapes but with Nf4GemmKernel instead of GemmKernel.
         // Only compiled if K is divisible by 64 (NF4 block size).
         if h.is_multiple_of(64) {
-            warm!(format!("nf4_gemm_forward_{s}_{h}_{h}"), Nf4GemmKernel::new(s, h, h));
-            if kv_h != h && kv_h.is_multiple_of(64) {
-                warm!(format!("nf4_gemm_forward_{s}_{h}_{kv_h}"), Nf4GemmKernel::new(s, kv_h, h));
+            // NF4 cache keys exclude M (seq_len) — PTX is shape-independent
+            // (m/n/k are runtime params). Including M causes cache misses when
+            // actual seq_len != max_seq_len, triggering on-demand JIT that fails
+            // after GPU memory is loaded (trueno#184).
+            //
+            // Attention projections use q_dim (= num_heads * head_dim) which may
+            // differ from hidden_size (e.g. Qwen3-4B: h=2560, q_dim=4096).
+            // Q proj: input[S,h] @ W_q[h, q_dim] — key {h}_{q_dim}
+            warm!(format!("nf4_gemm_forward_{h}_{q_dim}"), Nf4GemmKernel::new(s, q_dim, h));
+            // O proj: input[S,q_dim] @ W_o[q_dim, h] — key {q_dim}_{h}
+            if q_dim != h {
+                warm!(format!("nf4_gemm_forward_{q_dim}_{h}"), Nf4GemmKernel::new(s, h, q_dim));
+            }
+            if kv_h != h && kv_h != q_dim && kv_h.is_multiple_of(64) {
+                warm!(format!("nf4_gemm_forward_{h}_{kv_h}"), Nf4GemmKernel::new(s, kv_h, h));
             }
             if i.is_multiple_of(64) {
-                warm!(format!("nf4_gemm_forward_{s}_{h}_{i}"), Nf4GemmKernel::new(s, i, h));
-                warm!(format!("nf4_gemm_forward_{s}_{i}_{h}"), Nf4GemmKernel::new(s, h, i));
+                warm!(format!("nf4_gemm_forward_{h}_{i}"), Nf4GemmKernel::new(s, i, h));
+                warm!(format!("nf4_gemm_forward_{i}_{h}"), Nf4GemmKernel::new(s, h, i));
             }
         }
 
         // 19-22. NF4 transposed GEMM for QLoRA backward (ENT-153).
         // C[M×K] = A[M×N] @ B[K×N]^T — gradient propagation through frozen NF4 layers.
         if h.is_multiple_of(64) {
-            // O_proj backward: grad[S,N=q_dim] @ W_o[K=hidden,N=q_dim]^T → [S,hidden]
-            warm!(format!("nf4_gemm_transpose_{s}_{h}_{h}"), Nf4GemmTransposeKernel::new(s, h, h));
-            if kv_h != h && kv_h.is_multiple_of(64) {
-                // K/V proj backward: grad[S,kv_h] @ W_k[K=hidden,kv_h]^T → [S,hidden]
+            // Q proj backward: grad[S,q_dim] @ W_q[h, q_dim]^T → [S,h]
+            warm!(format!("nf4_gemm_transpose_{q_dim}_{h}"), Nf4GemmTransposeKernel::new(s, q_dim, h));
+            // O proj backward: grad[S,h] @ W_o[q_dim, h]^T → [S,q_dim]
+            if q_dim != h {
+                warm!(format!("nf4_gemm_transpose_{h}_{q_dim}"), Nf4GemmTransposeKernel::new(s, h, q_dim));
+            }
+            if kv_h != h && kv_h != q_dim && kv_h.is_multiple_of(64) {
+                // K/V proj backward: grad[S,kv_h] @ W_k[h, kv_h]^T → [S,h]
                 warm!(
-                    format!("nf4_gemm_transpose_{s}_{kv_h}_{h}"),
+                    format!("nf4_gemm_transpose_{kv_h}_{h}"),
                     Nf4GemmTransposeKernel::new(s, kv_h, h)
                 );
             }
             if i.is_multiple_of(64) {
-                // Gate/Up backward: grad[S,I] @ W_gate[K=hidden,I]^T → [S,hidden]
+                // Gate/Up backward: grad[S,I] @ W_gate[h,I]^T → [S,h]
                 warm!(
-                    format!("nf4_gemm_transpose_{s}_{i}_{h}"),
+                    format!("nf4_gemm_transpose_{i}_{h}"),
                     Nf4GemmTransposeKernel::new(s, i, h)
                 );
-                // Down backward: grad[S,H] @ W_down[K=I,H]^T → [S,I]
+                // Down backward: grad[S,h] @ W_down[I,h]^T → [S,I]
                 warm!(
-                    format!("nf4_gemm_transpose_{s}_{h}_{i}"),
+                    format!("nf4_gemm_transpose_{h}_{i}"),
                     Nf4GemmTransposeKernel::new(s, h, i)
                 );
             }
