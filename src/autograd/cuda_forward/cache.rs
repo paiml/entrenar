@@ -287,10 +287,16 @@ impl ForwardKernelCache {
         // C[M×K] = A[M×N] @ B[K×N]^T — gradient propagation through frozen NF4 layers.
         if h.is_multiple_of(64) {
             // Q proj backward: grad[S,q_dim] @ W_q[h, q_dim]^T → [S,h]
-            warm!(format!("nf4_gemm_transpose_{q_dim}_{h}"), Nf4GemmTransposeKernel::new(s, q_dim, h));
+            warm!(
+                format!("nf4_gemm_transpose_{q_dim}_{h}"),
+                Nf4GemmTransposeKernel::new(s, q_dim, h)
+            );
             // O proj backward: grad[S,h] @ W_o[q_dim, h]^T → [S,q_dim]
             if q_dim != h {
-                warm!(format!("nf4_gemm_transpose_{h}_{q_dim}"), Nf4GemmTransposeKernel::new(s, h, q_dim));
+                warm!(
+                    format!("nf4_gemm_transpose_{h}_{q_dim}"),
+                    Nf4GemmTransposeKernel::new(s, h, q_dim)
+                );
             }
             if kv_h != h && kv_h != q_dim && kv_h.is_multiple_of(64) {
                 // K/V proj backward: grad[S,kv_h] @ W_k[h, kv_h]^T → [S,h]
@@ -301,15 +307,9 @@ impl ForwardKernelCache {
             }
             if i.is_multiple_of(64) {
                 // Gate/Up backward: grad[S,I] @ W_gate[h,I]^T → [S,h]
-                warm!(
-                    format!("nf4_gemm_transpose_{i}_{h}"),
-                    Nf4GemmTransposeKernel::new(s, i, h)
-                );
+                warm!(format!("nf4_gemm_transpose_{i}_{h}"), Nf4GemmTransposeKernel::new(s, i, h));
                 // Down backward: grad[S,h] @ W_down[I,h]^T → [S,I]
-                warm!(
-                    format!("nf4_gemm_transpose_{h}_{i}"),
-                    Nf4GemmTransposeKernel::new(s, h, i)
-                );
+                warm!(format!("nf4_gemm_transpose_{h}_{i}"), Nf4GemmTransposeKernel::new(s, h, i));
             }
         }
 
