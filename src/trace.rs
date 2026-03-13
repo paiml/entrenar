@@ -360,20 +360,11 @@ mod tests {
     fn test_tracer_report_dr_popper_analysis() {
         let tracer = Tracer::new();
 
-        // Inject deterministic measurements directly to avoid time-dependent sleeps
+        // Inject into aggregated counters (report reads from aggregated, not measurements)
         {
-            let mut measurements =
-                tracer.measurements.lock().expect("lock acquisition should succeed");
-            measurements.push(TraceMeasurement {
-                step: TraceStep::Matmul,
-                duration: Duration::from_millis(50),
-                metadata: "compute".to_string(),
-            });
-            measurements.push(TraceMeasurement {
-                step: TraceStep::Transpose,
-                duration: Duration::from_millis(10),
-                metadata: "overhead1".to_string(),
-            });
+            let mut agg = tracer.aggregated.lock().expect("lock acquisition should succeed");
+            agg.insert(TraceStep::Matmul, (1, Duration::from_millis(50)));
+            agg.insert(TraceStep::Transpose, (1, Duration::from_millis(10)));
         }
 
         let report = tracer.report();
