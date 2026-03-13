@@ -3362,7 +3362,7 @@ fn create_lm_batches_from_sequences(
     _seq_len: usize,
 ) -> Result<Vec<LMBatch>> {
     // ALB-099: Pre-allocate with known batch count
-    let num_batches = (sequences.len() + batch_size - 1) / batch_size;
+    let num_batches = sequences.len().div_ceil(batch_size);
     let mut batches = Vec::with_capacity(num_batches);
     let pad_id = 0u32; // Standard pad token
     let eos_id = 2u32; // Standard EOS token
