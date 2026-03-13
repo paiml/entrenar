@@ -600,6 +600,7 @@ mod tests {
                 rms_norm_eps: None,
                 rope_theta: None,
                 use_bias: None,
+                head_dim: None,
                 layers: None,
             });
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
@@ -985,6 +986,7 @@ output:
                 rms_norm_eps: None,
                 rope_theta: None,
                 use_bias: None,
+                head_dim: None,
                 layers: None,
             });
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
@@ -1235,6 +1237,7 @@ output:
                 rms_norm_eps: Some(1e-5),
                 rope_theta: Some(500_000.0),
                 use_bias: Some(true),
+                head_dim: None,
                 layers: None,
             });
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
@@ -1267,6 +1270,7 @@ output:
                 rms_norm_eps: None,
                 rope_theta: None,
                 use_bias: None,
+                head_dim: None,
                 layers: None,
             });
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
@@ -1290,6 +1294,7 @@ output:
                 rms_norm_eps: None,
                 rope_theta: None,
                 use_bias: None,
+                head_dim: None,
                 layers: None,
             });
         let result = manifest_to_spec(&manifest).expect("operation should succeed");

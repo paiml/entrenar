@@ -1002,8 +1002,6 @@ impl CudaTransformerTrainer {
         }
         self.profiler.end(StepProfiler::LOSS);
 
-
-
         // Steps 8-11: GPU backward pass (with or without optimizer)
         // (sub-phases lm_bwd, norm_bwd, blk_bwd instrumented inside gpu_backward)
         // KAIZEN-050: grad_logits on GPU. KAIZEN-052: grad lives in logits_buf (in-place).
@@ -1142,8 +1140,6 @@ impl CudaTransformerTrainer {
         // KAIZEN-050: Logits stay GPU-resident — no D2H transfer.
         // Fused cross-entropy kernel reads logits_buf directly on GPU.
         self.profiler.end(StepProfiler::NORM_LM);
-
-
 
         Some(())
     }
@@ -1333,8 +1329,6 @@ impl CudaTransformerTrainer {
         }
         self.profiler.end(StepProfiler::LM_BWD);
 
-
-
         // Final RMSNorm backward
         self.profiler.begin(StepProfiler::NORM_BWD);
         // Zero grad_final_norm_weight before backward — kernel accumulates via atomicAdd
@@ -1365,8 +1359,6 @@ impl CudaTransformerTrainer {
                 gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
         }
         self.profiler.end(StepProfiler::NORM_BWD);
-
-
 
         // R-038: Either accumulate non-block grads or run non-block optimizer.
         if accumulate_only {
@@ -1475,21 +1467,57 @@ impl CudaTransformerTrainer {
                 if let Some(max_norm) = max_grad_norm {
                     // Phase 1: compute global L2 norm (immutable borrows)
                     let clip_scale = {
-                        let ws = self.nf4_lora_grad_workspace
+                        let ws = self
+                            .nf4_lora_grad_workspace
                             .as_ref()
                             .expect("NF4 requires LoRA grad ws");
-                        let sq_a_q = squared_sum_cuda(&ws.grad_lora_a_q, ws.grad_lora_a_q.len() as u32, stream).unwrap_or(0.0);
-                        let sq_b_q = squared_sum_cuda(&ws.grad_lora_b_q, ws.grad_lora_b_q.len() as u32, stream).unwrap_or(0.0);
-                        let sq_a_v = squared_sum_cuda(&ws.grad_lora_a_v, ws.grad_lora_a_v.len() as u32, stream).unwrap_or(0.0);
-                        let sq_b_v = squared_sum_cuda(&ws.grad_lora_b_v, ws.grad_lora_b_v.len() as u32, stream).unwrap_or(0.0);
-                        let sq_in = squared_sum_cuda(&ws.grad_input_norm, ws.grad_input_norm.len() as u32, stream).unwrap_or(0.0);
-                        let sq_pa = squared_sum_cuda(&ws.grad_post_attn_norm, ws.grad_post_attn_norm.len() as u32, stream).unwrap_or(0.0);
+                        let sq_a_q = squared_sum_cuda(
+                            &ws.grad_lora_a_q,
+                            ws.grad_lora_a_q.len() as u32,
+                            stream,
+                        )
+                        .unwrap_or(0.0);
+                        let sq_b_q = squared_sum_cuda(
+                            &ws.grad_lora_b_q,
+                            ws.grad_lora_b_q.len() as u32,
+                            stream,
+                        )
+                        .unwrap_or(0.0);
+                        let sq_a_v = squared_sum_cuda(
+                            &ws.grad_lora_a_v,
+                            ws.grad_lora_a_v.len() as u32,
+                            stream,
+                        )
+                        .unwrap_or(0.0);
+                        let sq_b_v = squared_sum_cuda(
+                            &ws.grad_lora_b_v,
+                            ws.grad_lora_b_v.len() as u32,
+                            stream,
+                        )
+                        .unwrap_or(0.0);
+                        let sq_in = squared_sum_cuda(
+                            &ws.grad_input_norm,
+                            ws.grad_input_norm.len() as u32,
+                            stream,
+                        )
+                        .unwrap_or(0.0);
+                        let sq_pa = squared_sum_cuda(
+                            &ws.grad_post_attn_norm,
+                            ws.grad_post_attn_norm.len() as u32,
+                            stream,
+                        )
+                        .unwrap_or(0.0);
                         let total_norm = (sq_a_q + sq_b_q + sq_a_v + sq_b_v + sq_in + sq_pa).sqrt();
-                        if total_norm > max_norm { max_norm / (total_norm + 1e-6) } else { 1.0 }
+                        if total_norm > max_norm {
+                            max_norm / (total_norm + 1e-6)
+                        } else {
+                            1.0
+                        }
                     };
                     // Phase 2: apply clip scale (mutable borrows — lengths captured in phase 1 scope)
                     if clip_scale < 1.0 {
-                        let ws = self.nf4_lora_grad_workspace
+                        let ws = self
+                            .nf4_lora_grad_workspace
                             .as_mut()
                             .expect("NF4 requires LoRA grad ws");
                         let n_aq = ws.grad_lora_a_q.len() as u32;
@@ -1502,8 +1530,14 @@ impl CudaTransformerTrainer {
                         let _ = gradient_clip_cuda(&mut ws.grad_lora_b_q, clip_scale, n_bq, stream);
                         let _ = gradient_clip_cuda(&mut ws.grad_lora_a_v, clip_scale, n_av, stream);
                         let _ = gradient_clip_cuda(&mut ws.grad_lora_b_v, clip_scale, n_bv, stream);
-                        let _ = gradient_clip_cuda(&mut ws.grad_input_norm, clip_scale, n_in, stream);
-                        let _ = gradient_clip_cuda(&mut ws.grad_post_attn_norm, clip_scale, n_pa, stream);
+                        let _ =
+                            gradient_clip_cuda(&mut ws.grad_input_norm, clip_scale, n_in, stream);
+                        let _ = gradient_clip_cuda(
+                            &mut ws.grad_post_attn_norm,
+                            clip_scale,
+                            n_pa,
+                            stream,
+                        );
                     }
                 }
 

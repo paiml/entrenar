@@ -1276,7 +1276,6 @@ impl ClassifyPipeline {
             return false;
         }
 
-
         true
     }
 

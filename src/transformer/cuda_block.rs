@@ -2958,7 +2958,6 @@ impl CudaNf4TransformerBlock {
             e
         })?;
 
-
         // === Step 1: FFN backward (NF4 transpose, no weight grads for frozen projections) ===
         self.backward_nf4_ffn(
             grad_output,
