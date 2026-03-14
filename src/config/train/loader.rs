@@ -2361,14 +2361,20 @@ fn load_transformer_model(
 
     println!("Loading model weights from {}...", model_path.display());
 
+    // ALB-117: When loading from model_path (initial weights, NOT resume from output_dir),
+    // always return step=0. The checkpoint step from the source model is irrelevant —
+    // we're starting fresh training with pre-trained weights, not resuming a training run.
+    // Without this, loading model-step-14500.apr as initial weights would set step=14500,
+    // causing immediate exit when max_steps < 14500 (loss=0.0, no training executed).
+
     // ALB-096: Try APR format from model_path (direct .apr file or HF download)
-    if let Some(result) = try_load_apr(model_path, config) {
-        return Ok(result);
+    if let Some((model, _source_step)) = try_load_apr(model_path, config) {
+        return Ok((model, 0));
     }
 
     // Fallback: SafeTensors from model_path
-    if let Some(result) = try_load_safetensors_dir(model_path, config) {
-        return Ok(result);
+    if let Some((model, _source_step)) = try_load_safetensors_dir(model_path, config) {
+        return Ok((model, 0));
     }
 
     eprintln!("Warning: No loadable checkpoint found, using random initialization");
