@@ -16,22 +16,15 @@ use std::path::PathBuf;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let model_dir = get_arg(&args, "--model-dir")
-        .map(PathBuf::from)
-        .expect("--model-dir required");
-    let data_path = get_arg(&args, "--data")
-        .map(PathBuf::from)
-        .expect("--data required");
-    let num_samples: usize = get_arg(&args, "--samples")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(50);
+    let model_dir = get_arg(&args, "--model-dir").map(PathBuf::from).expect("--model-dir required");
+    let data_path = get_arg(&args, "--data").map(PathBuf::from).expect("--data required");
+    let num_samples: usize = get_arg(&args, "--samples").and_then(|s| s.parse().ok()).unwrap_or(50);
 
     // Load config.json from model directory
     let config_path = model_dir.join("config.json");
     let config_str = std::fs::read_to_string(&config_path)
         .unwrap_or_else(|e| panic!("Cannot read {}: {e}", config_path.display()));
-    let json: serde_json::Value =
-        serde_json::from_str(&config_str).expect("Invalid config.json");
+    let json: serde_json::Value = serde_json::from_str(&config_str).expect("Invalid config.json");
 
     let model_config = TransformerConfig {
         hidden_size: json["hidden_size"].as_u64().unwrap_or(2560) as usize,
@@ -95,12 +88,8 @@ fn main() {
 
     // Debug: generate a simple completion to check model output
     println!("=== Debug: simple completion test ===");
-    let debug_config = GenerateConfig {
-        max_new_tokens: 10,
-        temperature: 0.0,
-        top_k: 1,
-        stop_tokens: Vec::new(),
-    };
+    let debug_config =
+        GenerateConfig { max_new_tokens: 10, temperature: 0.0, top_k: 1, stop_tokens: Vec::new() };
     match pipeline.generate("Hello, my name is", &debug_config) {
         Ok(text) => {
             println!("Prompt: 'Hello, my name is'");
@@ -156,21 +145,23 @@ fn main() {
         let elapsed = start.elapsed();
 
         // Extract predicted classification (strict format match)
-        let predicted_safe =
-            response.contains("Classification: safe") && !response.contains("Classification: unsafe");
+        let predicted_safe = response.contains("Classification: safe")
+            && !response.contains("Classification: unsafe");
         let predicted_unsafe = response.contains("Classification: unsafe");
 
         // Lenient fallback: look for "unsafe" or "safe" keywords
-        let lenient_safe = !predicted_safe && !predicted_unsafe
+        let lenient_safe = !predicted_safe
+            && !predicted_unsafe
             && response.to_lowercase().contains("safe")
             && !response.to_lowercase().contains("unsafe");
-        let lenient_unsafe = !predicted_safe && !predicted_unsafe
-            && response.to_lowercase().contains("unsafe");
+        let lenient_unsafe =
+            !predicted_safe && !predicted_unsafe && response.to_lowercase().contains("unsafe");
 
         let final_safe = predicted_safe || lenient_safe;
         let final_unsafe = predicted_unsafe || lenient_unsafe;
 
-        let strict_correct = (expected_safe && predicted_safe) || (expected_unsafe && predicted_unsafe);
+        let strict_correct =
+            (expected_safe && predicted_safe) || (expected_unsafe && predicted_unsafe);
         let is_correct = (expected_safe && final_safe) || (expected_unsafe && final_unsafe);
         if strict_correct {
             correct += 1;
@@ -183,9 +174,17 @@ fn main() {
 
         let label = if expected_safe { "safe" } else { "unsafe" };
         let pred = if final_safe {
-            if predicted_safe { "safe" } else { "safe*" }
+            if predicted_safe {
+                "safe"
+            } else {
+                "safe*"
+            }
         } else if final_unsafe {
-            if predicted_unsafe { "unsafe" } else { "unsafe*" }
+            if predicted_unsafe {
+                "unsafe"
+            } else {
+                "unsafe*"
+            }
         } else {
             "???"
         };
@@ -208,7 +207,10 @@ fn main() {
     println!();
     println!("=== Results ===");
     println!("Total evaluated: {total}");
-    println!("Strict correct: {correct}/{total} ({:.1}%)", 100.0 * correct as f64 / total.max(1) as f64);
+    println!(
+        "Strict correct: {correct}/{total} ({:.1}%)",
+        100.0 * correct as f64 / total.max(1) as f64
+    );
     println!(
         "Safe accuracy:   {safe_correct}/{safe_total} ({:.1}%)",
         100.0 * safe_correct as f64 / safe_total.max(1) as f64
@@ -241,8 +243,5 @@ fn main() {
 }
 
 fn get_arg(args: &[String], flag: &str) -> Option<String> {
-    args.iter()
-        .position(|a| a == flag)
-        .and_then(|i| args.get(i + 1))
-        .cloned()
+    args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
 }

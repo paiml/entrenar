@@ -524,9 +524,15 @@ impl CudaTransformerTrainer {
                 let lora_b_v = vec![0.0f32; lora_rank * kv_hidden];
 
                 // ENT-270: Extract QK-norm weights if present
-                let q_norm_data = layer.self_attn.q_norm.as_ref()
+                let q_norm_data = layer
+                    .self_attn
+                    .q_norm
+                    .as_ref()
                     .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
-                let k_norm_data = layer.self_attn.k_norm.as_ref()
+                let k_norm_data = layer
+                    .self_attn
+                    .k_norm
+                    .as_ref()
                     .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
 
                 let block = crate::transformer::CudaNf4TransformerBlock::new(
