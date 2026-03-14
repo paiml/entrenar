@@ -2405,9 +2405,6 @@ fn try_load_safetensors_dir(
                     (min, max, mean)
                 };
                 println!("✓ Loaded pre-trained weights successfully (SafeTensors)");
-                if checkpoint_step > 0 {
-                    println!("  Resuming from step {checkpoint_step}");
-                }
                 println!("  embed_tokens stats: min={emin:.4e} max={emax:.4e} mean={emean:.4e}");
                 return Some((Some(transformer), checkpoint_step));
             }
@@ -2490,9 +2487,9 @@ fn try_load_apr(
         (min, max, mean)
     };
     println!("✓ Loaded pre-trained weights successfully (APR)");
-    if checkpoint_step > 0 {
-        println!("  Resuming from step {checkpoint_step}");
-    }
+    // ALB-117: Don't print "Resuming from step" here — the caller decides whether
+    // this is a genuine resume (output_dir) or fresh training (model_path).
+    // The caller at set_initial_step prints the resume message when appropriate.
     println!("  embed_tokens stats: min={emin:.4e} max={emax:.4e} mean={emean:.4e}");
 
     Some((Some(transformer), checkpoint_step))
