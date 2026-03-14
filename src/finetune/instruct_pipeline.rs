@@ -518,7 +518,7 @@ impl InstructPipeline {
                 if idx >= num_layers {
                     continue;
                 }
-                let lora_idx = idx * 2 + if is_q { 0 } else { 1 };
+                let lora_idx = idx * 2 + usize::from(!is_q);
                 if lora_idx >= lora_layers.len() {
                     continue;
                 }
