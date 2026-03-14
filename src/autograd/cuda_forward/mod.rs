@@ -60,4 +60,6 @@ pub use matmul::{
 };
 #[cfg(feature = "cuda")]
 pub(crate) use matmul::{cublas_gemm_backward_a, cublas_gemm_backward_b};
-pub use normalization::{layer_norm_forward, rms_norm_forward};
+pub use normalization::{
+    layer_norm_forward, per_head_rmsnorm_forward, rms_norm_forward, rope_neox_forward,
+};
