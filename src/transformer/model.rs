@@ -2,7 +2,7 @@
 //!
 //! This module provides the full transformer model for language modeling.
 
-use crate::autograd::matmul;
+use crate::autograd::matmul_nt;
 use crate::error::{Error, Result};
 use crate::Tensor;
 use std::collections::HashMap;
@@ -287,10 +287,8 @@ impl Transformer {
         // Language model head
         let lm_weight = self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight);
 
-        // (seq_len, hidden_size) @ (hidden_size, vocab_size) = (seq_len, vocab_size)
-        // Note: If embedding is (vocab_size, hidden_size), we need to transpose
-        // For tied weights, we use embedding.T effectively
-        matmul(&normalized, lm_weight, seq_len, hidden_size, self.config.vocab_size)
+        // lm_head / tied embed_tokens is [vocab_size, hidden_size] in HF (ENT-269)
+        matmul_nt(&normalized, lm_weight, seq_len, hidden_size, self.config.vocab_size)
     }
 
     /// Forward pass returning hidden states (before lm_head)
@@ -386,7 +384,7 @@ impl Transformer {
 
         let hidden = self.forward_hidden_with_lora(token_ids, lora_layers);
         let lm_weight = self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight);
-        matmul(&hidden, lm_weight, seq_len, hidden_size, self.config.vocab_size)
+        matmul_nt(&hidden, lm_weight, seq_len, hidden_size, self.config.vocab_size)
     }
 
     /// Get the last token's logits (for generation)
@@ -1018,7 +1016,7 @@ mod tests {
         let hidden = transformer.forward_hidden(&tokens);
         let w_clone = transformer.embed_tokens.weight.clone();
         let explicit_logits =
-            matmul(&hidden, &w_clone, tokens.len(), config.hidden_size, config.vocab_size);
+            matmul_nt(&hidden, &w_clone, tokens.len(), config.hidden_size, config.vocab_size);
 
         let tied_data = tied_logits.data();
         let explicit_data = explicit_logits.data();
@@ -1135,7 +1133,7 @@ mod tests {
                 let tied_logits = transformer.forward(&token_ids);
                 let hidden = transformer.forward_hidden(&token_ids);
                 let w_clone = transformer.embed_tokens.weight.clone();
-                let explicit_logits = matmul(
+                let explicit_logits = matmul_nt(
                     &hidden, &w_clone,
                     token_ids.len(), config.hidden_size, config.vocab_size,
                 );

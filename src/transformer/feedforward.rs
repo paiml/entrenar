@@ -2,7 +2,7 @@
 //!
 //! This module provides position-wise feed-forward networks with SwiGLU activation.
 
-use crate::autograd::matmul;
+use crate::autograd::matmul_nt;
 use crate::Tensor;
 use std::collections::HashMap;
 
@@ -108,18 +108,18 @@ impl FeedForward {
         let hidden_size = self.config.hidden_size;
         let intermediate_size = self.config.intermediate_size;
 
-        // Gate projection: (seq_len, hidden) @ (hidden, intermediate) = (seq_len, intermediate)
-        let gate = matmul(x, &self.w_gate, seq_len, hidden_size, intermediate_size);
+        // Gate projection — HF weights [intermediate, hidden] (ENT-269)
+        let gate = matmul_nt(x, &self.w_gate, seq_len, hidden_size, intermediate_size);
 
-        // Up projection: (seq_len, hidden) @ (hidden, intermediate) = (seq_len, intermediate)
-        let up = matmul(x, &self.w_up, seq_len, hidden_size, intermediate_size);
+        // Up projection — HF weights [intermediate, hidden] (ENT-269)
+        let up = matmul_nt(x, &self.w_up, seq_len, hidden_size, intermediate_size);
 
         // SwiGLU: SiLU(gate) * up
         let gate_activated = crate::autograd::swish(&gate);
         let hidden = crate::autograd::mul(&gate_activated, &up);
 
-        // Down projection: (seq_len, intermediate) @ (intermediate, hidden) = (seq_len, hidden)
-        matmul(&hidden, &self.w_down, seq_len, intermediate_size, hidden_size)
+        // Down projection — HF weights [hidden, intermediate] (ENT-269)
+        matmul_nt(&hidden, &self.w_down, seq_len, intermediate_size, hidden_size)
     }
 
     /// Get all parameters as a vector
@@ -231,8 +231,8 @@ impl EncoderFeedForward {
         let h = self.config.hidden_size;
         let inter = self.config.intermediate_size;
 
-        // Up projection: (seq_len, h) @ (h, inter) + bias = (seq_len, inter)
-        let up = matmul(x, &self.w_up, seq_len, h, inter);
+        // Up projection — HF weights [inter, h] (ENT-269)
+        let up = matmul_nt(x, &self.w_up, seq_len, h, inter);
         let up_data = up.data();
         let up_slice = up_data.as_slice().expect("contiguous");
         let b_up_slice = self.b_up.data().as_slice().expect("contiguous");
@@ -242,8 +242,8 @@ impl EncoderFeedForward {
             (0..seq_len * inter).map(|i| gelu(up_slice[i] + b_up_slice[i % inter])).collect();
         let activated_t = Tensor::from_vec(activated, true);
 
-        // Down projection: (seq_len, inter) @ (inter, h) + bias = (seq_len, h)
-        let down = matmul(&activated_t, &self.w_down, seq_len, inter, h);
+        // Down projection — HF weights [h, inter] (ENT-269)
+        let down = matmul_nt(&activated_t, &self.w_down, seq_len, inter, h);
         let down_data = down.data();
         let down_slice = down_data.as_slice().expect("contiguous");
         let b_down_slice = self.b_down.data().as_slice().expect("contiguous");
