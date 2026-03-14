@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             dropout: 0.1,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         }),
         quantize: None,
         merge: None,

@@ -14,7 +14,7 @@
 //!
 //! ALL 6 checks must PASS before starting Run 8.
 
-use entrenar::transformer::{TransformerConfig, TransformerModel};
+use entrenar::transformer::TransformerConfig;
 use std::path::PathBuf;
 
 fn main() {
