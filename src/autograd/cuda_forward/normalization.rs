@@ -184,9 +184,9 @@ pub fn per_head_rmsnorm_forward(
     let input_offset = pos_offset * stride;
     let output_offset = pos_offset * stride;
 
-    // SAFETY: pointer arithmetic within buffer bounds (caller ensures pos_offset < seq_len)
-    let input_ptr = unsafe { input.as_ptr().add(input_offset * std::mem::size_of::<f32>()) };
-    let output_ptr = unsafe { output.as_ptr().add(output_offset * std::mem::size_of::<f32>()) };
+    // CUdeviceptr is u64 — use arithmetic, not pointer .add()
+    let input_ptr = input.as_ptr() + (input_offset * std::mem::size_of::<f32>()) as u64;
+    let output_ptr = output.as_ptr() + (output_offset * std::mem::size_of::<f32>()) as u64;
     let gamma_ptr = gamma.as_ptr();
 
     let mut args: [*mut std::ffi::c_void; 3] = [
@@ -247,9 +247,9 @@ pub fn rope_neox_forward(
     let stride = (num_heads * head_dim) as usize;
     let byte_offset = pos_offset * stride * std::mem::size_of::<f32>();
 
-    // SAFETY: pointer arithmetic within buffer bounds
-    let input_ptr = unsafe { input.as_ptr().add(byte_offset) };
-    let output_ptr = unsafe { output.as_ptr().add(byte_offset) };
+    // CUdeviceptr is u64 — use arithmetic, not pointer .add()
+    let input_ptr = input.as_ptr() + byte_offset as u64;
+    let output_ptr = output.as_ptr() + byte_offset as u64;
 
     let mut args: [*mut std::ffi::c_void; 3] = [
         &input_ptr as *const _ as *mut _,
