@@ -609,14 +609,26 @@ impl CudaTransformerBlock {
         if let Some(ref q_norm) = self.q_norm_weight {
             for pos in 0..seq_len {
                 per_head_rmsnorm_forward(
-                    &self.scratch.q, q_norm, &mut self.scratch.q, nh, hd, pos, stream,
+                    &self.scratch.q,
+                    q_norm,
+                    &mut self.scratch.q,
+                    nh,
+                    hd,
+                    pos,
+                    stream,
                 )?;
             }
         }
         if let Some(ref k_norm) = self.k_norm_weight {
             for pos in 0..seq_len {
                 per_head_rmsnorm_forward(
-                    &self.scratch.k, k_norm, &mut self.scratch.k, nkv, hd, pos, stream,
+                    &self.scratch.k,
+                    k_norm,
+                    &mut self.scratch.k,
+                    nkv,
+                    hd,
+                    pos,
+                    stream,
                 )?;
             }
         }
@@ -624,8 +636,26 @@ impl CudaTransformerBlock {
         // ── ENT-270: Apply RoPE (NeoX half-rotation) on Q and K ──────────
         let rope_theta = self.config.rope_theta;
         for pos in 0..seq_len {
-            rope_neox_forward(&self.scratch.q, &mut self.scratch.q, nh, hd, pos as u32, pos, rope_theta, stream)?;
-            rope_neox_forward(&self.scratch.k, &mut self.scratch.k, nkv, hd, pos as u32, pos, rope_theta, stream)?;
+            rope_neox_forward(
+                &self.scratch.q,
+                &mut self.scratch.q,
+                nh,
+                hd,
+                pos as u32,
+                pos,
+                rope_theta,
+                stream,
+            )?;
+            rope_neox_forward(
+                &self.scratch.k,
+                &mut self.scratch.k,
+                nkv,
+                hd,
+                pos as u32,
+                pos,
+                rope_theta,
+                stream,
+            )?;
         }
 
         // Step 1: Q interleaved [seq, num_heads * head_dim] → batched [num_heads, seq, head_dim]
@@ -2721,28 +2751,12 @@ impl CudaNf4TransformerBlock {
         //   projection → QK-norm → RoPE → attention
         if let Some(ref q_norm) = self.q_norm_weight {
             for pos in 0..seq_len {
-                per_head_rmsnorm_forward(
-                    &scratch.q,
-                    q_norm,
-                    &mut scratch.q,
-                    nh,
-                    hd,
-                    pos,
-                    stream,
-                )?;
+                per_head_rmsnorm_forward(&scratch.q, q_norm, &mut scratch.q, nh, hd, pos, stream)?;
             }
         }
         if let Some(ref k_norm) = self.k_norm_weight {
             for pos in 0..seq_len {
-                per_head_rmsnorm_forward(
-                    &scratch.k,
-                    k_norm,
-                    &mut scratch.k,
-                    nkv,
-                    hd,
-                    pos,
-                    stream,
-                )?;
+                per_head_rmsnorm_forward(&scratch.k, k_norm, &mut scratch.k, nkv, hd, pos, stream)?;
             }
         }
 

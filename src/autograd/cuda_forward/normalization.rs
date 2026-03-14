@@ -177,11 +177,7 @@ pub fn per_head_rmsnorm_forward(
     };
 
     // One block per head, one warp (32 threads) per block
-    let config = LaunchConfig {
-        grid: (num_heads, 1, 1),
-        block: (32, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (num_heads, 1, 1), block: (32, 1, 1), shared_mem: 0 };
 
     // Offset into the buffer for this position
     let stride = (num_heads * head_dim) as usize;
@@ -200,11 +196,9 @@ pub fn per_head_rmsnorm_forward(
     ];
 
     unsafe {
-        stream
-            .launch_kernel(module, "per_head_rmsnorm", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("PerHeadRmsNorm forward failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "per_head_rmsnorm", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("PerHeadRmsNorm forward failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -246,11 +240,8 @@ pub fn rope_neox_forward(
     };
 
     // One block per head, half_dim threads per block
-    let config = LaunchConfig {
-        grid: (num_heads, 1, 1),
-        block: (head_dim / 2, 1, 1),
-        shared_mem: 0,
-    };
+    let config =
+        LaunchConfig { grid: (num_heads, 1, 1), block: (head_dim / 2, 1, 1), shared_mem: 0 };
 
     // Offset into buffer for this position
     let stride = (num_heads * head_dim) as usize;
@@ -267,11 +258,9 @@ pub fn rope_neox_forward(
     ];
 
     unsafe {
-        stream
-            .launch_kernel(module, "rope_neox", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("RoPE NeoX forward failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "rope_neox", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("RoPE NeoX forward failed: {e:?}"))
+        })?;
     }
 
     Ok(())

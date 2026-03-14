@@ -90,9 +90,8 @@ fn apply_rope(
     let mut out = vec![0.0f32; seq_len * total_dim];
 
     // Precompute inverse frequencies: 1 / (theta ^ (2i / head_dim))
-    let inv_freq: Vec<f32> = (0..half_dim)
-        .map(|i| 1.0 / rope_theta.powf(2.0 * i as f32 / head_dim as f32))
-        .collect();
+    let inv_freq: Vec<f32> =
+        (0..half_dim).map(|i| 1.0 / rope_theta.powf(2.0 * i as f32 / head_dim as f32)).collect();
 
     for pos in 0..seq_len {
         for h in 0..num_heads {
