@@ -1433,9 +1433,15 @@ impl ClassifyPipeline {
                 };
 
                 // ENT-270: Extract QK-norm weights if present
-                let q_norm_data = layer.self_attn.q_norm.as_ref()
+                let q_norm_data = layer
+                    .self_attn
+                    .q_norm
+                    .as_ref()
                     .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
-                let k_norm_data = layer.self_attn.k_norm.as_ref()
+                let k_norm_data = layer
+                    .self_attn
+                    .k_norm
+                    .as_ref()
                     .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
 
                 crate::transformer::CudaNf4TransformerBlock::new(

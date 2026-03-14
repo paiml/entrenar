@@ -452,9 +452,8 @@ impl InstructPipeline {
         config: &InstructConfig,
     ) -> Vec<LoRALayer> {
         let hidden = model_config.hidden_size;
-        let head_dim = model_config
-            .head_dim_override
-            .unwrap_or(hidden / model_config.num_attention_heads);
+        let head_dim =
+            model_config.head_dim_override.unwrap_or(hidden / model_config.num_attention_heads);
 
         let mut lora_layers = Vec::new();
 
@@ -519,7 +518,7 @@ impl InstructPipeline {
                 if idx >= num_layers {
                     continue;
                 }
-                let lora_idx = idx * 2 + if is_q { 0 } else { 1 };
+                let lora_idx = idx * 2 + usize::from(!is_q);
                 if lora_idx >= lora_layers.len() {
                     continue;
                 }
@@ -1298,9 +1297,15 @@ impl InstructPipeline {
                 };
 
                 // ENT-270: Extract QK-norm weights if present
-                let q_norm_data = layer.self_attn.q_norm.as_ref()
+                let q_norm_data = layer
+                    .self_attn
+                    .q_norm
+                    .as_ref()
                     .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
-                let k_norm_data = layer.self_attn.k_norm.as_ref()
+                let k_norm_data = layer
+                    .self_attn
+                    .k_norm
+                    .as_ref()
                     .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
 
                 crate::transformer::CudaNf4TransformerBlock::new(
