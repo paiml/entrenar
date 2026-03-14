@@ -177,20 +177,16 @@ pub fn per_head_rmsnorm_forward(
     };
 
     // One block per head, one warp (32 threads) per block
-    let config = LaunchConfig {
-        grid: (num_heads, 1, 1),
-        block: (32, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (num_heads, 1, 1), block: (32, 1, 1), shared_mem: 0 };
 
     // Offset into the buffer for this position
     let stride = (num_heads * head_dim) as usize;
     let input_offset = pos_offset * stride;
     let output_offset = pos_offset * stride;
 
-    // SAFETY: pointer arithmetic within buffer bounds (caller ensures pos_offset < seq_len)
-    let input_ptr = unsafe { input.as_ptr().add(input_offset * std::mem::size_of::<f32>()) };
-    let output_ptr = unsafe { output.as_ptr().add(output_offset * std::mem::size_of::<f32>()) };
+    // CUdeviceptr is u64 — use arithmetic, not pointer .add()
+    let input_ptr = input.as_ptr() + (input_offset * std::mem::size_of::<f32>()) as u64;
+    let output_ptr = output.as_ptr() + (output_offset * std::mem::size_of::<f32>()) as u64;
     let gamma_ptr = gamma.as_ptr();
 
     let mut args: [*mut std::ffi::c_void; 3] = [
@@ -200,11 +196,9 @@ pub fn per_head_rmsnorm_forward(
     ];
 
     unsafe {
-        stream
-            .launch_kernel(module, "per_head_rmsnorm", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("PerHeadRmsNorm forward failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "per_head_rmsnorm", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("PerHeadRmsNorm forward failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -246,19 +240,16 @@ pub fn rope_neox_forward(
     };
 
     // One block per head, half_dim threads per block
-    let config = LaunchConfig {
-        grid: (num_heads, 1, 1),
-        block: (head_dim / 2, 1, 1),
-        shared_mem: 0,
-    };
+    let config =
+        LaunchConfig { grid: (num_heads, 1, 1), block: (head_dim / 2, 1, 1), shared_mem: 0 };
 
     // Offset into buffer for this position
     let stride = (num_heads * head_dim) as usize;
     let byte_offset = pos_offset * stride * std::mem::size_of::<f32>();
 
-    // SAFETY: pointer arithmetic within buffer bounds
-    let input_ptr = unsafe { input.as_ptr().add(byte_offset) };
-    let output_ptr = unsafe { output.as_ptr().add(byte_offset) };
+    // CUdeviceptr is u64 — use arithmetic, not pointer .add()
+    let input_ptr = input.as_ptr() + byte_offset as u64;
+    let output_ptr = output.as_ptr() + byte_offset as u64;
 
     let mut args: [*mut std::ffi::c_void; 3] = [
         &input_ptr as *const _ as *mut _,
@@ -267,11 +258,9 @@ pub fn rope_neox_forward(
     ];
 
     unsafe {
-        stream
-            .launch_kernel(module, "rope_neox", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("RoPE NeoX forward failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "rope_neox", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("RoPE NeoX forward failed: {e:?}"))
+        })?;
     }
 
     Ok(())
