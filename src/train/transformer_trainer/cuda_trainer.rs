@@ -523,6 +523,12 @@ impl CudaTransformerTrainer {
                     .collect();
                 let lora_b_v = vec![0.0f32; lora_rank * kv_hidden];
 
+                // ENT-270: Extract QK-norm weights if present
+                let q_norm_data = layer.self_attn.q_norm.as_ref()
+                    .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
+                let k_norm_data = layer.self_attn.k_norm.as_ref()
+                    .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
+
                 let block = crate::transformer::CudaNf4TransformerBlock::new(
                     mc,
                     i,
@@ -541,6 +547,8 @@ impl CudaTransformerTrainer {
                     Some((&lora_a_v, &lora_b_v)),
                     lora_scale,
                     lora_rank,
+                    q_norm_data.as_deref(),
+                    k_norm_data.as_deref(),
                 )
                 .map_err(|e| {
                     crate::error::Error::ConfigError(format!("NF4 block {i} upload failed: {e:?}"))

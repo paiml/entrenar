@@ -46,8 +46,8 @@ use crate::autograd::cuda_backward::{
 use crate::autograd::cuda_forward::{
     batched_4d_gemm_forward, batched_softmax_forward, batched_to_interleaved_forward,
     batched_transpose_forward, elementwise_mul_forward, expand_kv_heads, fused_swiglu_forward,
-    gemm_forward, interleaved_to_batched_forward, residual_add_forward, rms_norm_forward,
-    scale_forward, silu_forward,
+    gemm_forward, interleaved_to_batched_forward, per_head_rmsnorm_forward, residual_add_forward,
+    rms_norm_forward, rope_neox_forward, scale_forward, silu_forward,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::adamw_step_cuda;
@@ -90,6 +90,9 @@ pub struct CudaTransformerBlock {
     scratch: CudaBlockScratch,
     /// Pre-allocated host zero buffer for zeroing norm grad buffers [hidden_size]
     norm_zero_buf: Vec<f32>,
+    /// ENT-270: QK-norm weights (per-head RMSNorm, shape=[head_dim])
+    q_norm_weight: Option<GpuBuffer<f32>>,
+    k_norm_weight: Option<GpuBuffer<f32>>,
 }
 
 /// Preallocated scratch buffers for transformer forward/backward pass.
@@ -412,7 +415,17 @@ impl CudaTransformerBlock {
             ctx,
             scratch,
             norm_zero_buf: vec![0.0f32; hidden_size],
+            q_norm_weight: None, // ENT-270: set via set_qk_norm() after construction
+            k_norm_weight: None,
         })
+    }
+
+    /// Set QK-norm weights (ENT-270). Called after construction when loading Qwen3 models.
+    #[allow(dead_code)]
+    pub fn set_qk_norm(&mut self, q_norm: &[f32], k_norm: &[f32]) -> Result<()> {
+        self.q_norm_weight = Some(GpuBuffer::from_host(&self.ctx, q_norm)?);
+        self.k_norm_weight = Some(GpuBuffer::from_host(&self.ctx, k_norm)?);
+        Ok(())
     }
 
     /// Forward pass - all operations on GPU
@@ -591,6 +604,29 @@ impl CudaTransformerBlock {
         let nh = saturating_u32(num_heads);
         let nkv = saturating_u32(num_kv_heads);
         let hd = saturating_u32(head_dim);
+
+        // ── ENT-270: Apply QK-norm (per-head RMSNorm) on Q and K ──────────
+        if let Some(ref q_norm) = self.q_norm_weight {
+            for pos in 0..seq_len {
+                per_head_rmsnorm_forward(
+                    &self.scratch.q, q_norm, &mut self.scratch.q, nh, hd, pos, stream,
+                )?;
+            }
+        }
+        if let Some(ref k_norm) = self.k_norm_weight {
+            for pos in 0..seq_len {
+                per_head_rmsnorm_forward(
+                    &self.scratch.k, k_norm, &mut self.scratch.k, nkv, hd, pos, stream,
+                )?;
+            }
+        }
+
+        // ── ENT-270: Apply RoPE (NeoX half-rotation) on Q and K ──────────
+        let rope_theta = self.config.rope_theta;
+        for pos in 0..seq_len {
+            rope_neox_forward(&self.scratch.q, &mut self.scratch.q, nh, hd, pos as u32, pos, rope_theta, stream)?;
+            rope_neox_forward(&self.scratch.k, &mut self.scratch.k, nkv, hd, pos as u32, pos, rope_theta, stream)?;
+        }
 
         // Step 1: Q interleaved [seq, num_heads * head_dim] → batched [num_heads, seq, head_dim]
         interleaved_to_batched_forward(
@@ -2260,6 +2296,9 @@ pub struct CudaNf4TransformerBlock {
     lora_b_v: Option<GpuBuffer<f32>>, // [rank, kv_hidden]
     lora_scale: f32,
     lora_rank: usize,
+    // QK-norm weights (ENT-270: per-head RMSNorm on Q and K, shape=[head_dim])
+    q_norm_weight: Option<GpuBuffer<f32>>,
+    k_norm_weight: Option<GpuBuffer<f32>>,
     ctx: Arc<CudaContext>,
     // NF4 blocks do NOT own scratch — shared across all layers (C-SCRATCH-001)
 }
@@ -2290,6 +2329,9 @@ impl CudaNf4TransformerBlock {
         v_lora: Option<(&[f32], &[f32])>,
         lora_scale: f32,
         lora_rank: usize,
+        // ENT-270: Optional QK-norm weights (per-head RMSNorm, shape=[head_dim])
+        q_norm: Option<&[f32]>,
+        k_norm: Option<&[f32]>,
     ) -> Result<Self> {
         use trueno_gpu::kernels::{quantize_nf4, NF4_BLOCK_SIZE};
 
@@ -2410,6 +2452,34 @@ impl CudaNf4TransformerBlock {
             None => (None, None),
         };
 
+        // ENT-270: Upload QK-norm weights if present
+        let q_norm_weight = match q_norm {
+            Some(w) => {
+                assert_eq!(
+                    w.len(),
+                    config.head_dim(),
+                    "ENT-270: q_norm weight expected [head_dim={}], got [{}]",
+                    config.head_dim(),
+                    w.len()
+                );
+                Some(GpuBuffer::from_host(&ctx, w)?)
+            }
+            None => None,
+        };
+        let k_norm_weight = match k_norm {
+            Some(w) => {
+                assert_eq!(
+                    w.len(),
+                    config.head_dim(),
+                    "ENT-270: k_norm weight expected [head_dim={}], got [{}]",
+                    config.head_dim(),
+                    w.len()
+                );
+                Some(GpuBuffer::from_host(&ctx, w)?)
+            }
+            None => None,
+        };
+
         Ok(Self {
             config: config.clone(),
             layer_idx,
@@ -2435,6 +2505,8 @@ impl CudaNf4TransformerBlock {
             lora_b_v,
             lora_scale,
             lora_rank,
+            q_norm_weight,
+            k_norm_weight,
             ctx,
         })
     }
@@ -2643,6 +2715,62 @@ impl CudaNf4TransformerBlock {
         let nh = saturating_u32(num_heads);
         let nkv = saturating_u32(num_kv_heads);
         let hd = saturating_u32(head_dim);
+
+        // ── ENT-270: Apply QK-norm (per-head RMSNorm) on Q and K ──────────
+        // Must happen BEFORE RoPE, matching CPU path ordering:
+        //   projection → QK-norm → RoPE → attention
+        if let Some(ref q_norm) = self.q_norm_weight {
+            for pos in 0..seq_len {
+                per_head_rmsnorm_forward(
+                    &scratch.q,
+                    q_norm,
+                    &mut scratch.q,
+                    nh,
+                    hd,
+                    pos,
+                    stream,
+                )?;
+            }
+        }
+        if let Some(ref k_norm) = self.k_norm_weight {
+            for pos in 0..seq_len {
+                per_head_rmsnorm_forward(
+                    &scratch.k,
+                    k_norm,
+                    &mut scratch.k,
+                    nkv,
+                    hd,
+                    pos,
+                    stream,
+                )?;
+            }
+        }
+
+        // ── ENT-270: Apply RoPE (NeoX half-rotation) on Q and K ──────────
+        // Q: [seq_len, num_heads * head_dim], K: [seq_len, num_kv_heads * head_dim]
+        let rope_theta = self.config.rope_theta;
+        for pos in 0..seq_len {
+            rope_neox_forward(
+                &scratch.q,
+                &mut scratch.q,
+                nh,
+                hd,
+                pos as u32,
+                pos,
+                rope_theta,
+                stream,
+            )?;
+            rope_neox_forward(
+                &scratch.k,
+                &mut scratch.k,
+                nkv,
+                hd,
+                pos as u32,
+                pos,
+                rope_theta,
+                stream,
+            )?;
+        }
 
         // Q: interleaved → batched layout
         interleaved_to_batched_forward(&scratch.q, &mut scratch.attn_q_batched, s, nh, hd, stream)?;
