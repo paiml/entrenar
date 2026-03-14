@@ -2,7 +2,7 @@
 //!
 //! This module provides multi-head self-attention with grouped-query attention support.
 
-use crate::autograd::{matmul, BackwardOp};
+use crate::autograd::{matmul, matmul_nt, BackwardOp};
 use crate::Tensor;
 use ndarray::Array1;
 use std::cell::RefCell;
@@ -26,6 +26,91 @@ fn add_bias(x: &Tensor, bias: &Tensor, seq_len: usize) -> Tensor {
             out.push(x_slice[base + d] + b_slice[d]);
         }
     }
+    Tensor::from_vec(out, x.requires_grad())
+}
+
+/// Apply per-head RMSNorm to Q or K (Qwen3 QK-norm, ENT-269).
+///
+/// Input: [seq_len * total_dim] where total_dim = num_heads * head_dim.
+/// Norm weight: [head_dim]. Applied independently to each head's head_dim slice.
+fn apply_qk_norm(
+    x: &Tensor,
+    norm_weight: &Tensor,
+    seq_len: usize,
+    num_heads: usize,
+    head_dim: usize,
+) -> Tensor {
+    let xd = x.data();
+    let x_slice = xd.as_slice().expect("contiguous qk");
+    let wd = norm_weight.data();
+    let w_slice = wd.as_slice().expect("contiguous norm weight");
+    let total_dim = num_heads * head_dim;
+    let eps = 1e-6_f32;
+    let mut out = vec![0.0f32; seq_len * total_dim];
+
+    for s in 0..seq_len {
+        for h in 0..num_heads {
+            let offset = s * total_dim + h * head_dim;
+            // RMSNorm: x * weight / sqrt(mean(x^2) + eps)
+            let mut sum_sq = 0.0f32;
+            for d in 0..head_dim {
+                let v = x_slice[offset + d];
+                sum_sq += v * v;
+            }
+            let rms = (sum_sq / head_dim as f32 + eps).sqrt();
+            let inv_rms = 1.0 / rms;
+            for d in 0..head_dim {
+                out[offset + d] = x_slice[offset + d] * inv_rms * w_slice[d];
+            }
+        }
+    }
+
+    Tensor::from_vec(out, x.requires_grad())
+}
+
+/// Apply Rotary Position Embedding (RoPE) to Q or K tensor (ENT-269).
+///
+/// Uses Llama/Qwen3 half-rotation layout (NOT interleaved pairs):
+///   x1 = x[..., :half_dim], x2 = x[..., half_dim:]
+///   rotate_half(x) = [-x2, x1]
+///   result = x * cos + rotate_half(x) * sin
+///
+/// freq[i] = 1 / (theta ^ (2i / head_dim))
+fn apply_rope(
+    x: &Tensor,
+    seq_len: usize,
+    num_heads: usize,
+    head_dim: usize,
+    rope_theta: f32,
+) -> Tensor {
+    let xd = x.data();
+    let x_slice = xd.as_slice().expect("contiguous qk for rope");
+    let total_dim = num_heads * head_dim;
+    let half_dim = head_dim / 2;
+    let mut out = vec![0.0f32; seq_len * total_dim];
+
+    // Precompute inverse frequencies: 1 / (theta ^ (2i / head_dim))
+    let inv_freq: Vec<f32> = (0..half_dim)
+        .map(|i| 1.0 / rope_theta.powf(2.0 * i as f32 / head_dim as f32))
+        .collect();
+
+    for pos in 0..seq_len {
+        for h in 0..num_heads {
+            let offset = pos * total_dim + h * head_dim;
+            for i in 0..half_dim {
+                let freq = pos as f32 * inv_freq[i];
+                let cos_f = freq.cos();
+                let sin_f = freq.sin();
+                // Half-rotation: pair (x[i], x[i + half_dim])
+                let x_first = x_slice[offset + i];
+                let x_second = x_slice[offset + i + half_dim];
+                // rotate_half: [-x_second, x_first]
+                out[offset + i] = x_first * cos_f - x_second * sin_f;
+                out[offset + i + half_dim] = x_second * cos_f + x_first * sin_f;
+            }
+        }
+    }
+
     Tensor::from_vec(out, x.requires_grad())
 }
 
@@ -186,6 +271,10 @@ pub struct MultiHeadAttention {
     pub b_k: Option<Tensor>,
     /// Optional value bias
     pub b_v: Option<Tensor>,
+    /// Optional Q RMSNorm weight (Qwen3 uses QK-norm, shape=[head_dim])
+    pub q_norm: Option<Tensor>,
+    /// Optional K RMSNorm weight (Qwen3 uses QK-norm, shape=[head_dim])
+    pub k_norm: Option<Tensor>,
 }
 
 impl MultiHeadAttention {
@@ -224,6 +313,8 @@ impl MultiHeadAttention {
             b_q: None,
             b_k: None,
             b_v: None,
+            q_norm: None,
+            k_norm: None,
         }
     }
 
@@ -274,7 +365,11 @@ impl MultiHeadAttention {
         let b_k = params.get(&format!("{prefix}.k_proj.bias")).cloned();
         let b_v = params.get(&format!("{prefix}.v_proj.bias")).cloned();
 
-        Some(Self { config: config.clone(), w_q, w_k, w_v, w_o, b_q, b_k, b_v })
+        // Optional Q/K RMSNorm (Qwen3 uses QK-norm, ENT-269)
+        let q_norm = params.get(&format!("{prefix}.q_norm.weight")).cloned();
+        let k_norm = params.get(&format!("{prefix}.k_norm.weight")).cloned();
+
+        Some(Self { config: config.clone(), w_q, w_k, w_v, w_o, b_q, b_k, b_v, q_norm, k_norm })
     }
 
     /// Forward pass
@@ -293,10 +388,10 @@ impl MultiHeadAttention {
         let q_dim = self.config.q_dim();
         let kv_hidden_size = num_kv_heads * head_dim;
 
-        // Project Q, K, V (autograd-tracked matmuls)
-        let mut q = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
-        let mut k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
-        let mut v = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
+        // Project Q, K, V — HF weights are [out_dim, in_dim], use matmul_nt (ENT-269)
+        let mut q = matmul_nt(x, &self.w_q, seq_len, hidden_size, q_dim);
+        let mut k = matmul_nt(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
+        let mut v = matmul_nt(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
 
         // Apply attention biases if present (Qwen2 architecture)
         if let Some(ref b_q) = self.b_q {
@@ -308,6 +403,18 @@ impl MultiHeadAttention {
         if let Some(ref b_v) = self.b_v {
             v = add_bias(&v, b_v, seq_len);
         }
+
+        // Apply Q/K RMSNorm if present (Qwen3 QK-norm, ENT-269)
+        if let Some(ref qn) = self.q_norm {
+            q = apply_qk_norm(&q, qn, seq_len, num_heads, head_dim);
+        }
+        if let Some(ref kn) = self.k_norm {
+            k = apply_qk_norm(&k, kn, seq_len, num_kv_heads, head_dim);
+        }
+
+        // Apply Rotary Position Embedding (RoPE) to Q and K (ENT-269)
+        q = apply_rope(&q, seq_len, num_heads, head_dim, self.config.rope_theta);
+        k = apply_rope(&k, seq_len, num_kv_heads, head_dim, self.config.rope_theta);
 
         let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
         let heads_per_kv = num_heads / num_kv_heads;
@@ -401,8 +508,8 @@ impl MultiHeadAttention {
             concat_tensor.set_backward_op(backward_op);
         }
 
-        // Output projection: (seq_len, q_dim) @ (q_dim, hidden_size) = (seq_len, hidden_size)
-        matmul(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
+        // Output projection — w_o is [hidden_size, q_dim] in HF (ENT-269)
+        matmul_nt(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
     }
 
     /// Forward pass with LoRA adjusts on Q and V projections (KAIZEN-010).
@@ -445,20 +552,36 @@ impl MultiHeadAttention {
         // LoRA layout: A is (rank, d_in), B is (d_out, rank)
         // matmul_nt(x, A, seq, d_in, rank) computes x @ A^T = (seq, d_in) @ (d_in, rank) = (seq, rank)
         // matmul_nt(mid, B, seq, rank, d_out) computes mid @ B^T = (seq, rank) @ (rank, d_out) = (seq, d_out)
-        let q_base = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
+        let q_base = matmul_nt(x, &self.w_q, seq_len, hidden_size, q_dim);
         let q_mid = crate::autograd::matmul_nt(x, lora_a_q, seq_len, hidden_size, lora_rank);
         let q_lora = crate::autograd::matmul_nt(&q_mid, lora_b_q, seq_len, lora_rank, q_dim);
         let q = crate::autograd::add_scaled(&q_base, &q_lora, lora_scale);
 
-        // K projection (no LoRA)
-        let k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
+        // K projection (no LoRA) — HF weights [out, in] (ENT-269)
+        let k = matmul_nt(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
 
         // V projection with LoRA (same pattern as Q)
-        let v_base = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
+        let v_base = matmul_nt(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
         let v_mid = crate::autograd::matmul_nt(x, lora_a_v, seq_len, hidden_size, lora_rank);
         let v_lora =
             crate::autograd::matmul_nt(&v_mid, lora_b_v, seq_len, lora_rank, kv_hidden_size);
         let v = crate::autograd::add_scaled(&v_base, &v_lora, lora_scale);
+
+        // Apply Q/K RMSNorm if present (Qwen3 QK-norm, ENT-269)
+        let q = if let Some(ref qn) = self.q_norm {
+            apply_qk_norm(&q, qn, seq_len, num_heads, head_dim)
+        } else {
+            q
+        };
+        let k = if let Some(ref kn) = self.k_norm {
+            apply_qk_norm(&k, kn, seq_len, num_kv_heads, head_dim)
+        } else {
+            k
+        };
+
+        // Apply Rotary Position Embedding (RoPE) to Q and K (ENT-269)
+        let q = apply_rope(&q, seq_len, num_heads, head_dim, self.config.rope_theta);
+        let k = apply_rope(&k, seq_len, num_kv_heads, head_dim, self.config.rope_theta);
 
         let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
         let heads_per_kv = num_heads / num_kv_heads;
@@ -549,8 +672,8 @@ impl MultiHeadAttention {
             concat_tensor.set_backward_op(backward_op);
         }
 
-        // Output projection
-        matmul(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
+        // Output projection — w_o is [hidden_size, q_dim] in HF (ENT-269)
+        matmul_nt(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
     }
 
     /// Get all parameters as a vector

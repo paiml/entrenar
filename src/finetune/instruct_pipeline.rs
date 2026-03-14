@@ -261,6 +261,30 @@ impl InstructPipeline {
         let model = Transformer::from_safetensors(model_dir, model_config)?;
         let mut lora_layers = Self::build_lora_layers(&model, model_config, &instruct_config);
 
+        // ENT-269: Auto-load trained LoRA adapter if present in model directory.
+        let adapter_path = model_dir.join("adapter_model.safetensors");
+        if adapter_path.exists() {
+            match crate::lora::load_adapter_peft(model_dir) {
+                Ok((_config, weights)) => {
+                    Self::inject_adapter_weights(
+                        &mut lora_layers,
+                        &weights,
+                        model_config.num_hidden_layers,
+                    );
+                    eprintln!(
+                        "[adapter] Loaded trained LoRA adapter ({} tensors) from {}",
+                        weights.len(),
+                        model_dir.display()
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[adapter] Warning: adapter_model.safetensors found but failed to load: {e}"
+                    );
+                }
+            }
+        }
+
         for lora in &mut lora_layers {
             for param in lora.trainable_params() {
                 param.set_requires_grad(true);
@@ -428,7 +452,9 @@ impl InstructPipeline {
         config: &InstructConfig,
     ) -> Vec<LoRALayer> {
         let hidden = model_config.hidden_size;
-        let head_dim = hidden / model_config.num_attention_heads;
+        let head_dim = model_config
+            .head_dim_override
+            .unwrap_or(hidden / model_config.num_attention_heads);
 
         let mut lora_layers = Vec::new();
 
@@ -465,6 +491,49 @@ impl InstructPipeline {
         }
 
         lora_layers
+    }
+
+    /// Inject trained adapter weights from PEFT format into LoRA layers (ENT-269).
+    ///
+    /// Maps PEFT tensor names (e.g., `base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight`)
+    /// to the corresponding LoRA layer index. Layers are ordered as [Q(0), V(0), Q(1), V(1), ...].
+    fn inject_adapter_weights(
+        lora_layers: &mut [LoRALayer],
+        weights: &[(String, Vec<f32>)],
+        num_layers: usize,
+    ) {
+        let mut loaded = 0usize;
+        for (name, data) in weights {
+            // Parse layer index from "layers.{idx}" in the tensor name
+            let parts: Vec<&str> = name.split('.').collect();
+            let layer_idx = parts
+                .iter()
+                .position(|&p| p == "layers")
+                .and_then(|i| parts.get(i + 1))
+                .and_then(|s| s.parse::<usize>().ok());
+
+            let is_q = name.contains("q_proj");
+            let is_a = name.contains("lora_A");
+
+            if let Some(idx) = layer_idx {
+                if idx >= num_layers {
+                    continue;
+                }
+                let lora_idx = idx * 2 + if is_q { 0 } else { 1 };
+                if lora_idx >= lora_layers.len() {
+                    continue;
+                }
+
+                let tensor = Tensor::from_vec(data.clone(), true);
+                if is_a {
+                    *lora_layers[lora_idx].lora_a_mut() = tensor;
+                } else {
+                    *lora_layers[lora_idx].lora_b_mut() = tensor;
+                }
+                loaded += 1;
+            }
+        }
+        eprintln!("[adapter] Injected {loaded}/{} weight tensors", weights.len());
     }
 
     /// Tokenize text without truncation.
@@ -2065,7 +2134,7 @@ impl InstructPipeline {
             // Apply lm_head to get logits
             let lm_weight = self.model.lm_head_weight();
             let logits =
-                crate::autograd::matmul(&hidden, lm_weight, seq_len, hidden_size, vocab_size);
+                crate::autograd::matmul_nt(&hidden, lm_weight, seq_len, hidden_size, vocab_size);
 
             // Extract logits for last position
             let logits_data = logits.data();
