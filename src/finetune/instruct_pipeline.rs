@@ -451,6 +451,11 @@ impl InstructPipeline {
         model_config: &TransformerConfig,
         config: &InstructConfig,
     ) -> Vec<LoRALayer> {
+        // rank=0 means no LoRA — return empty (no trainable adapters)
+        if config.lora_rank == 0 {
+            return Vec::new();
+        }
+
         let hidden = model_config.hidden_size;
         let head_dim =
             model_config.head_dim_override.unwrap_or(hidden / model_config.num_attention_heads);
