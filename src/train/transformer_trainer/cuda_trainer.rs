@@ -2431,6 +2431,15 @@ impl CudaTransformerTrainer {
         self.gpu_training.step = step as u32;
     }
 
+    /// Set max_steps for cosine LR scheduler (ENT-275).
+    ///
+    /// Called by `train_loop_cuda` when `max_steps` is not explicitly set in
+    /// the YAML config — auto-computes `epochs × batches_per_epoch` so cosine
+    /// decay activates instead of falling back to constant lr.
+    pub fn set_max_steps(&mut self, max_steps: usize) {
+        self.config.max_steps = Some(max_steps);
+    }
+
     /// Get current learning rate (warmup + cosine decay).
     ///
     /// ALB-079: Phase 1 = linear warmup (0 → lr_max), Phase 2 = cosine decay

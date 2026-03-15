@@ -695,6 +695,18 @@ fn train_loop_cuda(
     println!();
 
     let num_batches = batches.len();
+
+    // ENT-275: Auto-compute max_steps for cosine LR scheduler when not explicit.
+    // Without this, current_lr() falls back to constant lr (no decay).
+    if spec.training.max_steps.is_none() {
+        let total_steps = spec.training.epochs * num_batches;
+        trainer.set_max_steps(total_steps);
+        println!(
+            "  max_steps: {total_steps} (auto: {epochs}×{num_batches})",
+            epochs = spec.training.epochs
+        );
+    }
+
     let start_time = std::time::Instant::now();
     // Cap log_interval so training_state.json updates at least every 100 steps
     // (enables real-time monitoring via `apr monitor`). Previously num_batches/100
