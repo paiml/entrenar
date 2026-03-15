@@ -23,7 +23,11 @@ pub enum LoRAScaling {
 
 impl LoRAScaling {
     /// Compute the scaling factor
+    ///
+    /// # Panics
+    /// Panics if rank is zero
     pub fn compute(self, alpha: f32, rank: usize) -> f32 {
+        assert!(rank > 0, "LoRA rank must be > 0");
         match self {
             Self::Standard => alpha / rank as f32,
             Self::RsLoRA => alpha / (rank as f32).sqrt(),
@@ -65,6 +69,7 @@ impl LoRALayer {
     /// # Returns
     /// LoRA layer with randomly initialized A (Gaussian) and zero-initialized B
     pub fn new(base_weight: Tensor, d_out: usize, d_in: usize, rank: usize, alpha: f32) -> Self {
+        assert!(rank > 0, "LoRA rank must be > 0");
         assert_eq!(base_weight.len(), d_out * d_in, "Base weight size must match d_out * d_in");
 
         // Initialize A with small Gaussian noise, B with zeros (standard LoRA init)
