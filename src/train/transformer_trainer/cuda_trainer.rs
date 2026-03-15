@@ -440,7 +440,17 @@ impl CudaTransformerTrainer {
         checkpoint_dir: impl AsRef<std::path::Path>,
         model_config: crate::transformer::TransformerConfig,
     ) -> crate::Result<Self> {
-        let model = Transformer::from_safetensors(checkpoint_dir.as_ref(), &model_config)?;
+        let dir = checkpoint_dir.as_ref();
+
+        // ALB-089: Try APR format first (our native checkpoint format), then SafeTensors
+        let model = if let Some((Some(m), _step)) =
+            crate::config::try_load_apr_for_inference(dir, &model_config)
+        {
+            m
+        } else {
+            Transformer::from_safetensors(dir, &model_config)?
+        };
+
         let mut config = TransformerTrainConfig::new(model_config);
         config.max_seq_len = config.model_config.max_position_embeddings;
         Self::with_model(model, config)

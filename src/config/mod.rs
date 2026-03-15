@@ -54,5 +54,5 @@ pub use schema::{
     ModelMode, ModelRef, OptimSpec, PublishSpec, QuantSpec, TrainSpec, TrainingMode,
     TrainingParams,
 };
-pub use train::{load_config, train_from_yaml};
+pub use train::{load_config, train_from_yaml, try_load_apr_for_inference};
 pub use validate::{validate_config, ValidationError};
