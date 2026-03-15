@@ -695,7 +695,8 @@ impl ClassifyTrainer {
             total_correct += result.correct;
             total_samples += result.total;
 
-            let running_avg_loss = total_loss / total_samples as f32;
+            let running_avg_loss =
+                if total_samples > 0 { total_loss / total_samples as f32 } else { 0.0 };
             let elapsed_secs = epoch_start.elapsed().as_secs_f32();
             let samples_per_sec =
                 if elapsed_secs > 0.0 { total_samples as f32 / elapsed_secs } else { 0.0 };
