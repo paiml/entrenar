@@ -2430,6 +2430,15 @@ fn try_load_safetensors_dir(
 ///
 /// Looks for `.apr` files: direct file, `model-best.apr`, or latest `model-step-*.apr`.
 /// Returns `Some((model, step))` if successful, `None` to fall back to SafeTensors.
+///
+/// Public variant for use by `CudaTransformerTrainer::for_inference` (ALB-089).
+pub fn try_load_apr_for_inference(
+    model_path: &Path,
+    config: &TransformerConfig,
+) -> Option<(Option<Transformer>, usize)> {
+    try_load_apr(model_path, config)
+}
+
 fn try_load_apr(
     model_path: &Path,
     config: &TransformerConfig,
