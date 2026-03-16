@@ -145,6 +145,10 @@ fn softmax_2d(x: &Array2<f32>) -> Array2<f32> {
 fn kl_divergence(p: &Array2<f32>, q: &Array2<f32>) -> f32 {
     assert_eq!(p.shape(), q.shape());
 
+    if p.nrows() == 0 {
+        return 0.0;
+    }
+
     let mut total_kl = 0.0;
 
     for (p_row, q_row) in p.axis_iter(Axis(0)).zip(q.axis_iter(Axis(0))) {

@@ -199,8 +199,12 @@ fn mse_loss(student: &Array2<f32>, teacher: &Array2<f32>) -> f32 {
 fn cosine_similarity(student: &Array2<f32>, teacher: &Array2<f32>) -> f32 {
     assert_eq!(student.shape(), teacher.shape());
 
-    let mut total_sim = 0.0;
     let batch_size = student.nrows();
+    if batch_size == 0 {
+        return 0.0;
+    }
+
+    let mut total_sim = 0.0;
 
     for (s_row, t_row) in student.axis_iter(Axis(0)).zip(teacher.axis_iter(Axis(0))) {
         let dot: f32 = s_row.iter().zip(t_row.iter()).map(|(a, b)| a * b).sum();
