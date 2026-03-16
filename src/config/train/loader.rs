@@ -238,8 +238,15 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
                         cuda_trainer.current_lr()
                     );
                     // ALB-096: Try APR optimizer state first, then fall back to JSON
-                    let apr_loaded = find_latest_apr_checkpoint(&spec.training.output_dir)
-                        .map_or(false, |p| cuda_trainer.load_optimizer_state_apr(&p));
+                    let apr_loaded =
+                        find_latest_apr_checkpoint(&spec.training.output_dir).map_or(false, |p| {
+                            // ENT-276: Restore LoRA adapter weights from APR checkpoint
+                            let (restored, total) = cuda_trainer.restore_lora_from_apr(&p);
+                            if restored > 0 {
+                                println!("  ✓ LoRA adapters restored ({restored}/{total} layers)");
+                            }
+                            cuda_trainer.load_optimizer_state_apr(&p)
+                        });
                     if apr_loaded {
                         println!("  ✓ Embedding optimizer state restored (APR)");
                     } else if cuda_trainer.load_optimizer_state(&spec.training.output_dir) {

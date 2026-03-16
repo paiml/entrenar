@@ -2259,6 +2259,22 @@ impl CudaBlock {
             )),
         }
     }
+
+    /// Upload LoRA weights to NF4 blocks for checkpoint resume (ENT-276).
+    pub fn upload_lora_weights(
+        &mut self,
+        a_q: &[f32],
+        b_q: &[f32],
+        a_v: &[f32],
+        b_v: &[f32],
+    ) -> Result<()> {
+        match self {
+            CudaBlock::Nf4(b) => b.upload_lora_weights(a_q, b_q, a_v, b_v),
+            CudaBlock::Fp32(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
+                "upload_lora_weights only supported on NF4 blocks".into(),
+            )),
+        }
+    }
 }
 
 /// CPU fallback stub for CudaBlock.
@@ -3716,6 +3732,49 @@ impl CudaNf4TransformerBlock {
         let a_v = self.lora_a_v.as_ref().map(&download).transpose()?.unwrap_or_default();
         let b_v = self.lora_b_v.as_ref().map(&download).transpose()?.unwrap_or_default();
         Ok((a_q, b_q, a_v, b_v))
+    }
+
+    /// Upload LoRA weights from CPU to GPU for checkpoint resume (ENT-276).
+    ///
+    /// Overwrites the current LoRA adapter buffers with trained weights
+    /// restored from a checkpoint. Call after `new()` to replace the fresh
+    /// random init with previously trained adapters.
+    pub fn upload_lora_weights(
+        &mut self,
+        a_q: &[f32],
+        b_q: &[f32],
+        a_v: &[f32],
+        b_v: &[f32],
+    ) -> Result<()> {
+        let upload = |buf: &mut GpuBuffer<f32>, data: &[f32], name: &str| -> Result<()> {
+            if data.len() != buf.len() {
+                return Err(crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                    format!(
+                        "LoRA {name} size mismatch: checkpoint has {} but GPU buffer expects {}",
+                        data.len(),
+                        buf.len()
+                    ),
+                ));
+            }
+            buf.copy_from_host(data).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "LoRA {name} upload failed: {e}"
+                ))
+            })
+        };
+        if let Some(ref mut buf) = self.lora_a_q {
+            upload(buf, a_q, "a_q")?;
+        }
+        if let Some(ref mut buf) = self.lora_b_q {
+            upload(buf, b_q, "b_q")?;
+        }
+        if let Some(ref mut buf) = self.lora_a_v {
+            upload(buf, a_v, "a_v")?;
+        }
+        if let Some(ref mut buf) = self.lora_b_v {
+            upload(buf, b_v, "b_v")?;
+        }
+        Ok(())
     }
 }
 

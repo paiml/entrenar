@@ -2703,6 +2703,25 @@ impl CudaTransformerTrainer {
             .map(|(n, t)| (n, t.data().to_vec()))
             .collect();
 
+        // ENT-276: Download LoRA adapter weights from GPU for checkpoint saving.
+        // Without this, resume from checkpoint re-initializes LoRA adapters to zero,
+        // losing all trained adaptation (Run 9 crash: loss 2.5 → 13.9 after resume).
+        let lora_data: Vec<(usize, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> =
+            if self.config.quantize_nf4 && self.config.is_lora() {
+                self.cuda_blocks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, block)| {
+                        block
+                            .download_lora_weights()
+                            .ok()
+                            .map(|(a_q, b_q, a_v, b_v)| (i, a_q, b_q, a_v, b_v))
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
         // Snapshot CPU embedding optimizer state
         let embed_m: Vec<Vec<f32>> = self
             .embed_optimizer
@@ -2770,6 +2789,34 @@ impl CudaTransformerTrainer {
                 );
             }
 
+            // ENT-276: Save LoRA adapter weights (QLoRA checkpoint resume)
+            for (layer_idx, a_q, b_q, a_v, b_v) in &lora_data {
+                if !a_q.is_empty() {
+                    writer.add_tensor_f32(
+                        format!("lora.{layer_idx}.q_proj.lora_a"),
+                        vec![a_q.len()],
+                        a_q,
+                    );
+                    writer.add_tensor_f32(
+                        format!("lora.{layer_idx}.q_proj.lora_b"),
+                        vec![b_q.len()],
+                        b_q,
+                    );
+                }
+                if !a_v.is_empty() {
+                    writer.add_tensor_f32(
+                        format!("lora.{layer_idx}.v_proj.lora_a"),
+                        vec![a_v.len()],
+                        a_v,
+                    );
+                    writer.add_tensor_f32(
+                        format!("lora.{layer_idx}.v_proj.lora_b"),
+                        vec![b_v.len()],
+                        b_v,
+                    );
+                }
+            }
+
             // Write APR checkpoint to file
             writer
                 .write(path)
@@ -2814,6 +2861,42 @@ impl CudaTransformerTrainer {
         std::fs::write(&path, json_str)
             .map_err(|e| crate::error::Error::ConfigError(format!("write optimizer state: {e}")))?;
         Ok(())
+    }
+
+    /// ENT-276: Restore LoRA adapter weights from APR checkpoint.
+    ///
+    /// Reads `lora.{layer}.{q,v}_proj.lora_{a,b}` tensors from the APR file
+    /// and uploads them to the NF4 CUDA blocks, replacing the fresh random init.
+    /// Returns (layers_restored, layers_total).
+    pub fn restore_lora_from_apr(&mut self, apr_path: &std::path::Path) -> (usize, usize) {
+        let reader = match aprender::serialization::apr::AprReader::open(apr_path) {
+            Ok(r) => r,
+            Err(_) => return (0, self.cuda_blocks.len()),
+        };
+
+        let mut restored = 0usize;
+        for (i, block) in self.cuda_blocks.iter_mut().enumerate() {
+            let a_q =
+                reader.read_tensor_f32(&format!("lora.{i}.q_proj.lora_a")).unwrap_or_default();
+            let b_q =
+                reader.read_tensor_f32(&format!("lora.{i}.q_proj.lora_b")).unwrap_or_default();
+            let a_v =
+                reader.read_tensor_f32(&format!("lora.{i}.v_proj.lora_a")).unwrap_or_default();
+            let b_v =
+                reader.read_tensor_f32(&format!("lora.{i}.v_proj.lora_b")).unwrap_or_default();
+
+            if a_q.is_empty() {
+                continue; // No LoRA data for this layer in checkpoint
+            }
+
+            if let Err(e) = block.upload_lora_weights(&a_q, &b_q, &a_v, &b_v) {
+                eprintln!("Warning: failed to restore LoRA for layer {i}: {e}");
+                continue;
+            }
+            restored += 1;
+        }
+
+        (restored, self.cuda_blocks.len())
     }
 
     /// ALB-096: Load CPU embedding optimizer state from APR checkpoint.
