@@ -2561,7 +2561,8 @@ impl ClassifyPipeline {
     /// # Returns
     /// Loss value as f32
     pub fn train_step(&mut self, token_ids: &[u32], label: usize) -> f32 {
-        let seq_len = token_ids.len();
+        let seq_len = token_ids.len().min(self.config.max_seq_len);
+        let token_ids = &token_ids[..seq_len];
         let num_classes = self.config.num_classes;
 
         // ── 1. Zero gradients ─────────────────────────────────────────
@@ -5158,6 +5159,7 @@ mod tests {
 
     #[test]
     fn test_cov_long_input() {
+        // Input (50 tokens) exceeds max_seq_len (10); train_step must clamp without OOB.
         let mut p = ClassifyPipeline::new(
             &tiny_config(),
             ClassifyConfig {
@@ -5168,7 +5170,8 @@ mod tests {
                 ..ClassifyConfig::default()
             },
         );
-        assert!(p.train_step(&(0..50).collect::<Vec<u32>>(), 0).is_finite());
+        let long_input: Vec<u32> = (0..50).collect();
+        assert!(p.train_step(&long_input, 0).is_finite());
     }
 
     #[test]
