@@ -7,8 +7,8 @@
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    BatchedRopeKernel, BatchedVectorizedRmsNormKernel, Kernel, LayerNormKernel,
-    PerHeadRmsNormKernel, RopeNeoxKernel,
+    BatchedRopeBackwardKernel, BatchedRopeKernel, BatchedVectorizedRmsNormKernel, Kernel,
+    LayerNormKernel, PerHeadRmsNormKernel, RopeNeoxKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -316,6 +316,60 @@ pub fn batched_rope_neox_forward(
     unsafe {
         stream.launch_kernel(module, "batched_rope", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("Batched RoPE NeoX forward failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Batched RoPE NeoX backward — inverse rotation for gradient flow.
+///
+/// Applies R^T(-θ) to gradients so Q/K projection backward receives
+/// correctly-framed gradients. Without this, dW_q and dW_k are computed
+/// in the rotated coordinate frame, producing incorrect weight updates.
+#[cfg(feature = "cuda")]
+pub fn batched_rope_neox_backward(
+    grad_input: &GpuBuffer<f32>,
+    grad_output: &mut GpuBuffer<f32>,
+    positions: &GpuBuffer<u32>,
+    num_heads: u32,
+    head_dim: u32,
+    seq_len: u32,
+    theta: f32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = BatchedRopeBackwardKernel::new(num_heads, head_dim, seq_len, theta);
+
+    let key = format!("batched_rope_bwd_{num_heads}_{head_dim}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    let config =
+        LaunchConfig { grid: (num_heads, seq_len, 1), block: (head_dim / 2, 1, 1), shared_mem: 0 };
+
+    let input_ptr = grad_input.as_ptr();
+    let output_ptr = grad_output.as_ptr();
+    let positions_ptr = positions.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &positions_ptr as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream.launch_kernel(module, "batched_rope_backward", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Batched RoPE NeoX backward failed: {e:?}"))
         })?;
     }
 

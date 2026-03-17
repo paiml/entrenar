@@ -44,11 +44,11 @@ use crate::autograd::cuda_backward::{
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{
-    batched_4d_gemm_forward, batched_rope_neox_forward, batched_softmax_forward,
-    batched_to_interleaved_forward, batched_transpose_forward, elementwise_mul_forward,
-    expand_kv_heads, fused_swiglu_forward, gemm_forward, interleaved_to_batched_forward,
-    per_head_rmsnorm_forward, residual_add_forward, rms_norm_forward, rope_neox_forward,
-    scale_forward, silu_forward,
+    batched_4d_gemm_forward, batched_rope_neox_backward, batched_rope_neox_forward,
+    batched_softmax_forward, batched_to_interleaved_forward, batched_transpose_forward,
+    elementwise_mul_forward, expand_kv_heads, fused_swiglu_forward, gemm_forward,
+    interleaved_to_batched_forward, per_head_rmsnorm_forward, residual_add_forward,
+    rms_norm_forward, rope_neox_forward, scale_forward, silu_forward,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::adamw_step_cuda;
@@ -1454,6 +1454,38 @@ impl CudaTransformerBlock {
             hd,
             stream,
         )?;
+
+        // === Step 4.8b: RoPE backward (inverse rotation) ===
+        // Forward applied RoPE to Q and K before attention. Backward must undo
+        // the rotation so projection backward (step 4.9) gets unrotated gradients.
+        // R^T(-θ): new_x0 = x0*cos + x1*sin, new_x1 = x1*cos - x0*sin
+        let rope_theta = self.config.rope_theta;
+        {
+            // grad_Q in o_proj_out [seq, q_dim] — apply inverse rotation in-place
+            let q_ref = unsafe { &*(std::ptr::addr_of!(self.scratch.o_proj_out)) };
+            batched_rope_neox_backward(
+                q_ref,
+                &mut self.scratch.o_proj_out,
+                &self.scratch.rope_positions,
+                nh,
+                hd,
+                seq,
+                rope_theta,
+                stream,
+            )?;
+            // grad_K in norm2_out [seq, kv_hidden] — apply inverse rotation in-place
+            let k_ref = unsafe { &*(std::ptr::addr_of!(self.scratch.norm2_out)) };
+            batched_rope_neox_backward(
+                k_ref,
+                &mut self.scratch.norm2_out,
+                &self.scratch.rope_positions,
+                nkv,
+                hd,
+                seq,
+                rope_theta,
+                stream,
+            )?;
+        }
 
         // === Step 4.9: Q/K/V projection backward ===
         // Forward: q[seq,q_dim] = norm1[seq,hidden] @ w_q[hidden,q_dim]
@@ -3364,6 +3396,39 @@ impl CudaNf4TransformerBlock {
 
         // After attention backward: scratch.norm1_out-related grads are accumulated.
         // grad_q is in scratch.q, grad_k in scratch.k, grad_v in scratch.v
+
+        // Step 2b: RoPE backward (inverse rotation) on grad_q and grad_k
+        // Forward applied RoPE to Q and K. Undo rotation so projection backward
+        // gets gradients in the unrotated coordinate frame.
+        let rope_theta = self.config.rope_theta;
+        let num_kv_heads = self.config.num_kv_heads;
+        let nkv = saturating_u32(num_kv_heads);
+        let nh = saturating_u32(num_heads);
+        let hd = saturating_u32(head_dim);
+        {
+            let q_ref = unsafe { &*(std::ptr::addr_of!(scratch.q)) };
+            batched_rope_neox_backward(
+                q_ref,
+                &mut scratch.q,
+                &scratch.rope_positions,
+                nh,
+                hd,
+                s,
+                rope_theta,
+                stream,
+            )?;
+            let k_ref = unsafe { &*(std::ptr::addr_of!(scratch.k)) };
+            batched_rope_neox_backward(
+                k_ref,
+                &mut scratch.k,
+                &scratch.rope_positions,
+                nkv,
+                hd,
+                s,
+                rope_theta,
+                stream,
+            )?;
+        }
 
         // Step 3: Q projection backward (NF4 + LoRA)
         // Base: grad_norm1_q = grad_q @ w_q^T  [S, H]
