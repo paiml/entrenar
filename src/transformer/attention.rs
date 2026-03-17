@@ -739,6 +739,29 @@ impl MultiHeadAttention {
         }
         params
     }
+
+    /// ENT-282: Set a named parameter by suffix (after "self_attn.").
+    pub fn set_named_parameter(&mut self, suffix: &str, value: Tensor) -> bool {
+        match suffix {
+            "self_attn.q_proj.weight" => {
+                self.w_q = value;
+                true
+            }
+            "self_attn.k_proj.weight" => {
+                self.w_k = value;
+                true
+            }
+            "self_attn.v_proj.weight" => {
+                self.w_v = value;
+                true
+            }
+            "self_attn.o_proj.weight" => {
+                self.w_o = value;
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 /// LoRA-enabled linear projection
