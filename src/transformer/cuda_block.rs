@@ -339,6 +339,90 @@ pub struct GpuBlockOptimizerState {
     v_post_attn_norm: GpuBuffer<f32>,
 }
 
+/// ALB-118: Download GPU optimizer state to host for checkpointing.
+#[cfg(feature = "cuda")]
+impl GpuBlockOptimizerState {
+    /// Returns (suffix, data) pairs for all 18 m/v buffers.
+    /// Suffix is e.g. "m.w_q", "v.w_gate" — caller prefixes with layer index.
+    pub fn download_to_host(
+        &self,
+    ) -> crate::autograd::cuda_tensor::Result<Vec<(String, Vec<f32>)>> {
+        let dl = |name: &str,
+                  buf: &GpuBuffer<f32>|
+         -> crate::autograd::cuda_tensor::Result<(String, Vec<f32>)> {
+            let mut host = vec![0.0f32; buf.len()];
+            buf.copy_to_host(&mut host).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "optimizer D2H {name}: {e}"
+                ))
+            })?;
+            Ok((name.to_string(), host))
+        };
+        Ok(vec![
+            dl("m.w_q", &self.m_w_q)?,
+            dl("v.w_q", &self.v_w_q)?,
+            dl("m.w_k", &self.m_w_k)?,
+            dl("v.w_k", &self.v_w_k)?,
+            dl("m.w_v", &self.m_w_v)?,
+            dl("v.w_v", &self.v_w_v)?,
+            dl("m.w_o", &self.m_w_o)?,
+            dl("v.w_o", &self.v_w_o)?,
+            dl("m.w_gate", &self.m_w_gate)?,
+            dl("v.w_gate", &self.v_w_gate)?,
+            dl("m.w_up", &self.m_w_up)?,
+            dl("v.w_up", &self.v_w_up)?,
+            dl("m.w_down", &self.m_w_down)?,
+            dl("v.w_down", &self.v_w_down)?,
+            dl("m.input_norm", &self.m_input_norm)?,
+            dl("v.input_norm", &self.v_input_norm)?,
+            dl("m.post_attn_norm", &self.m_post_attn_norm)?,
+            dl("v.post_attn_norm", &self.v_post_attn_norm)?,
+        ])
+    }
+
+    /// ALB-118: Upload host optimizer state to GPU (checkpoint resume).
+    /// Missing keys are silently skipped (buffer stays zero-initialized).
+    pub fn restore_from_host(
+        &mut self,
+        data: &std::collections::HashMap<String, Vec<f32>>,
+    ) -> crate::autograd::cuda_tensor::Result<()> {
+        let ul = |name: &str,
+                  buf: &mut GpuBuffer<f32>,
+                  data: &std::collections::HashMap<String, Vec<f32>>|
+         -> crate::autograd::cuda_tensor::Result<()> {
+            if let Some(host_data) = data.get(name) {
+                if host_data.len() == buf.len() {
+                    buf.copy_from_host(host_data).map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "optimizer H2D {name}: {e}"
+                        ))
+                    })?;
+                }
+            }
+            Ok(())
+        };
+        ul("m.w_q", &mut self.m_w_q, data)?;
+        ul("v.w_q", &mut self.v_w_q, data)?;
+        ul("m.w_k", &mut self.m_w_k, data)?;
+        ul("v.w_k", &mut self.v_w_k, data)?;
+        ul("m.w_v", &mut self.m_w_v, data)?;
+        ul("v.w_v", &mut self.v_w_v, data)?;
+        ul("m.w_o", &mut self.m_w_o, data)?;
+        ul("v.w_o", &mut self.v_w_o, data)?;
+        ul("m.w_gate", &mut self.m_w_gate, data)?;
+        ul("v.w_gate", &mut self.v_w_gate, data)?;
+        ul("m.w_up", &mut self.m_w_up, data)?;
+        ul("v.w_up", &mut self.v_w_up, data)?;
+        ul("m.w_down", &mut self.m_w_down, data)?;
+        ul("v.w_down", &mut self.v_w_down, data)?;
+        ul("m.input_norm", &mut self.m_input_norm, data)?;
+        ul("v.input_norm", &mut self.v_input_norm, data)?;
+        ul("m.post_attn_norm", &mut self.m_post_attn_norm, data)?;
+        ul("v.post_attn_norm", &mut self.v_post_attn_norm, data)?;
+        Ok(())
+    }
+}
+
 #[cfg(feature = "cuda")]
 impl CudaTransformerBlock {
     /// Create a new CUDA transformer block from CPU tensors

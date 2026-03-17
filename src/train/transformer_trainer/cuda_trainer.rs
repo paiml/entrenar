@@ -2755,6 +2755,39 @@ impl CudaTransformerTrainer {
             .collect();
         let embed_step = self.embed_optimizer.step_count();
 
+        // ALB-118: Download GPU block optimizer states (m/v moments) for checkpointing.
+        // Without this, resume re-initializes all 24 blocks' AdamW state to zero,
+        // causing loss spikes and convergence failure (v10/v11/v12 post-mortems).
+        // Transfer cost: ~2.3 GB D2H, <6ms on PCIe4/5.
+        let block_optim_data: Vec<Vec<(String, Vec<f32>)>> = self
+            .gpu_training
+            .optimizer_states
+            .iter()
+            .map(|state| state.download_to_host().unwrap_or_default())
+            .collect();
+
+        // ALB-118: Download LM head and final norm optimizer states
+        let lm_head_m_host = {
+            let mut buf = vec![0.0f32; self.lm_head_m.len()];
+            let _ = self.lm_head_m.copy_to_host(&mut buf);
+            buf
+        };
+        let lm_head_v_host = {
+            let mut buf = vec![0.0f32; self.lm_head_v.len()];
+            let _ = self.lm_head_v.copy_to_host(&mut buf);
+            buf
+        };
+        let final_norm_m_host = {
+            let mut buf = vec![0.0f32; self.final_norm_m.len()];
+            let _ = self.final_norm_m.copy_to_host(&mut buf);
+            buf
+        };
+        let final_norm_v_host = {
+            let mut buf = vec![0.0f32; self.final_norm_v.len()];
+            let _ = self.final_norm_v.copy_to_host(&mut buf);
+            buf
+        };
+
         let name = name.to_string();
         let architecture = architecture.to_string();
         let model_config_json = serde_json::to_string(&self.config.model_config).ok();
@@ -2811,6 +2844,48 @@ impl CudaTransformerTrainer {
                     format!("__training__.embed_optimizer.v.{i}"),
                     vec![len],
                     v_data,
+                );
+            }
+
+            // ALB-118: Save GPU block optimizer states (m/v moments for all 24 blocks)
+            for (layer_idx, buffers) in block_optim_data.iter().enumerate() {
+                for (suffix, data) in buffers {
+                    let len = data.len();
+                    writer.add_tensor_f32(
+                        format!("__training__.block_optimizer.{layer_idx}.{suffix}"),
+                        vec![len],
+                        data,
+                    );
+                }
+            }
+
+            // ALB-118: Save LM head and final norm optimizer states
+            if !lm_head_m_host.is_empty() {
+                let len = lm_head_m_host.len();
+                writer.add_tensor_f32(
+                    "__training__.lm_head_optimizer.m".to_string(),
+                    vec![len],
+                    &lm_head_m_host,
+                );
+                let len = lm_head_v_host.len();
+                writer.add_tensor_f32(
+                    "__training__.lm_head_optimizer.v".to_string(),
+                    vec![len],
+                    &lm_head_v_host,
+                );
+            }
+            if !final_norm_m_host.is_empty() {
+                let len = final_norm_m_host.len();
+                writer.add_tensor_f32(
+                    "__training__.final_norm_optimizer.m".to_string(),
+                    vec![len],
+                    &final_norm_m_host,
+                );
+                let len = final_norm_v_host.len();
+                writer.add_tensor_f32(
+                    "__training__.final_norm_optimizer.v".to_string(),
+                    vec![len],
+                    &final_norm_v_host,
                 );
             }
 
@@ -2964,6 +3039,70 @@ impl CudaTransformerTrainer {
                 _ => break,
             }
         }
+
+        // ALB-118: Restore GPU block optimizer states (m/v moments for all blocks)
+        let suffixes = [
+            "m.w_q",
+            "v.w_q",
+            "m.w_k",
+            "v.w_k",
+            "m.w_v",
+            "v.w_v",
+            "m.w_o",
+            "v.w_o",
+            "m.w_gate",
+            "v.w_gate",
+            "m.w_up",
+            "v.w_up",
+            "m.w_down",
+            "v.w_down",
+            "m.input_norm",
+            "v.input_norm",
+            "m.post_attn_norm",
+            "v.post_attn_norm",
+        ];
+        let mut blocks_restored = 0usize;
+        for (layer_idx, state) in self.gpu_training.optimizer_states.iter_mut().enumerate() {
+            let mut data = std::collections::HashMap::new();
+            for suffix in &suffixes {
+                let name = format!("__training__.block_optimizer.{layer_idx}.{suffix}");
+                if let Ok(tensor_data) = reader.read_tensor_f32(&name) {
+                    if !tensor_data.is_empty() {
+                        data.insert(suffix.to_string(), tensor_data);
+                    }
+                }
+            }
+            if !data.is_empty() {
+                let _ = state.restore_from_host(&data);
+                blocks_restored += 1;
+            }
+        }
+
+        // ALB-118: Restore LM head optimizer state
+        if let Ok(m_data) = reader.read_tensor_f32("__training__.lm_head_optimizer.m") {
+            if m_data.len() == self.lm_head_m.len() {
+                let _ = self.lm_head_m.copy_from_host(&m_data);
+            }
+        }
+        if let Ok(v_data) = reader.read_tensor_f32("__training__.lm_head_optimizer.v") {
+            if v_data.len() == self.lm_head_v.len() {
+                let _ = self.lm_head_v.copy_from_host(&v_data);
+            }
+        }
+
+        // ALB-118: Restore final norm optimizer state
+        if let Ok(m_data) = reader.read_tensor_f32("__training__.final_norm_optimizer.m") {
+            if m_data.len() == self.final_norm_m.len() {
+                let _ = self.final_norm_m.copy_from_host(&m_data);
+            }
+        }
+        if let Ok(v_data) = reader.read_tensor_f32("__training__.final_norm_optimizer.v") {
+            if v_data.len() == self.final_norm_v.len() {
+                let _ = self.final_norm_v.copy_from_host(&v_data);
+            }
+        }
+
+        let _ = blocks_restored; // used for diagnostics if tracing enabled
 
         true
     }
