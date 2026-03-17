@@ -1621,7 +1621,7 @@ rank = 64
         assert_eq!(st.len(), layers.len() * 2);
 
         // Verify naming convention
-        let names: Vec<String> = st.names().iter().map(|s| s.to_string()).collect();
+        let names: Vec<String> = st.names().iter().map(std::string::ToString::to_string).collect();
         assert!(names.iter().any(|n| n.contains("lora_a")));
         assert!(names.iter().any(|n| n.contains("lora_b")));
         assert!(names.iter().any(|n| n.contains("q_proj")));

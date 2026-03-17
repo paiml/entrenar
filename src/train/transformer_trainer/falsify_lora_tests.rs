@@ -122,8 +122,7 @@ fn test_falsify_f_conv_006_higher_rank_lower_loss() {
     assert!(
         loss_r32 <= loss_r4 * 1.05,
         "F-CONV-006 FALSIFIED: rank=32 loss ({loss_r32:.4}) much worse than rank=4 loss ({loss_r4:.4}). \
-         All losses: {:?}",
-        final_losses
+         All losses: {final_losses:?}"
     );
 }
 
@@ -344,10 +343,10 @@ fn test_falsify_f_edge_006_no_lora_full_finetune() {
     // In full FT, ALL weight tensors should change (not just norms)
     let mut changed_count = 0;
     for ((name_b, data_b), (_name_a, data_a)) in weights_before.iter().zip(&weights_after) {
-        if data_b != data_a {
-            changed_count += 1;
-        } else {
+        if data_b == data_a {
             eprintln!("F-EDGE-006 WARNING: weight '{name_b}' unchanged in full FT");
+        } else {
+            changed_count += 1;
         }
     }
 

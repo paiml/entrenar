@@ -6529,7 +6529,7 @@ mod tests {
             100,
         );
         let text = report.to_report();
-        assert!(text.contains("?"));
+        assert!(text.contains('?'));
         assert!(text.contains("Top confusions"));
     }
 
@@ -7991,7 +7991,7 @@ mod tests {
         );
         let mut out = String::new();
         report.report_calibration(&mut out);
-        assert!(out.contains("+"));
+        assert!(out.contains('+'));
     }
 
     // ── card_confusion_raw formatting check ──────────────────────────────

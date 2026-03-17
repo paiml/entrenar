@@ -696,10 +696,7 @@ mod tests {
     #[test]
     fn test_cov4_manager_full_lifecycle() {
         // Exercise complete train begin→step begin→step end→epoch begin→epoch end→train end flow
-        use std::sync::{
-            atomic::{AtomicUsize, Ordering},
-            Arc,
-        };
+        use std::sync::Arc;
 
         struct LifecycleCallback {
             events: Arc<std::sync::Mutex<Vec<String>>>,
@@ -856,10 +853,7 @@ mod tests {
     #[test]
     fn test_cov4_manager_ctx_with_rich_fields() {
         // Use a context with all fields populated
-        use std::sync::{
-            atomic::{AtomicUsize, Ordering},
-            Arc,
-        };
+        use std::sync::Arc;
 
         struct FieldChecker {
             verified: Arc<std::sync::atomic::AtomicBool>,

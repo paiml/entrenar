@@ -26,7 +26,7 @@ fn main() {
     println!();
 
     let mut passed = 0u32;
-    let mut failed = 0u32;
+    let failed = 0u32;
     let mut deferred = 0u32;
     let total = 6u32;
 

@@ -10,7 +10,6 @@
 use super::*;
 use crate::autograd::matmul;
 use crate::Tensor;
-use approx::assert_abs_diff_eq;
 
 // ========================================================================
 // LAYER 0: MATH INVARIANTS
@@ -217,7 +216,7 @@ fn hash_f32_slice(data: &[f32]) -> [u8; 32] {
     for chunk_idx in 0..32 {
         let mut h: u64 = 0xcbf29ce484222325;
         for (i, &b) in bytes.iter().enumerate() {
-            h ^= (b as u64).wrapping_add(chunk_idx as u64);
+            h ^= u64::from(b).wrapping_add(chunk_idx as u64);
             h = h.wrapping_mul(0x100000001b3);
             h ^= i as u64;
         }
@@ -277,8 +276,7 @@ fn test_falsify_f_freeze_003_base_weights_unchanged_after_100_steps() {
         let post_tensor = post_params
             .iter()
             .find(|(name, _)| name == pre_name)
-            .map(|(_, t)| t)
-            .unwrap_or_else(|| panic!("Parameter {pre_name} disappeared after training"));
+            .map_or_else(|| panic!("Parameter {pre_name} disappeared after training"), |(_, t)| t);
 
         let post_data = post_tensor.data().to_vec();
         let post_hash = hash_f32_slice(&post_data);
@@ -383,7 +381,7 @@ fn test_falsify_f_freeze_005_lora_b_changes_after_training() {
 
     // At least one B matrix must have changed from zeros
     let mut any_changed = false;
-    for lora_layer in trainer.lora_layers().unwrap().iter() {
+    for lora_layer in trainer.lora_layers().unwrap() {
         let current_b = lora_layer.lora_b().data();
         let max_abs = current_b.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
 

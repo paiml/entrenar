@@ -4384,7 +4384,7 @@ mod tests {
         };
         let data = mk_data_audit(100);
         let res = estimate_resources(&config, &model, &data, 64);
-        let expected_mb = (500_000 + 5_000) as f64 * 4.0 / 1_048_576.0;
+        let expected_mb = f64::from(500_000 + 5_000) * 4.0 / 1_048_576.0;
         assert!((res.estimated_checkpoint_mb - expected_mb).abs() < 0.001);
     }
 
@@ -4762,7 +4762,7 @@ mod tests {
     fn test_cov2_check_status_copy_clone_debug() {
         let s = CheckStatus::Pass;
         let c = s; // Copy
-        let cl = s.clone(); // Clone
+        let cl = s; // Clone
         assert_eq!(c, cl);
         let debug = format!("{s:?}");
         assert!(debug.contains("Pass"));
@@ -4782,7 +4782,7 @@ mod tests {
     fn test_cov2_plan_verdict_copy_clone_debug() {
         let v = PlanVerdict::Ready;
         let c = v; // Copy
-        let cl = v.clone(); // Clone
+        let cl = v; // Clone
         assert_eq!(c, cl);
         let debug = format!("{v:?}");
         assert!(debug.contains("Ready"));

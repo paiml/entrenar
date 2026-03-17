@@ -5609,7 +5609,7 @@ mod tests {
         assert_eq!(probs.len(), 4);
         // Verify softmax properties
         for &v in &probs {
-            assert!(v >= 0.0 && v <= 1.0);
+            assert!((0.0..=1.0).contains(&v));
         }
         let sum: f32 = probs.iter().sum();
         assert!((sum - 1.0).abs() < 1e-5);
