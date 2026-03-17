@@ -7,7 +7,8 @@
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    BatchedVectorizedRmsNormKernel, Kernel, LayerNormKernel, PerHeadRmsNormKernel, RopeNeoxKernel,
+    BatchedRopeKernel, BatchedVectorizedRmsNormKernel, Kernel, LayerNormKernel,
+    PerHeadRmsNormKernel, RopeNeoxKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -260,6 +261,61 @@ pub fn rope_neox_forward(
     unsafe {
         stream.launch_kernel(module, "rope_neox", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("RoPE NeoX forward failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Batched RoPE NeoX forward — processes all seq_len positions in a single kernel launch.
+///
+/// Replaces per-position `rope_neox_forward` loop to avoid ~2048 kernel launches per block.
+/// Uses Grid(num_heads, seq_len, 1) with positions read from a GPU buffer.
+///
+/// Input layout: `[seq_len, num_heads * head_dim]` (interleaved).
+#[cfg(feature = "cuda")]
+pub fn batched_rope_neox_forward(
+    input: &GpuBuffer<f32>,
+    output: &mut GpuBuffer<f32>,
+    positions: &GpuBuffer<u32>,
+    num_heads: u32,
+    head_dim: u32,
+    seq_len: u32,
+    theta: f32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = BatchedRopeKernel::new(num_heads, head_dim, seq_len, theta);
+
+    let key = format!("batched_rope_fwd_{num_heads}_{head_dim}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    let config =
+        LaunchConfig { grid: (num_heads, seq_len, 1), block: (head_dim / 2, 1, 1), shared_mem: 0 };
+
+    let input_ptr = input.as_ptr();
+    let output_ptr = output.as_ptr();
+    let positions_ptr = positions.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &positions_ptr as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream.launch_kernel(module, "batched_rope", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Batched RoPE NeoX forward failed: {e:?}"))
         })?;
     }
 

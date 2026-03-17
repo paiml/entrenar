@@ -44,10 +44,11 @@ use crate::autograd::cuda_backward::{
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{
-    batched_4d_gemm_forward, batched_softmax_forward, batched_to_interleaved_forward,
-    batched_transpose_forward, elementwise_mul_forward, expand_kv_heads, fused_swiglu_forward,
-    gemm_forward, interleaved_to_batched_forward, per_head_rmsnorm_forward, residual_add_forward,
-    rms_norm_forward, rope_neox_forward, scale_forward, silu_forward,
+    batched_4d_gemm_forward, batched_rope_neox_forward, batched_softmax_forward,
+    batched_to_interleaved_forward, batched_transpose_forward, elementwise_mul_forward,
+    expand_kv_heads, fused_swiglu_forward, gemm_forward, interleaved_to_batched_forward,
+    per_head_rmsnorm_forward, residual_add_forward, rms_norm_forward, rope_neox_forward,
+    scale_forward, silu_forward,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::adamw_step_cuda;
@@ -155,6 +156,8 @@ pub(crate) struct CudaBlockScratch {
     /// LoRA temp for scaled addition, sized [max_seq_len * max_proj_dim]
     /// (reuses largest projection dimension for Q/V LoRA output)
     lora_temp: GpuBuffer<f32>,
+    /// Sequential position indices [0, 1, ..., max_seq_len-1] for batched RoPE
+    rope_positions: GpuBuffer<u32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -208,6 +211,12 @@ impl CudaBlockScratch {
             )?,
             lora_inter: GpuBuffer::new(ctx, lora_inter_size)?,
             lora_temp: GpuBuffer::new(ctx, lora_temp_size)?,
+            rope_positions: {
+                let positions: Vec<u32> = (0..max_seq_len as u32).collect();
+                let mut buf = GpuBuffer::new(ctx, max_seq_len)?;
+                buf.copy_from_host(&positions)?;
+                buf
+            },
         })
     }
 }
@@ -398,6 +407,12 @@ impl CudaTransformerBlock {
             // LoRA scratch (unused for fp32 blocks, minimum allocation)
             lora_inter: GpuBuffer::new(&ctx, 1)?,
             lora_temp: GpuBuffer::new(&ctx, 1)?,
+            rope_positions: {
+                let positions: Vec<u32> = (0..max_seq_len as u32).collect();
+                let mut buf = GpuBuffer::new(&ctx, max_seq_len)?;
+                buf.copy_from_host(&positions)?;
+                buf
+            },
         };
 
         Ok(Self {
@@ -623,27 +638,28 @@ impl CudaTransformerBlock {
         }
 
         // ── ENT-270: Apply RoPE (NeoX half-rotation) on Q and K ──────────
+        // ALB-119: Batched launch (2 kernels) replaces per-position loop (2*seq_len kernels)
         let rope_theta = self.config.rope_theta;
-        for pos in 0..seq_len {
+        {
             let q_ref = unsafe { &*(std::ptr::addr_of!(self.scratch.q)) };
-            rope_neox_forward(
+            batched_rope_neox_forward(
                 q_ref,
                 &mut self.scratch.q,
+                &self.scratch.rope_positions,
                 nh,
                 hd,
-                pos as u32,
-                pos,
+                seq,
                 rope_theta,
                 stream,
             )?;
             let k_ref = unsafe { &*(std::ptr::addr_of!(self.scratch.k)) };
-            rope_neox_forward(
+            batched_rope_neox_forward(
                 k_ref,
                 &mut self.scratch.k,
+                &self.scratch.rope_positions,
                 nkv,
                 hd,
-                pos as u32,
-                pos,
+                seq,
                 rope_theta,
                 stream,
             )?;
@@ -2771,14 +2787,31 @@ impl CudaNf4TransformerBlock {
         }
 
         // ── ENT-270: Apply RoPE (NeoX half-rotation) on Q and K ──────────
-        // Q: [seq_len, num_heads * head_dim], K: [seq_len, num_kv_heads * head_dim]
-        // SAFETY: In-place GPU operations — same buffer as input/output is safe for CUDA kernels.
+        // ALB-119: Batched launch (2 kernels) replaces per-position loop (2*seq_len kernels)
         let rope_theta = self.config.rope_theta;
-        for pos in 0..seq_len {
+        {
             let q_ref = unsafe { &*(std::ptr::addr_of!(scratch.q)) };
-            rope_neox_forward(q_ref, &mut scratch.q, nh, hd, pos as u32, pos, rope_theta, stream)?;
+            batched_rope_neox_forward(
+                q_ref,
+                &mut scratch.q,
+                &scratch.rope_positions,
+                nh,
+                hd,
+                s,
+                rope_theta,
+                stream,
+            )?;
             let k_ref = unsafe { &*(std::ptr::addr_of!(scratch.k)) };
-            rope_neox_forward(k_ref, &mut scratch.k, nkv, hd, pos as u32, pos, rope_theta, stream)?;
+            batched_rope_neox_forward(
+                k_ref,
+                &mut scratch.k,
+                &scratch.rope_positions,
+                nkv,
+                hd,
+                s,
+                rope_theta,
+                stream,
+            )?;
         }
 
         // Q: interleaved → batched layout
