@@ -2363,7 +2363,12 @@ fn load_transformer_model(
 ) -> Result<(Option<Transformer>, usize)> {
     // ALB-097: Check output_dir first for checkpoint resume (APR, then SafeTensors)
     if output_dir.is_dir() {
-        // Try APR first
+        // ENT-282: Check if checkpoint is a delta (NF4+QLoRA — no frozen base weights).
+        // If delta, load base model from model_path first, then overlay delta tensors.
+        if let Some(result) = try_load_apr_delta(output_dir, config, model_path) {
+            return Ok(result);
+        }
+        // Try full APR checkpoint
         if let Some(result) = try_load_apr(output_dir, config) {
             return Ok(result);
         }
@@ -2444,6 +2449,64 @@ pub fn try_load_apr_for_inference(
     config: &TransformerConfig,
 ) -> Option<(Option<Transformer>, usize)> {
     try_load_apr(model_path, config)
+}
+
+/// ENT-282: Load a delta checkpoint (NF4+QLoRA lazy save).
+///
+/// Delta checkpoints only contain trainable/updated weights (norms, embed, lm_head, LoRA)
+/// and skip frozen NF4 base weights (~15 GB). On resume, base weights are loaded from the
+/// original model_path first, then delta tensors are overlaid.
+///
+/// Returns None if the checkpoint is not a delta (falls through to full-checkpoint load).
+fn try_load_apr_delta(
+    output_dir: &Path,
+    config: &TransformerConfig,
+    base_model_path: &Path,
+) -> Option<(Option<Transformer>, usize)> {
+    use aprender::serialization::apr::AprReader;
+
+    let apr_path = find_latest_apr_checkpoint(output_dir)?;
+    let reader = AprReader::open(&apr_path).ok()?;
+
+    // Only handle delta checkpoints
+    let format = reader.get_metadata("format").and_then(|v| v.as_str().map(String::from))?;
+    if format != "entrenar-delta-checkpoint" {
+        return None; // Not a delta — fall through to full load
+    }
+
+    let checkpoint_step = reader
+        .get_metadata("checkpoint_step")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    println!(
+        "  Delta checkpoint at step {checkpoint_step} (loading base from {})",
+        base_model_path.display()
+    );
+
+    // Step 1: Load full base model from original pretrained weights
+    let (base_model, _) = try_load_apr(base_model_path, config)
+        .or_else(|| try_load_safetensors_dir(base_model_path, config))?;
+    let mut transformer = base_model?;
+
+    // Step 2: Overlay delta tensors (norms, embed, lm_head)
+    let mut overlaid = 0usize;
+    for desc in &reader.tensors {
+        let name = &desc.name;
+        if name.starts_with("__training__") || name.starts_with("lora.") {
+            continue; // Handled separately by restore_lora_from_apr / load_optimizer_state_apr
+        }
+        if let Ok(data) = reader.read_tensor_as_f32(name) {
+            let tensor = crate::Tensor::from_vec(data, false);
+            if transformer.set_named_parameter(name, tensor) {
+                overlaid += 1;
+            }
+        }
+    }
+    println!("  ✓ Delta: {overlaid} tensors overlaid on base model");
+
+    Some((Some(transformer), checkpoint_step))
 }
 
 fn try_load_apr(

@@ -459,6 +459,36 @@ impl Transformer {
         }
         params
     }
+
+    /// ENT-282: Set a named parameter by name (for delta checkpoint overlay).
+    ///
+    /// Returns true if the parameter was found and set.
+    pub fn set_named_parameter(&mut self, name: &str, value: Tensor) -> bool {
+        if name == "model.embed_tokens.weight" {
+            self.embed_tokens.weight = value;
+            return true;
+        }
+        if name == "model.norm.weight" {
+            self.norm.weight = value;
+            return true;
+        }
+        if name == "lm_head.weight" {
+            self.lm_head = Some(value);
+            return true;
+        }
+        // Per-layer parameters: model.layers.{idx}.{suffix}
+        if let Some(rest) = name.strip_prefix("model.layers.") {
+            if let Some(dot_pos) = rest.find('.') {
+                if let Ok(idx) = rest[..dot_pos].parse::<usize>() {
+                    if idx < self.layers.len() {
+                        let suffix = &rest[dot_pos + 1..];
+                        return self.layers[idx].set_named_parameter(suffix, value);
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 #[cfg(test)]

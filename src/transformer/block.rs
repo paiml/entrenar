@@ -135,6 +135,33 @@ impl TransformerBlock {
         params.push((format!("{prefix}.mlp.down_proj.weight"), &self.ffn.w_down));
         params
     }
+
+    /// ENT-282: Set a named parameter by suffix (after "model.layers.{idx}.").
+    pub fn set_named_parameter(&mut self, suffix: &str, value: Tensor) -> bool {
+        match suffix {
+            "input_layernorm.weight" => {
+                self.input_norm.weight = value;
+                true
+            }
+            "post_attention_layernorm.weight" => {
+                self.post_attn_norm.weight = value;
+                true
+            }
+            "mlp.gate_proj.weight" => {
+                self.ffn.w_gate = value;
+                true
+            }
+            "mlp.up_proj.weight" => {
+                self.ffn.w_up = value;
+                true
+            }
+            "mlp.down_proj.weight" => {
+                self.ffn.w_down = value;
+                true
+            }
+            _ => self.self_attn.set_named_parameter(suffix, value),
+        }
+    }
 }
 
 #[cfg(test)]
