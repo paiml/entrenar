@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/paiml/entrenar/actions/workflows/ci.yml"><img src="https://github.com/paiml/entrenar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://crates.io/crates/entrenar"><img src="https://img.shields.io/crates/v/entrenar.svg" alt="Crates.io"></a>
   <a href="https://docs.rs/entrenar"><img src="https://docs.rs/entrenar/badge.svg" alt="Documentation"></a>
   <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-4900%2B%20passing-brightgreen" alt="Tests"></a>
