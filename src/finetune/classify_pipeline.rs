@@ -2731,8 +2731,20 @@ impl ClassifyPipeline {
         };
 
         // ── 5. Optimizer step (once for the whole batch) ───────────────
+        self.apply_optimizer_step(batch_size);
+
+        BatchResult {
+            avg_loss: total_loss / batch_size as f32,
+            correct,
+            total: batch_size,
+            grad_norm,
+        }
+    }
+
+    /// Combined GPU + CPU optimizer step dispatch (extracted from train_batch).
+    #[allow(unused_variables)]
+    fn apply_optimizer_step(&mut self, batch_size: usize) {
         // GPU optimizer step for fp32 transformer block weights (F-CUDA-014)
-        // NF4 QLoRA: batch optimizer step applied below
         #[cfg(feature = "cuda")]
         {
             if self.gpu_training.is_some() && !self.config.quantize_nf4 {
@@ -2740,20 +2752,14 @@ impl ClassifyPipeline {
                 self.gpu_optimizer_step(lr);
             }
         }
-
-        // KAIZEN-014: NF4 QLoRA batch optimizer step
+        // NF4 QLoRA: batch optimizer step (KAIZEN-014)
         #[cfg(feature = "cuda")]
         {
             if self.gpu_training.is_some() && self.config.quantize_nf4 {
                 self.nf4_lora_batch_optimizer_step(batch_size);
             }
         }
-
-        // CPU optimizer step
-        // KAIZEN-011: Include LoRA in CPU optimizer when NOT on CUDA.
-        // NF4+CUDA: LoRA trained on GPU (backward_nf4_gpu_blocks), skip here
-        // NF4+non-CUDA: LoRA trained on CPU via autograd, include here
-        // fp32 mode: LoRA + classifier head always on CPU
+        // CPU optimizer step (KAIZEN-011)
         let has_cuda_training = {
             #[cfg(feature = "cuda")]
             {
@@ -2772,13 +2778,6 @@ impl ClassifyPipeline {
         }
         params.extend(self.classifier.parameters_mut());
         self.optimizer.step_refs(&mut params);
-
-        BatchResult {
-            avg_loss: total_loss / batch_size as f32,
-            correct,
-            total: batch_size,
-            grad_norm,
-        }
     }
 
     /// Per-sample forward + backward fallback for train_batch.

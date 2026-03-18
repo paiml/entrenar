@@ -508,97 +508,17 @@ impl CudaTransformerTrainer {
         }
 
         // Step 3: Upload transformer blocks to GPU
-        // ENT-263: NF4 quantized blocks when quantize_nf4 + LoRA is enabled
         let use_nf4 = config.quantize_nf4 && config.is_lora();
-        let mut cuda_blocks: Vec<CudaBlock> = Vec::with_capacity(num_layers);
-
-        if use_nf4 {
-            // NF4+LoRA path: quantize frozen weights to 4-bit, init LoRA adapters
-            let lora_rank = config.lora_rank.unwrap_or(16);
-            let lora_alpha = config.lora_alpha.unwrap_or(2.0 * lora_rank as f32);
-            let lora_scale = lora_alpha / lora_rank as f32;
-            let head_dim = mc.head_dim();
-            let q_dim = mc.num_attention_heads * head_dim;
-            let kv_hidden = mc.num_kv_heads * head_dim;
-
-            for (i, layer) in model.layers.iter().enumerate() {
-                // Generate initial LoRA weights: A = small random, B = zeros
-                // (standard LoRA init: ΔW = B·A = 0 initially)
-                let lora_a_q: Vec<f32> = (0..hidden_size * lora_rank)
-                    .map(|j| ((j as f32 + i as f32 * 1000.0) * 0.1).sin() * 0.01)
-                    .collect();
-                let lora_b_q = vec![0.0f32; lora_rank * q_dim];
-                let lora_a_v: Vec<f32> = (0..hidden_size * lora_rank)
-                    .map(|j| ((j as f32 + i as f32 * 2000.0 + 500.0) * 0.1).sin() * 0.01)
-                    .collect();
-                let lora_b_v = vec![0.0f32; lora_rank * kv_hidden];
-
-                // ENT-270: Extract QK-norm weights if present
-                let q_norm_data = layer
-                    .self_attn
-                    .q_norm
-                    .as_ref()
-                    .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
-                let k_norm_data = layer
-                    .self_attn
-                    .k_norm
-                    .as_ref()
-                    .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
-
-                let block = crate::transformer::CudaNf4TransformerBlock::new(
-                    mc,
-                    i,
-                    ctx.clone(),
-                    layer.input_norm.weight.data().as_slice().expect("contiguous"),
-                    layer.post_attn_norm.weight.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_q.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_k.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_v.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_o.data().as_slice().expect("contiguous"),
-                    layer.ffn.w_gate.data().as_slice().expect("contiguous"),
-                    layer.ffn.w_up.data().as_slice().expect("contiguous"),
-                    layer.ffn.w_down.data().as_slice().expect("contiguous"),
-                    max_seq_len,
-                    Some((&lora_a_q, &lora_b_q)),
-                    Some((&lora_a_v, &lora_b_v)),
-                    lora_scale,
-                    lora_rank,
-                    q_norm_data.as_deref(),
-                    k_norm_data.as_deref(),
-                )
-                .map_err(|e| {
-                    crate::error::Error::ConfigError(format!("NF4 block {i} upload failed: {e:?}"))
-                })?;
-                cuda_blocks.push(CudaBlock::Nf4(block));
-            }
-            println!(
-                "  ✓ {num_layers} NF4 transformer blocks uploaded to GPU (LoRA rank={lora_rank}, alpha={lora_alpha})"
-            );
-        } else {
-            // Standard fp32 path
-            for (i, layer) in model.layers.iter().enumerate() {
-                let block = CudaTransformerBlock::new(
-                    mc,
-                    i,
-                    ctx.clone(),
-                    layer.input_norm.weight.data().as_slice().expect("contiguous"),
-                    layer.post_attn_norm.weight.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_q.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_k.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_v.data().as_slice().expect("contiguous"),
-                    layer.self_attn.w_o.data().as_slice().expect("contiguous"),
-                    layer.ffn.w_gate.data().as_slice().expect("contiguous"),
-                    layer.ffn.w_up.data().as_slice().expect("contiguous"),
-                    layer.ffn.w_down.data().as_slice().expect("contiguous"),
-                    max_seq_len,
-                )
-                .map_err(|e| {
-                    crate::error::Error::ConfigError(format!("Block {i} upload failed: {e:?}"))
-                })?;
-                cuda_blocks.push(CudaBlock::Fp32(block));
-            }
-            println!("  ✓ {num_layers} transformer blocks uploaded to GPU");
-        }
+        let cuda_blocks = Self::upload_blocks(
+            &model,
+            mc,
+            &config,
+            &ctx,
+            use_nf4,
+            num_layers,
+            hidden_size,
+            max_seq_len,
+        )?;
 
         // Step 4: Allocate shared gradient workspace
         let cuda_grad_workspace = CudaGradWorkspace::new(&ctx, mc).map_err(|e| {
@@ -907,6 +827,104 @@ impl CudaTransformerTrainer {
             fused_clip,
             final_norm_zero_buf: vec![0.0f32; hidden_size],
         })
+    }
+
+    /// Upload transformer blocks to GPU (NF4 or fp32 path).
+    #[allow(clippy::too_many_arguments)]
+    fn upload_blocks(
+        model: &Transformer,
+        mc: &crate::transformer::TransformerConfig,
+        config: &TransformerTrainConfig,
+        ctx: &std::sync::Arc<trueno_gpu::driver::CudaContext>,
+        use_nf4: bool,
+        num_layers: usize,
+        hidden_size: usize,
+        max_seq_len: usize,
+    ) -> crate::Result<Vec<CudaBlock>> {
+        let mut cuda_blocks: Vec<CudaBlock> = Vec::with_capacity(num_layers);
+
+        if use_nf4 {
+            let lora_rank = config.lora_rank.unwrap_or(16);
+            let lora_alpha = config.lora_alpha.unwrap_or(2.0 * lora_rank as f32);
+            let lora_scale = lora_alpha / lora_rank as f32;
+            let head_dim = mc.head_dim();
+            let q_dim = mc.num_attention_heads * head_dim;
+            let kv_hidden = mc.num_kv_heads * head_dim;
+
+            for (i, layer) in model.layers.iter().enumerate() {
+                let lora_a_q: Vec<f32> = (0..hidden_size * lora_rank)
+                    .map(|j| ((j as f32 + i as f32 * 1000.0) * 0.1).sin() * 0.01)
+                    .collect();
+                let lora_b_q = vec![0.0f32; lora_rank * q_dim];
+                let lora_a_v: Vec<f32> = (0..hidden_size * lora_rank)
+                    .map(|j| ((j as f32 + i as f32 * 2000.0 + 500.0) * 0.1).sin() * 0.01)
+                    .collect();
+                let lora_b_v = vec![0.0f32; lora_rank * kv_hidden];
+
+                let q_norm_data = layer
+                    .self_attn
+                    .q_norm
+                    .as_ref()
+                    .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
+                let k_norm_data = layer
+                    .self_attn
+                    .k_norm
+                    .as_ref()
+                    .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
+
+                let block = crate::transformer::CudaNf4TransformerBlock::new(
+                    mc,
+                    i,
+                    ctx.clone(),
+                    layer.input_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.post_attn_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_q.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_k.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_v.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_o.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_gate.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_up.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_down.data().as_slice().expect("contiguous"),
+                    max_seq_len,
+                    Some((&lora_a_q, &lora_b_q)),
+                    Some((&lora_a_v, &lora_b_v)),
+                    lora_scale,
+                    lora_rank,
+                    q_norm_data.as_deref(),
+                    k_norm_data.as_deref(),
+                )
+                .map_err(|e| {
+                    crate::error::Error::ConfigError(format!("NF4 block {i} upload failed: {e:?}"))
+                })?;
+                cuda_blocks.push(CudaBlock::Nf4(block));
+            }
+            println!("  ✓ {num_layers} NF4 transformer blocks uploaded (LoRA rank={lora_rank}, alpha={lora_alpha})");
+        } else {
+            for (i, layer) in model.layers.iter().enumerate() {
+                let block = CudaTransformerBlock::new(
+                    mc,
+                    i,
+                    ctx.clone(),
+                    layer.input_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.post_attn_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_q.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_k.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_v.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_o.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_gate.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_up.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_down.data().as_slice().expect("contiguous"),
+                    max_seq_len,
+                )
+                .map_err(|e| {
+                    crate::error::Error::ConfigError(format!("Block {i} upload failed: {e:?}"))
+                })?;
+                cuda_blocks.push(CudaBlock::Fp32(block));
+            }
+            println!("  ✓ {num_layers} transformer blocks uploaded to GPU");
+        }
+
+        Ok(cuda_blocks)
     }
 
     /// ALB-078: Initialize fused gradient clipping state (extracted for complexity).
