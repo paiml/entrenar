@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   unified:
-    uses: paiml/.github/.github/workflows/unified-gate.yml@main
+    uses: paiml/.github/.github/workflows/unified-gate.yml@b6c24635217fe302ca1a67352b7de540fb3e02e7 # pin to SHA
     with:
       repo: ${{ github.event.repository.name }}
       pr_sha: ${{ github.event.pull_request.head.sha || github.sha }}

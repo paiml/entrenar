@@ -105,7 +105,7 @@ jobs:
   # ── Gate: unified CI must pass before publish ──────────
   gate:
     needs: create-release
-    uses: paiml/.github/.github/workflows/unified-gate.yml@main
+    uses: paiml/.github/.github/workflows/unified-gate.yml@b6c24635217fe302ca1a67352b7de540fb3e02e7 # pin to SHA
     with:
       repo: ${{ github.event.repository.name }}
       pr_sha: ${{ github.sha }}
@@ -222,19 +222,18 @@ jobs:
       - name: Strip binaries
         run: |
           TARGET="${{ matrix.target }}"
+          strip_binary() {
+            local bin_path="$1"
+            if [[ "$TARGET" == aarch64-* ]]; then
+              docker run --rm -v "$PWD/target:/target:Z" \
+                "ghcr.io/cross-rs/${TARGET}:main" \
+                aarch64-linux-gnu-strip "/$bin_path"
+            else
+              strip "$bin_path"
+            fi
+          }
           for BIN in ${{ steps.bins.outputs.names }}; do
-            BIN_PATH="target/${TARGET}/release-lto/$BIN"
-            case "$TARGET" in
-              aarch64-*)
-                # Strip via cross Docker image with target-appropriate strip tool
-                docker run --rm -v "$PWD/target:/target:Z" \
-                  "ghcr.io/cross-rs/${TARGET}:main" \
-                  aarch64-linux-gnu-strip "/$BIN_PATH"
-                ;;
-              *)
-                strip "$BIN_PATH"
-                ;;
-            esac
+            strip_binary "target/${TARGET}/release-lto/$BIN"
           done
 
       - name: Package archives
