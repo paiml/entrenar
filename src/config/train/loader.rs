@@ -922,6 +922,11 @@ fn train_loop_cuda(
             total_loss += batch_loss;
             batches_processed += 1;
 
+            // ENT-283: Seed loss EMA to first observed loss to avoid cold-start false rollbacks
+            if loss_ema == 0.0 {
+                loss_ema = f64::from(batch_loss);
+            }
+
             // R-016b: Loss spike detection + rollback
             detect_loss_spike(
                 batch_loss,
@@ -4930,6 +4935,105 @@ optimizer:
         // EMA is 0 — condition `*ema > 0.0` fails, no spike
         detect_loss_spike(5.0, 1, &mut ema, 0.05, 3.0, &mut rollback_count, 3, &mut jsonl_file);
         assert_eq!(rollback_count, 0);
+    }
+
+    #[test]
+    fn test_ent283_cold_start_ema_seeding_prevents_false_rollback() {
+        // ENT-283: Simulate the training loop's cold-start EMA seeding.
+        // Without seeding, step 2 would see loss=15.5 > 3.0 * EMA(0.775) = 2.325 → false rollback.
+        // With seeding, EMA starts at 15.5 so step 2 sees 15.5 < 3.0 * 15.5 → no rollback.
+        let mut loss_ema: f64 = 0.0;
+        let alpha = 0.05;
+        let threshold = 3.0;
+        let mut rollback_count = 0;
+        let mut jsonl_file = None;
+
+        let batch_loss: f32 = 15.5;
+
+        // Step 1: Seed EMA (mimics the training loop fix)
+        if loss_ema == 0.0 {
+            loss_ema = f64::from(batch_loss);
+        }
+        detect_loss_spike(
+            batch_loss,
+            1,
+            &mut loss_ema,
+            alpha,
+            threshold,
+            &mut rollback_count,
+            3,
+            &mut jsonl_file,
+        );
+        assert_eq!(rollback_count, 0, "Step 1 should not trigger rollback");
+
+        // Step 2: Same loss — should NOT trigger rollback because EMA is warm
+        let batch_loss_2: f32 = 15.5;
+        if loss_ema == 0.0 {
+            loss_ema = f64::from(batch_loss_2);
+        }
+        detect_loss_spike(
+            batch_loss_2,
+            2,
+            &mut loss_ema,
+            alpha,
+            threshold,
+            &mut rollback_count,
+            3,
+            &mut jsonl_file,
+        );
+        assert_eq!(rollback_count, 0, "Step 2 should not trigger false rollback after EMA seeding");
+
+        // Step 3: Actual spike (10x loss) — SHOULD trigger rollback
+        let spike_loss: f32 = 155.0;
+        detect_loss_spike(
+            spike_loss,
+            3,
+            &mut loss_ema,
+            alpha,
+            threshold,
+            &mut rollback_count,
+            3,
+            &mut jsonl_file,
+        );
+        assert_eq!(rollback_count, 1, "Genuine 10x spike should trigger rollback");
+    }
+
+    #[test]
+    fn test_ent283_without_seeding_false_rollback_on_step2() {
+        // Demonstrates the bug: without EMA seeding, step 2 gets a false rollback.
+        let mut loss_ema: f64 = 0.0;
+        let alpha = 0.05;
+        let threshold = 3.0;
+        let mut rollback_count = 0;
+        let mut jsonl_file = None;
+
+        // Step 1: EMA=0.0, no rollback (guarded by ema > 0.0 check)
+        detect_loss_spike(
+            15.5,
+            1,
+            &mut loss_ema,
+            alpha,
+            threshold,
+            &mut rollback_count,
+            3,
+            &mut jsonl_file,
+        );
+        assert_eq!(rollback_count, 0, "Step 1: ema=0 guard prevents rollback");
+        // After step 1: EMA = 0.05 * 15.5 + 0.95 * 0.0 = 0.775
+        assert!((loss_ema - 0.775).abs() < 1e-9, "EMA should be 0.775 after unseeded step 1");
+
+        // Step 2: 15.5 > 3.0 * 0.775 = 2.325 → FALSE rollback!
+        detect_loss_spike(
+            15.5,
+            2,
+            &mut loss_ema,
+            alpha,
+            threshold,
+            &mut rollback_count,
+            3,
+            &mut jsonl_file,
+        );
+        assert_eq!(rollback_count, 1, "BUG: unseeded EMA causes false rollback on step 2");
     }
 
     // =========================================================================
