@@ -159,8 +159,9 @@ pub fn pre_warm_lora_backward_kernels(
 
     macro_rules! warm {
         ($key:expr, $kernel:expr) => {{
+            let key = $key;
             let ptx = $kernel.emit_ptx_for_target(&target);
-            cache.get_or_compile("silu_backward", &ptx)?;
+            cache.get_or_compile(&key, &ptx)?;
             count += 1;
         }};
     }

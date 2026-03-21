@@ -2631,6 +2631,11 @@ impl CudaNf4TransformerBlock {
             crate::autograd::cuda_tensor::CudaTensorError,
         > {
             let deq = dequantize_nf4(q); // [N*K] in [N,K] row-major
+            let nonzero = deq.iter().filter(|&&x| x != 0.0).count();
+            eprintln!(
+                "[TRACE] dequant n={n} k={k} len={} nonzero={nonzero} first5={:?}",
+                deq.len(), &deq[..5.min(deq.len())]
+            );
             assert_eq!(deq.len(), n * k, "dequant size mismatch: {} vs {}x{}", deq.len(), n, k);
             // Transpose [N,K] → [K,N]
             let mut transposed = vec![0.0f32; n * k];
@@ -2639,11 +2644,18 @@ impl CudaNf4TransformerBlock {
                     transposed[col * n + row] = deq[row * k + col];
                 }
             }
-            GpuBuffer::from_host(&ctx, &transposed).map_err(|e| {
+            let buf = GpuBuffer::from_host(&ctx, &transposed).map_err(|e| {
                 crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
                     "dequant transpose upload: {e:?}"
                 ))
-            })
+            })?;
+            // Verify upload: must read FULL buffer then slice
+            let mut verify_full = vec![0.0f32; buf.len()];
+            let verify_ok = buf.copy_to_host(&mut verify_full).is_ok();
+            let verify5: Vec<f32> = verify_full.iter().copied().take(5).collect();
+            let nz = verify_full.iter().filter(|&&x| x != 0.0).count();
+            eprintln!("[TRACE] uploaded ptr={:?} len={} copy_ok={verify_ok} nonzero={nz} verify[:5]={verify5:?}", buf.as_ptr(), buf.len());
+            Ok(buf)
         };
         // Each weight is [out_features, in_features] = [N, K].
         // After transpose: [K, N] — standard cuBLAS B layout.
@@ -2783,13 +2795,14 @@ impl CudaNf4TransformerBlock {
 
         // CONTRACT: FALSIFY-PARITY-V2-003 — verify buffers are non-zero before GEMM
         if self.layer_idx == 0 {
-            let mut a_check = vec![0.0f32; 5.min(scratch.norm1_out.len())];
-            let _ = scratch.norm1_out.copy_to_host(&mut a_check);
-            let mut w_check = vec![0.0f32; 5.min(self.w_q_fp32.len())];
-            let _ = self.w_q_fp32.copy_to_host(&mut w_check);
+            let mut a_full = vec![0.0f32; scratch.norm1_out.len()];
+            let a_ok = scratch.norm1_out.copy_to_host(&mut a_full).is_ok();
+            let a_check: Vec<f32> = a_full.iter().copied().take(5).collect();
+            let mut w_full = vec![0.0f32; self.w_q_fp32.len()];
+            let w_ok = self.w_q_fp32.copy_to_host(&mut w_full).is_ok();
+            let w_check: Vec<f32> = w_full.iter().copied().take(5).collect();
             eprintln!(
-                "[TRACE L0] q_proj GEMM: a_len={} w_len={} c_len={} m={} k={} n={}",
-                scratch.norm1_out.len(), self.w_q_fp32.len(), scratch.q.len(),
+                "[TRACE L0] q_proj: a_ok={a_ok} w_ok={w_ok} m={} k={} n={}",
                 seq_len, hidden_size, q_dim,
             );
             eprintln!("[TRACE L0] a[:5]={a_check:?} w[:5]={w_check:?}");
@@ -2816,9 +2829,10 @@ impl CudaNf4TransformerBlock {
         // CONTRACT: verify output is non-zero after GEMM
         if self.layer_idx == 0 {
             stream.synchronize().ok();
-            let mut c_check = vec![0.0f32; 5.min(scratch.q.len())];
-            let _ = scratch.q.copy_to_host(&mut c_check);
-            eprintln!("[TRACE L0] q_proj output[:5]={c_check:?}");
+            let mut c_full = vec![0.0f32; scratch.q.len()];
+            let c_ok = scratch.q.copy_to_host(&mut c_full).is_ok();
+            let c_check: Vec<f32> = c_full.iter().copied().take(5).collect();
+            eprintln!("[TRACE L0] output: ok={c_ok} c[:5]={c_check:?}");
             if c_check.iter().all(|&x| x == 0.0) {
                 eprintln!("[TRACE L0] *** ALL ZEROS — cuBLAS GEMM produced no output ***");
             }
