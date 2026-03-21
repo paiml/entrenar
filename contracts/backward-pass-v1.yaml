@@ -8,19 +8,47 @@ metadata:
 
 equations:
   chain_rule:
+    lean_theorem: "ProvableContracts.Theorems.Autograd.ChainRule"
     formula: "dL/dx_i = sum_j (dL/dy_j * dy_j/dx_i)"
     domain: "x ∈ R^d, y = f(x), L: R^n -> R"
+    preconditions:
+      - "!grad_output.is_empty()"
+      - "grad_output.len() == output.len()"
+      - "grad_output.iter().all(|g| g.is_finite())"
+    postconditions:
+      - "ret.len() == input.len()"
+      - "ret.iter().all(|g| g.is_finite())"
     invariants:
       - "Gradient flows backward through computation graph via chain rule"
       - "Gradient shape matches parameter shape"
   softmax_backward:
+    lean_theorem: "ProvableContracts.Theorems.Softmax.Monotonicity"
     formula: "dL/dx_i = y_i * (dL/dy_i - sum_k(y_k * dL/dy_k))"
     domain: "y = softmax(x), y_i >= 0, sum(y) = 1"
+    preconditions:
+      - "!y.is_empty()"
+      - "y.iter().all(|v| *v >= 0.0 && v.is_finite())"
+      - "(y.iter().sum::<f32>() - 1.0).abs() < 1e-5"
+      - "grad_output.len() == y.len()"
+    postconditions:
+      - "ret.len() == y.len()"
+      - "ret.iter().all(|g| g.is_finite())"
     invariants:
       - "Jacobian-vector product computed without materializing full Jacobian"
   matmul_backward:
+    lean_theorem: "ProvableContracts.Theorems.MatMul.BackwardCorrectness"
     formula: "dL/dA = dL/dC @ B^T, dL/dB = A^T @ dL/dC"
     domain: "A ∈ R^(m×k), B ∈ R^(k×n), C = A @ B"
+    preconditions:
+      - "a.len() == m * k"
+      - "b.len() == k * n"
+      - "grad_output.len() == m * n"
+      - "k > 0"
+    postconditions:
+      - "grad_a.len() == a.len()"
+      - "grad_b.len() == b.len()"
+      - "grad_a.iter().all(|g| g.is_finite())"
+      - "grad_b.iter().all(|g| g.is_finite())"
     invariants:
       - "Gradient dimensions consistent with forward operands"
       - "Gradient accumulation is additive for shared parameters"

@@ -10,12 +10,25 @@ equations:
   bpe_merge:
     formula: "merge(corpus, k) applies k most-frequent byte-pair merges"
     domain: "corpus: list of strings, k <= vocab_size - base_vocab_size"
+    preconditions:
+      - "!corpus.is_empty()"
+      - "k > 0"
+      - "k <= vocab_size - base_vocab_size"
+    postconditions:
+      - "vocab.len() == base_vocab_size + k"
+      - "total_tokens_after <= total_tokens_before"
     invariants:
       - "Each merge reduces total token count in corpus"
       - "Vocabulary size increases by 1 per merge"
   encode_decode_identity:
     formula: "decode(encode(text)) == normalize(text)"
     domain: "text: valid UTF-8 string"
+    preconditions:
+      - "!text.is_empty()"
+      - "tokenizer.is_trained()"
+    postconditions:
+      - "!ret.is_empty()"
+      - "ret.iter().all(|id| *id < vocab_size)"
     invariants:
       - "Encoding is deterministic for same input"
       - "Token IDs are valid indices into vocabulary"

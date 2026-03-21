@@ -8,15 +8,30 @@ metadata:
 
 equations:
   softmax:
+    lean_theorem: "ProvableContracts.Theorems.Softmax.PartitionOfUnity"
     formula: "softmax(x)_i = exp(x_i - max(x)) / sum_j(exp(x_j - max(x)))"
     domain: "x in R^n, n >= 1"
+    preconditions:
+      - "!input.is_empty()"
+      - "input.iter().all(|v| v.is_finite())"
+    postconditions:
+      - "ret.len() == input.len()"
+      - "ret.iter().all(|v| *v >= 0.0 && v.is_finite())"
+      - "(ret.iter().sum::<f32>() - 1.0).abs() < 1e-6"
     invariants:
       - "Output sums to 1: sum(softmax(x)) = 1"
       - "All outputs non-negative: softmax(x)_i >= 0"
       - "Monotonic: x_i > x_j implies softmax(x)_i > softmax(x)_j"
   log_sum_exp:
+    lean_theorem: "ProvableContracts.Theorems.Softmax.ShiftInvariance"
     formula: "log(sum(exp(x))) = max(x) + log(sum(exp(x - max(x))))"
     domain: "x in R^n"
+    preconditions:
+      - "!input.is_empty()"
+      - "input.iter().all(|v| v.is_finite())"
+    postconditions:
+      - "ret.is_finite()"
+      - "ret >= input.iter().cloned().fold(f32::NEG_INFINITY, f32::max)"
     invariants:
       - "Subtraction of max prevents overflow in exp()"
       - "Result finite for all finite inputs"

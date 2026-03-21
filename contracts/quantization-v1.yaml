@@ -10,17 +10,37 @@ equations:
   symmetric_4bit:
     formula: "q = round(clamp(x / scale, -7, 7)); x_hat = q * scale"
     domain: "x in R, scale = max(|x_block|) / 7, block_size = 64"
+    preconditions:
+      - "!input.is_empty()"
+      - "block_size > 0"
+      - "input.iter().all(|v| v.is_finite())"
+    postconditions:
+      - "quantized.iter().all(|q| *q >= -7 && *q <= 7)"
+      - "scale >= 0.0"
     invariants:
       - "Quantized values in [-7, 7] (4-bit signed range)"
       - "Scale factor positive for non-zero blocks"
   quantization_error:
     formula: "MSE(x, x_hat) <= (scale / 7)^2 / 4 per element (uniform quantization bound)"
     domain: "x in R^n, block-wise quantization"
+    preconditions:
+      - "!x.is_empty()"
+      - "scale > 0.0"
+    postconditions:
+      - "mse.is_finite()"
+      - "mse >= 0.0"
+      - "mse <= (scale / 7.0).powi(2) / 4.0"
     invariants:
       - "Error bounded by quantization step size"
   compression_ratio:
     formula: "ratio = 32 / (4 + 32/block_size) for 4-bit with f32 scales"
     domain: "block_size = 64"
+    preconditions:
+      - "block_size > 0"
+      - "bits == 4"
+    postconditions:
+      - "ret > 1.0"
+      - "ret.is_finite()"
     invariants:
       - "Approximately 6x compression for 4-bit with block_size=64"
 

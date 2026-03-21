@@ -10,6 +10,17 @@ equations:
   lora_decomposition:
     formula: "W_adapted = W_frozen + (α/r) * B @ A"
     domain: "W ∈ ℝ^(d×k), A ∈ ℝ^(r×k), B ∈ ℝ^(d×r), r << min(d,k)"
+    preconditions:
+      - "r > 0"
+      - "r <= d.min(k)"
+      - "alpha > 0.0"
+      - "a.len() == r * k"
+      - "b.len() == d * r"
+      - "w_frozen.len() == d * k"
+    postconditions:
+      - "ret.len() == d * k"
+      - "ret.iter().all(|v| v.is_finite())"
+      - "w_frozen_after == w_frozen_before"
     invariants:
       - "W_frozen unchanged during training"
       - "rank(B @ A) ≤ r"

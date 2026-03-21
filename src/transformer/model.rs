@@ -5,6 +5,7 @@
 use crate::autograd::matmul_nt;
 use crate::error::{Error, Result};
 use crate::Tensor;
+use provable_contracts_macros::{ensures, requires};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -269,6 +270,8 @@ impl Transformer {
     ///
     /// # Returns
     /// Logits tensor (seq_len * vocab_size, flattened)
+    #[requires(!token_ids.is_empty())]
+    #[ensures(ret.len() == token_ids.len() * self.config.vocab_size)]
     pub fn forward(&self, token_ids: &[u32]) -> Tensor {
         let seq_len = token_ids.len();
         let hidden_size = self.config.hidden_size;
@@ -298,6 +301,8 @@ impl Transformer {
     ///
     /// # Returns
     /// Hidden states tensor (seq_len * hidden_size, flattened)
+    #[requires(!token_ids.is_empty())]
+    #[ensures(ret.len() == token_ids.len() * self.config.hidden_size)]
     pub fn forward_hidden(&self, token_ids: &[u32]) -> Tensor {
         let seq_len = token_ids.len();
         let hidden_size = self.config.hidden_size;

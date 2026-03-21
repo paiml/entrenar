@@ -8,13 +8,28 @@ metadata:
 
 equations:
   loss_decrease:
+    lean_theorem: "ProvableContracts.Theorems.CrossEntropy.NonNegativity"
     formula: "E[L(θ_{t+1})] ≤ E[L(θ_t)] for sufficiently small lr"
     domain: "θ ∈ ℝ^d, lr ∈ (0, lr_max)"
+    preconditions:
+      - "lr > 0.0"
+      - "lr < lr_max"
+      - "!params.is_empty()"
+    postconditions:
+      - "loss.is_finite()"
+      - "!loss.is_nan()"
     invariants:
       - "Loss monotonically non-increasing (in expectation)"
   gradient_norm:
     formula: "|∇L(θ)| < clip_value after gradient clipping"
     domain: "θ ∈ ℝ^d, clip_value > 0"
+    preconditions:
+      - "clip_value > 0.0"
+      - "!gradients.is_empty()"
+      - "gradients.iter().all(|g| g.is_finite())"
+    postconditions:
+      - "grad_norm <= clip_value"
+      - "gradients.iter().all(|g| g.is_finite())"
     invariants:
       - "Gradient norm bounded by clip_value"
 

@@ -161,6 +161,8 @@ hub = ["dep:hf-hub", "aprender/hf-hub-integration"]  # HuggingFace Hub model fet
 hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard reading
 
 [dependencies]
+# Contract macros for pre/post-condition enforcement (zero cost in release)
+provable-contracts-macros = { path = "../provable-contracts/crates/provable-contracts-macros" }
 # Core PAIML stack
 ndarray = "0.16"
 trueno = { version = "0.16", features = ["parallel"] }  # SIMD-accelerated compute

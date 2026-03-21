@@ -5,6 +5,7 @@ use crate::optim::Optimizer;
 use crate::train::callback::{CallbackContext, CallbackManager, TrainerCallback};
 use crate::train::{LossFn, MetricsTracker, TrainConfig};
 use crate::Tensor;
+use provable_contracts_macros::requires;
 use std::path::Path;
 use std::time::Instant;
 
@@ -161,6 +162,7 @@ impl Trainer {
     /// # Errors
     ///
     /// Returns an error if the file cannot be written.
+    #[requires(!self.params.is_empty())]
     pub fn save(
         &self,
         path: impl AsRef<Path>,

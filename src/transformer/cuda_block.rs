@@ -2611,30 +2611,49 @@ impl CudaNf4TransformerBlock {
         let (w_down_nf4, w_down_scales, w_down_nf4_q) =
             quantize_and_upload(w_down, hidden_size * intermediate_size)?;
 
-        // ENT-287: Upload NF4-DEQUANTIZED weights for cuBLAS GEMM.
-        // Using dequantize(quantize(w)) matches what the fused NF4 kernel computes.
-        // This preserves the NF4 quantization noise that LoRA adapters are designed
-        // to work with (QLoRA paper §3.1). Using exact fp32 causes loss plateau at 5.0
-        // because the optimization landscape differs from standard QLoRA training.
+        // ENT-287: Dequantize NF4 weights and TRANSPOSE to [K,N] for standard cuBLAS GEMM.
+        //
+        // bitsandbytes does: F.dequantize_4bit(B).to(dtype).t()
+        // The .t() transposes [N,K] → [K,N] so torch.nn.functional.linear
+        // can use standard C = A @ B^T internally.
+        //
+        // We replicate this exactly:
+        // 1. dequantize_nf4(q) → flat [N*K] in [N,K] row-major order
+        // 2. CPU transpose [N,K] → [K,N]
+        // 3. Upload transposed buffer to GPU
+        // 4. Use standard gemm_forward (NoTrans, NoTrans) — same as LoRA weights
         use trueno_gpu::kernels::dequantize_nf4;
-        let dequant_and_upload = |q: &trueno_gpu::kernels::Nf4Quantized| -> std::result::Result<
+        let dequant_transpose_upload = |q: &trueno_gpu::kernels::Nf4Quantized,
+                                        n: usize,
+                                        k: usize|
+         -> std::result::Result<
             GpuBuffer<f32>,
             crate::autograd::cuda_tensor::CudaTensorError,
         > {
-            let deq = dequantize_nf4(q);
-            GpuBuffer::from_host(&ctx, &deq).map_err(|e| {
+            let deq = dequantize_nf4(q); // [N*K] in [N,K] row-major
+            assert_eq!(deq.len(), n * k, "dequant size mismatch: {} vs {}x{}", deq.len(), n, k);
+            // Transpose [N,K] → [K,N]
+            let mut transposed = vec![0.0f32; n * k];
+            for row in 0..n {
+                for col in 0..k {
+                    transposed[col * n + row] = deq[row * k + col];
+                }
+            }
+            GpuBuffer::from_host(&ctx, &transposed).map_err(|e| {
                 crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                    "dequant upload: {e:?}"
+                    "dequant transpose upload: {e:?}"
                 ))
             })
         };
-        let w_q_fp32 = dequant_and_upload(&w_q_nf4_q)?;
-        let w_k_fp32 = dequant_and_upload(&w_k_nf4_q)?;
-        let w_v_fp32 = dequant_and_upload(&w_v_nf4_q)?;
-        let w_o_fp32 = dequant_and_upload(&w_o_nf4_q)?;
-        let w_gate_fp32 = dequant_and_upload(&w_gate_nf4_q)?;
-        let w_up_fp32 = dequant_and_upload(&w_up_nf4_q)?;
-        let w_down_fp32 = dequant_and_upload(&w_down_nf4_q)?;
+        // Each weight is [out_features, in_features] = [N, K].
+        // After transpose: [K, N] — standard cuBLAS B layout.
+        let w_q_fp32 = dequant_transpose_upload(&w_q_nf4_q, q_dim, hidden_size)?;
+        let w_k_fp32 = dequant_transpose_upload(&w_k_nf4_q, kv_hidden_size, hidden_size)?;
+        let w_v_fp32 = dequant_transpose_upload(&w_v_nf4_q, kv_hidden_size, hidden_size)?;
+        let w_o_fp32 = dequant_transpose_upload(&w_o_nf4_q, hidden_size, q_dim)?;
+        let w_gate_fp32 = dequant_transpose_upload(&w_gate_nf4_q, intermediate_size, hidden_size)?;
+        let w_up_fp32 = dequant_transpose_upload(&w_up_nf4_q, intermediate_size, hidden_size)?;
+        let w_down_fp32 = dequant_transpose_upload(&w_down_nf4_q, hidden_size, intermediate_size)?;
 
         // NF4 blocks do NOT allocate scratch — shared across all layers (C-SCRATCH-001).
         // Pipeline allocates one CudaBlockScratch and passes &mut to each forward() call.
@@ -2733,7 +2752,7 @@ impl CudaNf4TransformerBlock {
     /// passes `&mut` to each layer sequentially. Saves 7.5 GB for Qwen3-4B.
     ///
     /// Weight layout: W is `[N,K]` row-major (HuggingFace convention).
-    /// cuBLAS call: `C[M,N] = A[M,K] @ W[N,K]^T` via `gemm_nf4_dequant_cublas`.
+    /// cuBLAS call: `C[M,N] = A[M,K] @ W[N,K]^T` via `gemm_forward`.
     pub(crate) fn forward(
         &self,
         input: &GpuBuffer<f32>,
@@ -2742,7 +2761,7 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_nf4_dequant_cublas;
+        use crate::autograd::cuda_forward::gemm_forward;
 
         let hidden_size = self.config.hidden_size;
         let q_dim = self.config.q_dim();
@@ -2761,7 +2780,7 @@ impl CudaNf4TransformerBlock {
 
         // === Q, K, V Projections (cuBLAS fp32 GEMM + LoRA) ===
         // ENT-287: Q proj is C[seq,q_dim] = A[seq,hidden] @ W_q[q_dim,hidden]^T
-        gemm_nf4_dequant_cublas(
+        gemm_forward(
             &scratch.norm1_out,
             &self.w_q_fp32,
             &mut scratch.q,
@@ -2785,7 +2804,7 @@ impl CudaNf4TransformerBlock {
             cuda_add_inplace(&mut scratch.q, &scratch.lora_temp, seq_len * q_dim, stream)?;
         }
 
-        gemm_nf4_dequant_cublas(
+        gemm_forward(
             &scratch.norm1_out,
             &self.w_k_fp32,
             &mut scratch.k,
@@ -2795,7 +2814,7 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        gemm_nf4_dequant_cublas(
+        gemm_forward(
             &scratch.norm1_out,
             &self.w_v_fp32,
             &mut scratch.v,
@@ -2824,7 +2843,7 @@ impl CudaNf4TransformerBlock {
 
         // === Output Projection ===
         // ENT-287: O proj is C[seq,hidden] = A[seq,q_dim] @ W_o[hidden,q_dim]^T
-        gemm_nf4_dequant_cublas(
+        gemm_forward(
             &scratch.attn_out,
             &self.w_o_fp32,
             &mut scratch.o_proj_out,
@@ -2854,7 +2873,7 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === FFN: Gate + Up Projections (cuBLAS fp32) ===
-        gemm_nf4_dequant_cublas(
+        gemm_forward(
             &scratch.norm2_out,
             &self.w_gate_fp32,
             &mut scratch.gate_out,
@@ -2864,7 +2883,7 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        gemm_nf4_dequant_cublas(
+        gemm_forward(
             &scratch.norm2_out,
             &self.w_up_fp32,
             &mut scratch.up_out,
@@ -2884,7 +2903,7 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === FFN: Down Projection (cuBLAS fp32) ===
-        gemm_nf4_dequant_cublas(
+        gemm_forward(
             &scratch.swiglu_out,
             &self.w_down_fp32,
             &mut scratch.ffn_out,
@@ -3248,7 +3267,7 @@ impl CudaNf4TransformerBlock {
     ///
     /// # Gradient Flow
     ///
-    /// For frozen NF4 projections: uses `gemm_nf4_backward_a_cublas` (cuBLAS GEMM, ENT-287)
+    /// For frozen NF4 projections: uses `gemm_forward` (cuBLAS GEMM, ENT-287)
     /// to propagate gradients without computing weight gradients.
     ///
     /// For LoRA adapters (Q, V): computes grad_A and grad_B using standard GEMM
@@ -3384,7 +3403,7 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_nf4_backward_a_cublas;
+        use crate::autograd::cuda_forward::gemm_forward;
 
         let s = saturating_u32(seq_len);
         let h = saturating_u32(hidden_size);
@@ -3393,7 +3412,7 @@ impl CudaNf4TransformerBlock {
 
         // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down[H,I]
         // W_down is [H, I] row-major (HF: [hidden, intermediate])
-        gemm_nf4_backward_a_cublas(
+        gemm_forward(
             grad_output,
             &self.w_down_fp32,
             &mut scratch.grad_swiglu,
@@ -3441,7 +3460,7 @@ impl CudaNf4TransformerBlock {
         // Step 3: Propagate through gate/up projections (cuBLAS fp32)
         // grad_norm2_gate[S,H] = d_gate[S,I] @ W_gate[I,H]
         // W_gate is [I, H] row-major (HF: [intermediate, hidden])
-        gemm_nf4_backward_a_cublas(
+        gemm_forward(
             &scratch.up_out, // d_gate
             &self.w_gate_fp32,
             &mut scratch.ffn_out, // grad_norm2 part 1
@@ -3453,7 +3472,7 @@ impl CudaNf4TransformerBlock {
 
         // grad_norm2_up[S,H] = d_up[S,I] @ W_up[I,H]
         // W_up is [I, H] row-major (HF: [intermediate, hidden])
-        gemm_nf4_backward_a_cublas(
+        gemm_forward(
             &scratch.gate_out, // d_up
             &self.w_up_fp32,
             &mut scratch.grad_hidden, // grad_norm2 part 2
@@ -3487,7 +3506,7 @@ impl CudaNf4TransformerBlock {
         scratch: &mut CudaBlockScratch,
         grad_lora: &mut CudaLoraGradWorkspace,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_nf4_backward_a_cublas;
+        use crate::autograd::cuda_forward::gemm_forward;
 
         let hidden_size = self.config.hidden_size;
         let q_dim = self.config.q_dim();
@@ -3503,7 +3522,7 @@ impl CudaNf4TransformerBlock {
         // Step 1: O projection backward
         // grad_attn_out[S, q_dim] = grad_residual1[S, H] @ W_o[H, q_dim]
         // W_o is [H, q_dim] row-major (HF: [hidden, q_dim])
-        gemm_nf4_backward_a_cublas(
+        gemm_forward(
             grad_residual1,
             &self.w_o_fp32,
             &mut scratch.attn_out, // reuse as grad_attn_out [S, q_dim]
@@ -3557,7 +3576,7 @@ impl CudaNf4TransformerBlock {
         // Step 3: Q projection backward (cuBLAS fp32 + LoRA)
         // grad_norm1_q[S, H] = grad_q[S, q_dim] @ W_q[q_dim, H]
         // W_q is [q_dim, H] row-major (HF: [q_dim, hidden])
-        gemm_nf4_backward_a_cublas(
+        gemm_forward(
             &scratch.q, // grad_q [S, q_dim]
             &self.w_q_fp32,
             &mut scratch.o_proj_out, // grad_norm1 (partial) [S, H]
@@ -3629,7 +3648,7 @@ impl CudaNf4TransformerBlock {
         // Step 4: K projection backward (no LoRA on K)
         // grad_norm1_k[S, H] = grad_k[S, kv_hidden] @ W_k[kv_hidden, H]
         // W_k is [kv_hidden, H] row-major (HF: [kv_hidden, hidden])
-        gemm_nf4_backward_a_cublas(
+        gemm_forward(
             &scratch.k, // grad_k [S, kv_hidden]
             &self.w_k_fp32,
             &mut scratch.ffn_out, // temp [S, H]
@@ -3644,7 +3663,7 @@ impl CudaNf4TransformerBlock {
         // Step 5: V projection backward (cuBLAS fp32 + LoRA)
         // grad_norm1_v[S, H] = grad_v[S, kv_hidden] @ W_v[kv_hidden, H]
         // W_v is [kv_hidden, H] row-major (HF: [kv_hidden, hidden])
-        gemm_nf4_backward_a_cublas(
+        gemm_forward(
             &scratch.v, // grad_v [S, kv_hidden]
             &self.w_v_fp32,
             &mut scratch.ffn_out, // temp [S, H]

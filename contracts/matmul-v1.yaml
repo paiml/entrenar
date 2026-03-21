@@ -10,18 +10,41 @@ equations:
   matmul:
     formula: "C[i,j] = sum_k(A[i,k] * B[k,j]) for i in [0,m), j in [0,n)"
     domain: "A in R^(m x k), B in R^(k x n), C in R^(m x n)"
+    preconditions:
+      - "a.len() == m * k"
+      - "b.len() == k * n"
+      - "k > 0"
+    postconditions:
+      - "ret.len() == m * n"
+      - "ret.iter().all(|v| v.is_finite())"
     invariants:
       - "Inner dimensions must match: cols(A) == rows(B)"
       - "Output shape: (m, n)"
   matmul_nt:
     formula: "C = A @ B^T where C[i,j] = sum_k(A[i,k] * B[j,k])"
     domain: "A in R^(m x k), B in R^(n x k), C in R^(m x n)"
+    preconditions:
+      - "a.len() == m * k"
+      - "b.len() == n * k"
+      - "k > 0"
+    postconditions:
+      - "ret.len() == m * n"
+      - "ret.iter().all(|v| v.is_finite())"
     invariants:
       - "Equivalent to matmul(A, transpose(B))"
       - "Avoids explicit transpose allocation"
   backward:
     formula: "dL/dA = dL/dC @ B^T, dL/dB = A^T @ dL/dC"
     domain: "C = A @ B, dL/dC in R^(m x n)"
+    preconditions:
+      - "grad_output.len() == m * n"
+      - "a.len() == m * k"
+      - "b.len() == k * n"
+    postconditions:
+      - "grad_a.len() == m * k"
+      - "grad_b.len() == k * n"
+      - "grad_a.iter().all(|g| g.is_finite())"
+      - "grad_b.iter().all(|g| g.is_finite())"
     invariants:
       - "Gradient shapes match operand shapes"
 

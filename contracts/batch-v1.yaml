@@ -10,12 +10,25 @@ equations:
   batch_partition:
     formula: "num_batches = ceil(N / batch_size)"
     domain: "N > 0 samples, batch_size > 0"
+    preconditions:
+      - "n > 0"
+      - "batch_size > 0"
+    postconditions:
+      - "ret >= 1"
+      - "ret == (n + batch_size - 1) / batch_size"
     invariants:
       - "All samples appear exactly once per epoch"
       - "Last batch may be smaller than batch_size"
   gradient_scaling:
     formula: "grad_batch = (1/batch_size) * sum_i(grad_i)"
     domain: "batch_size samples per batch"
+    preconditions:
+      - "batch_size > 0"
+      - "!gradients.is_empty()"
+      - "gradients.iter().all(|g| g.is_finite())"
+    postconditions:
+      - "ret.len() == gradients[0].len()"
+      - "ret.iter().all(|g| g.is_finite())"
     invariants:
       - "Mean gradient independent of batch size for same data"
 

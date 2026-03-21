@@ -4,6 +4,7 @@ use super::core::Trainer;
 use crate::optim::clip_grad_norm;
 use crate::train::Batch;
 use crate::Tensor;
+use provable_contracts_macros::ensures;
 
 impl Trainer {
     /// Perform a single training step
@@ -29,6 +30,7 @@ impl Trainer {
     ///     inputs.clone() // Simplified example
     /// });
     /// ```
+    #[ensures(ret.is_finite())]
     pub fn train_step<F>(&mut self, batch: &Batch, forward_fn: F) -> f32
     where
         F: FnOnce(&Tensor) -> Tensor,
