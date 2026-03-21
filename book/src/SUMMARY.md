@@ -294,6 +294,7 @@
   - [Clippy Linting](./development/clippy-linting.md)
 - [Benchmarking](./development/benchmarking.md)
 - [PMAT Toyota Workflow](./development/pmat-workflow.md)
+- [Provable Contracts](./development/contracts.md)
 
 # Best Practices
 

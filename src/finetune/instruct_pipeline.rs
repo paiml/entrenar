@@ -1228,9 +1228,13 @@ impl InstructPipeline {
             model_config.num_attention_heads,
             quantize_nf4,
         ) {
-            eprintln!("[CUDA] Failed to pre-warm backward cache kernels: {e} — using CPU");
+            eprintln!("[CUDA] Failed to pre-warm backward cache kernels: {e}");
+            eprintln!("[CUDA] STOP THE LINE: backward kernel pre-warming failed.");
+            eprintln!("[CUDA] This is a FATAL error — training will produce loss=0.0 if backward");
+            eprintln!("[CUDA] kernels are compiled during active GPU work (trueno#200).");
             return (None, None, None);
         }
+        eprintln!("[CUDA] Backward kernels pre-warmed successfully");
 
         if let Err(e) = pre_warm_lora_adamw_kernels(
             model_config.hidden_size,

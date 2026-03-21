@@ -2,6 +2,7 @@
 
 use crate::autograd::{BackwardOp, Tensor};
 use ndarray::Array1;
+use provable_contracts_macros::contract;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -166,6 +167,7 @@ impl BackwardOp for SwishBackward {
 }
 
 /// Softmax activation
+#[contract("softmax-v1", equation = "softmax")]
 pub fn softmax(a: &Tensor) -> Tensor {
     let max_val = a.data().iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let exp_vals = a.data().mapv(|x| (x - max_val).exp());
