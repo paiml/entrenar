@@ -2634,7 +2634,8 @@ impl CudaNf4TransformerBlock {
             let nonzero = deq.iter().filter(|&&x| x != 0.0).count();
             eprintln!(
                 "[TRACE] dequant n={n} k={k} len={} nonzero={nonzero} first5={:?}",
-                deq.len(), &deq[..5.min(deq.len())]
+                deq.len(),
+                &deq[..5.min(deq.len())]
             );
             assert_eq!(deq.len(), n * k, "dequant size mismatch: {} vs {}x{}", deq.len(), n, k);
             // Transpose [N,K] → [K,N]

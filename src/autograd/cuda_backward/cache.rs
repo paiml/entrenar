@@ -80,9 +80,12 @@ impl KernelCache {
         match self.modules.entry(name.to_string()) {
             Entry::Occupied(e) => Ok(e.into_mut()),
             Entry::Vacant(e) => {
+                eprintln!("[BWD-CACHE] Compiling '{name}' (ptx_len={})", ptx.len());
                 let module = CudaModule::from_ptx(&self.ctx, ptx).map_err(|err| {
+                    eprintln!("[BWD-CACHE] FAILED '{name}': {err:?}");
                     CudaTensorError::KernelError(format!("Failed to compile {name}: {err:?}"))
                 })?;
+                eprintln!("[BWD-CACHE] OK '{name}'");
                 Ok(e.insert(module))
             }
         }

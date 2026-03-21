@@ -104,19 +104,12 @@ fn main() {
     let weights: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) * 0.1).collect();
     let quantized = entrenar::quant::Q4_0::quantize(&weights);
     let dequantized = quantized.dequantize();
-    let max_err: f32 = weights
-        .iter()
-        .zip(dequantized.iter())
-        .map(|(a, b)| (a - b).abs())
-        .fold(0.0f32, f32::max);
+    let max_err: f32 =
+        weights.iter().zip(dequantized.iter()).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
     println!("  Q4_0 quantize-dequantize max error: {max_err:.4}");
     println!("  Compression ratio: {:.1}x", quantized.compression_ratio());
-    println!(
-        "  Preconditions checked: !values.is_empty(), all values finite"
-    );
-    println!(
-        "  Postconditions checked: ret.len==values.len(), scales positive\n"
-    );
+    println!("  Preconditions checked: !values.is_empty(), all values finite");
+    println!("  Postconditions checked: ret.len==values.len(), scales positive\n");
 
     // Prevent unused variable warnings
     let _ = layer;
