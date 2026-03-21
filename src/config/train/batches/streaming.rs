@@ -188,6 +188,25 @@ impl StreamingParquetLoader {
     pub fn is_epoch_exhausted(&self) -> bool {
         self.next_file_idx >= self.my_files.len() && self.buffer.is_empty()
     }
+
+    /// Resume data loading from a specific file index (ALB-120).
+    ///
+    /// After checkpoint restore, call this to skip to the correct position.
+    /// Contract: C-DATARESUME-001.
+    pub fn resume_from(&mut self, file_idx: usize) {
+        self.next_file_idx = file_idx.min(self.my_files.len());
+        self.buffer.clear();
+    }
+
+    /// Current file index (for checkpointing).
+    pub fn current_file_idx(&self) -> usize {
+        self.next_file_idx
+    }
+
+    /// Current epoch (for checkpointing).
+    pub fn current_epoch(&self) -> usize {
+        self.epoch
+    }
 }
 
 /// Discover all `.parquet` files in a directory (non-recursive).
@@ -439,5 +458,18 @@ mod tests {
         s0.sort();
         s1.sort();
         assert_eq!(s0, s1, "same files assigned across epochs");
+    }
+
+    #[test]
+    fn test_resume_from_skips_files() {
+        let (dir, _files) = create_temp_dir_with_files(5);
+        let mut loader =
+            StreamingParquetLoader::new(dir.path(), ShardConfig::single(), 4, 128).unwrap();
+        assert_eq!(loader.current_file_idx(), 0);
+        loader.resume_from(3);
+        assert_eq!(loader.current_file_idx(), 3);
+        loader.resume_from(100);
+        assert_eq!(loader.current_file_idx(), loader.num_files());
+        assert!(loader.is_epoch_exhausted());
     }
 }

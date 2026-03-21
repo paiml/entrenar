@@ -859,6 +859,10 @@ fn train_loop_cuda(
     let curriculum = spec.training.curriculum.as_deref();
     print_curriculum_stages(curriculum);
 
+    // ALB-120: Skip batches already processed before checkpoint.
+    let grad_accum = spec.training.gradient_accumulation.unwrap_or(1);
+    let resume_batch_idx = trainer.step() * grad_accum;
+
     'outer: for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let mut total_loss = 0.0;
@@ -869,6 +873,10 @@ fn train_loop_cuda(
 
         // ALB-068: Manual batch loop for intermediate checkpoint saving
         for (iter_idx, &batch_idx) in batch_order.iter().enumerate() {
+            // ALB-120: Skip batches already processed before checkpoint
+            if iter_idx < resume_batch_idx {
+                continue;
+            }
             // R-008: Check graceful shutdown flag
             if shutdown_flag.load(Ordering::SeqCst) {
                 handle_graceful_shutdown(
