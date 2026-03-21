@@ -2703,6 +2703,32 @@ impl CudaTransformerTrainer {
     /// Send-able `Vec<f32>`. Returns a closure that writes a single atomic APR
     /// file from another thread. Includes model weights + CPU embedding optimizer
     /// state + training metadata — all in one file.
+    fn snapshot_param_data(&self) -> Vec<(String, Vec<f32>)> {
+        let use_nf4 = self.config.quantize_nf4 && self.config.is_lora();
+        if use_nf4 {
+            let frozen_suffixes = [
+                "q_proj.weight", "k_proj.weight", "v_proj.weight", "o_proj.weight",
+                "gate_proj.weight", "up_proj.weight", "down_proj.weight",
+            ];
+            self.model.named_parameters().into_iter()
+                .filter(|(n, _)| !frozen_suffixes.iter().any(|s| n.ends_with(s)))
+                .map(|(n, t)| (n, t.data().to_vec()))
+                .collect()
+        } else {
+            self.model.named_parameters().into_iter().map(|(n, t)| (n, t.data().to_vec())).collect()
+        }
+    }
+
+    fn snapshot_lora_data(&self) -> Vec<(usize, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
+        if self.config.quantize_nf4 && self.config.is_lora() {
+            self.cuda_blocks.iter().enumerate()
+                .filter_map(|(i, block)| block.download_lora_weights().ok().map(|(a_q, b_q, a_v, b_v)| (i, a_q, b_q, a_v, b_v)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn prepare_async_apr_save(
         &mut self,
         name: &str,
@@ -2713,50 +2739,8 @@ impl CudaTransformerTrainer {
     ) -> Box<dyn FnOnce(&std::path::Path) -> crate::Result<()> + Send> {
         self.sync_weights_to_cpu();
 
-        let use_nf4 = self.config.quantize_nf4 && self.config.is_lora();
-
-        // ENT-282: For NF4+QLoRA, only snapshot trainable/updated params (lazy delta).
-        // Frozen NF4 base weights (~15 GB) are identical to original model — skip them.
-        // On GB10 unified memory, snapshotting everything spikes to 120/122 GB (caused Run 9 OOM).
-        let param_data: Vec<(String, Vec<f32>)> = if use_nf4 {
-            // Delta checkpoint: embed + lm_head + norms only (no frozen projections)
-            let frozen_suffixes = [
-                "q_proj.weight",
-                "k_proj.weight",
-                "v_proj.weight",
-                "o_proj.weight",
-                "gate_proj.weight",
-                "up_proj.weight",
-                "down_proj.weight",
-            ];
-            self.model
-                .named_parameters()
-                .into_iter()
-                .filter(|(n, _)| !frozen_suffixes.iter().any(|s| n.ends_with(s)))
-                .map(|(n, t)| (n, t.data().to_vec()))
-                .collect()
-        } else {
-            self.model.named_parameters().into_iter().map(|(n, t)| (n, t.data().to_vec())).collect()
-        };
-
-        // ENT-276: Download LoRA adapter weights from GPU for checkpoint saving.
-        // Without this, resume from checkpoint re-initializes LoRA adapters to zero,
-        // losing all trained adaptation (Run 9 crash: loss 2.5 → 13.9 after resume).
-        let lora_data: Vec<(usize, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> =
-            if self.config.quantize_nf4 && self.config.is_lora() {
-                self.cuda_blocks
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, block)| {
-                        block
-                            .download_lora_weights()
-                            .ok()
-                            .map(|(a_q, b_q, a_v, b_v)| (i, a_q, b_q, a_v, b_v))
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+        let param_data = self.snapshot_param_data();
+        let lora_data = self.snapshot_lora_data();
 
         // Snapshot CPU embedding optimizer state
         let embed_m: Vec<Vec<f32>> = self
