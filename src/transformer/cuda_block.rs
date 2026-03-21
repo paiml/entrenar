@@ -2576,44 +2576,65 @@ impl CudaNf4TransformerBlock {
         let post_attn_norm_weight = GpuBuffer::from_host(&ctx, post_attn_norm_weight)?;
 
         // Helper: quantize fp32 weight to NF4, upload packed data + scales to GPU
-        let quantize_and_upload =
-            |weights: &[f32], total: usize| -> Result<(GpuBuffer<u8>, GpuBuffer<f32>)> {
-                assert_eq!(weights.len(), total, "weight length mismatch");
-                assert!(
-                    total.is_multiple_of(NF4_BLOCK_SIZE),
-                    "weight count {total} not divisible by NF4 block size {NF4_BLOCK_SIZE}"
-                );
+        // Returns (gpu_nf4, gpu_scales, cpu_quantized) — the CPU struct is retained
+        // for dequantization into the cuBLAS fp32 buffer.
+        let quantize_and_upload = |weights: &[f32],
+                                   total: usize|
+         -> Result<(
+            GpuBuffer<u8>,
+            GpuBuffer<f32>,
+            trueno_gpu::kernels::Nf4Quantized,
+        )> {
+            assert_eq!(weights.len(), total, "weight length mismatch");
+            assert!(
+                total.is_multiple_of(NF4_BLOCK_SIZE),
+                "weight count {total} not divisible by NF4 block size {NF4_BLOCK_SIZE}"
+            );
 
-                // NF4 quantization operates on flat buffer — rows/cols only matter for
-                // block alignment. Use (total/NF4_BLOCK_SIZE, NF4_BLOCK_SIZE) to ensure
-                // every block is full.
-                let q = quantize_nf4(weights, total / NF4_BLOCK_SIZE, NF4_BLOCK_SIZE);
-                let nf4_buf = GpuBuffer::from_host(&ctx, &q.data)?;
-                let scales_buf = GpuBuffer::from_host(&ctx, &q.scales)?;
-                Ok((nf4_buf, scales_buf))
-            };
+            let q = quantize_nf4(weights, total / NF4_BLOCK_SIZE, NF4_BLOCK_SIZE);
+            let nf4_buf = GpuBuffer::from_host(&ctx, &q.data)?;
+            let scales_buf = GpuBuffer::from_host(&ctx, &q.scales)?;
+            Ok((nf4_buf, scales_buf, q))
+        };
 
         // Quantize all 7 projection weights (shape contracts already verified above)
-        let (w_q_nf4, w_q_scales) = quantize_and_upload(w_q, q_dim * hidden_size)?;
-        let (w_k_nf4, w_k_scales) = quantize_and_upload(w_k, kv_hidden_size * hidden_size)?;
-        let (w_v_nf4, w_v_scales) = quantize_and_upload(w_v, kv_hidden_size * hidden_size)?;
-        let (w_o_nf4, w_o_scales) = quantize_and_upload(w_o, hidden_size * q_dim)?;
-        let (w_gate_nf4, w_gate_scales) =
+        let (w_q_nf4, w_q_scales, w_q_nf4_q) = quantize_and_upload(w_q, q_dim * hidden_size)?;
+        let (w_k_nf4, w_k_scales, w_k_nf4_q) =
+            quantize_and_upload(w_k, kv_hidden_size * hidden_size)?;
+        let (w_v_nf4, w_v_scales, w_v_nf4_q) =
+            quantize_and_upload(w_v, kv_hidden_size * hidden_size)?;
+        let (w_o_nf4, w_o_scales, w_o_nf4_q) = quantize_and_upload(w_o, hidden_size * q_dim)?;
+        let (w_gate_nf4, w_gate_scales, w_gate_nf4_q) =
             quantize_and_upload(w_gate, intermediate_size * hidden_size)?;
-        let (w_up_nf4, w_up_scales) = quantize_and_upload(w_up, intermediate_size * hidden_size)?;
-        let (w_down_nf4, w_down_scales) =
+        let (w_up_nf4, w_up_scales, w_up_nf4_q) =
+            quantize_and_upload(w_up, intermediate_size * hidden_size)?;
+        let (w_down_nf4, w_down_scales, w_down_nf4_q) =
             quantize_and_upload(w_down, hidden_size * intermediate_size)?;
 
-        // ENT-287: Upload original fp32 weights for cuBLAS GEMM (correct weight layout).
-        // These are the ORIGINAL fp32 values from HuggingFace, NOT dequantized NF4.
-        // cuBLAS handles the [N,K] row-major layout correctly via Trans/NoTrans ops.
-        let w_q_fp32 = GpuBuffer::from_host(&ctx, w_q)?;
-        let w_k_fp32 = GpuBuffer::from_host(&ctx, w_k)?;
-        let w_v_fp32 = GpuBuffer::from_host(&ctx, w_v)?;
-        let w_o_fp32 = GpuBuffer::from_host(&ctx, w_o)?;
-        let w_gate_fp32 = GpuBuffer::from_host(&ctx, w_gate)?;
-        let w_up_fp32 = GpuBuffer::from_host(&ctx, w_up)?;
-        let w_down_fp32 = GpuBuffer::from_host(&ctx, w_down)?;
+        // ENT-287: Upload NF4-DEQUANTIZED weights for cuBLAS GEMM.
+        // Using dequantize(quantize(w)) matches what the fused NF4 kernel computes.
+        // This preserves the NF4 quantization noise that LoRA adapters are designed
+        // to work with (QLoRA paper §3.1). Using exact fp32 causes loss plateau at 5.0
+        // because the optimization landscape differs from standard QLoRA training.
+        use trueno_gpu::kernels::dequantize_nf4;
+        let dequant_and_upload = |q: &trueno_gpu::kernels::Nf4Quantized| -> std::result::Result<
+            GpuBuffer<f32>,
+            crate::autograd::cuda_tensor::CudaTensorError,
+        > {
+            let deq = dequantize_nf4(q);
+            GpuBuffer::from_host(&ctx, &deq).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "dequant upload: {e:?}"
+                ))
+            })
+        };
+        let w_q_fp32 = dequant_and_upload(&w_q_nf4_q)?;
+        let w_k_fp32 = dequant_and_upload(&w_k_nf4_q)?;
+        let w_v_fp32 = dequant_and_upload(&w_v_nf4_q)?;
+        let w_o_fp32 = dequant_and_upload(&w_o_nf4_q)?;
+        let w_gate_fp32 = dequant_and_upload(&w_gate_nf4_q)?;
+        let w_up_fp32 = dequant_and_upload(&w_up_nf4_q)?;
+        let w_down_fp32 = dequant_and_upload(&w_down_nf4_q)?;
 
         // NF4 blocks do NOT allocate scratch — shared across all layers (C-SCRATCH-001).
         // Pipeline allocates one CudaBlockScratch and passes &mut to each forward() call.
