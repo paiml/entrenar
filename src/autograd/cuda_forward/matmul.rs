@@ -583,6 +583,151 @@ exit:
     )
 }
 
+/// cuBLAS GEMM for NF4 QLoRA forward with pre-dequantized fp32 weights (ENT-287).
+///
+/// Computes: `C[M,N] = A[M,K] @ W[N,K]^T` where W is stored row-major `[N,K]`
+/// (HuggingFace convention: `[out_features, in_features]`).
+///
+/// # Weight Layout Derivation
+///
+/// W is row-major `[N,K]`: element `(i,j)` at offset `i*K + j`.
+/// In column-major this is `[K,N]` with leading dimension K.
+///
+/// We want `C = A @ W^T`. Expanding in row-major: `C[M,N] = A[M,K] @ W^T[K,N]`.
+///
+/// Column-major equivalent: `C_cm[N,M] = (W^T)_cm[N,K] @ A_cm[K,M]`.
+/// Since W_cm is `[K,N]`, applying cuBLAS Trans gives `[N,K]` with `lda = K`.
+/// A_cm is `[K,M]` with `ldb = K`. C_cm is `[N,M]` with `ldc = N`.
+///
+/// cuBLAS call: `(Trans, NoTrans, N, M, K, W_ptr, K, A_ptr, K, C_ptr, N)`.
+///
+/// # Arguments
+///
+/// * `a` - Input activations `[M, K]` row-major (f32)
+/// * `w` - Weight matrix `[N, K]` row-major = `[K, N]` col-major (f32, original fp32 weights)
+/// * `c` - Output `[M, N]` row-major (f32)
+/// * `m` - Rows of A (seq_len)
+/// * `k` - Columns of A / columns of W (input dimension)
+/// * `n` - Rows of W (output dimension)
+///
+/// # Contract (C-NF4CUBLAS-001)
+///
+/// `gemm_nf4_dequant_cublas(A, W) = A @ W^T` within f32 precision.
+#[cfg(feature = "cuda")]
+pub fn gemm_nf4_dequant_cublas(
+    a: &GpuBuffer<f32>,
+    w: &GpuBuffer<f32>,
+    c: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let _ = stream; // cuBLAS uses its own stream (set via set_forward_cublas_stream)
+
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let cublas = cache.cublas().ok_or_else(|| {
+        CudaTensorError::KernelError("cuBLAS not available for NF4 dequant GEMM".to_string())
+    })?;
+
+    // C[M,N] = A[M,K] @ W[N,K]^T
+    // col-major: C_cm[N,M] = W_cm_transposed[N,K] @ A_cm[K,M]
+    // W_cm is [K,N] with lda=K. Trans on it gives [N,K].
+    // A_cm is [K,M] with lda=K.
+    // C_cm is [N,M] with ldc=N.
+    cublas
+        .gemm_f32(
+            GemmOp::Trans,   // W_cm[K,N] transposed → [N,K]
+            GemmOp::NoTrans, // A_cm[K,M]
+            n as i32,        // rows of op(W) = N
+            m as i32,        // cols of op(A) = M
+            k as i32,        // shared dim = K
+            1.0,
+            w.as_ptr(), // W: row-major [N,K] = col-major [K,N], lda=K
+            k as i32,   // lda = K (leading dim of W_cm[K,N])
+            a.as_ptr(), // A: row-major [M,K] = col-major [K,M], lda=K
+            k as i32,   // ldb = K (leading dim of A_cm[K,M])
+            0.0,
+            c.as_ptr(), // C: row-major [M,N] = col-major [N,M], ldc=N
+            n as i32,   // ldc = N
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS NF4 dequant forward failed: {e:?}"))
+        })
+}
+
+/// cuBLAS GEMM for NF4 QLoRA backward: grad_input (ENT-287).
+///
+/// Computes: `grad_input[M,K] = grad_output[M,N] @ W[N,K]` where W is row-major `[N,K]`.
+///
+/// This is standard GEMM `C = A @ B` where `B = W[N,K]`.
+///
+/// Derivation:
+/// Row-major: `C[M,K] = A[M,N] @ B[N,K]`
+/// col-major: `C_cm[K,M] = B_cm[K,N] @ A_cm[N,M]`
+/// - B = W row-major `[N,K]` = col-major `[K,N]` with `lda = K`
+/// - A = grad_out row-major `[M,N]` = col-major `[N,M]` with `ldb = N`
+/// - C = grad_in row-major `[M,K]` = col-major `[K,M]` with `ldc = K`
+/// So: `cublas(NoTrans, NoTrans, K, M, N, W_ptr, K, grad_out_ptr, N, grad_in_ptr, K)`
+///
+/// # Arguments
+///
+/// * `grad_output` - Upstream gradient `[M, N]` (f32)
+/// * `w` - Weight matrix `[N, K]` row-major (f32, pre-dequantized)
+/// * `grad_input` - Output gradient `[M, K]` (f32)
+/// * `m` - Rows (seq_len)
+/// * `k` - Output columns (input dimension)
+/// * `n` - Shared dimension (output dimension)
+///
+/// # Contract (C-NF4CUBLAS-002)
+///
+/// `gemm_nf4_backward_a_cublas(grad, W) = grad @ W` within f32 precision.
+#[cfg(feature = "cuda")]
+pub fn gemm_nf4_backward_a_cublas(
+    grad_output: &GpuBuffer<f32>,
+    w: &GpuBuffer<f32>,
+    grad_input: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let _ = stream; // cuBLAS uses its own stream (set via set_forward_cublas_stream)
+
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let cublas = cache.cublas().ok_or_else(|| {
+        CudaTensorError::KernelError("cuBLAS not available for NF4 backward GEMM".to_string())
+    })?;
+
+    // grad_in[M,K] = grad_out[M,N] @ W[N,K]
+    // col-major: C_cm[K,M] = W_cm[K,N] @ A_cm[N,M]
+    cublas
+        .gemm_f32(
+            GemmOp::NoTrans, // W_cm[K,N] as-is
+            GemmOp::NoTrans, // grad_out_cm[N,M] as-is
+            k as i32,        // rows of W_cm = K
+            m as i32,        // cols of grad_out_cm = M
+            n as i32,        // shared dim = N
+            1.0,
+            w.as_ptr(),           // W: row-major [N,K] = col-major [K,N], lda=K
+            k as i32,             // lda = K
+            grad_output.as_ptr(), // grad_out: row-major [M,N] = col-major [N,M], ldb=N
+            n as i32,             // ldb = N
+            0.0,
+            grad_input.as_ptr(), // grad_in: row-major [M,K] = col-major [K,M], ldc=K
+            k as i32,            // ldc = K
+        )
+        .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS NF4 backward_a failed: {e:?}")))
+}
+
 /// NF4 transposed GEMM for backward pass (ENT-153: QLoRA backward).
 ///
 /// Computes: `grad_input[M×K] = grad_output[M×N] @ dequant(W_nf4[K×N])^T`

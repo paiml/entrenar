@@ -16,6 +16,7 @@
 //! - Popper (1959) "The Logic of Scientific Discovery"
 
 pub mod classification;
+pub mod classify_eval_report;
 pub mod classify_pipeline;
 pub mod classify_trainer;
 pub mod classify_tuner;
@@ -49,14 +50,12 @@ pub use classification::{
     load_multi_label_corpus, load_safety_corpus, ClassWeightStrategy, ClassificationHead,
     MultiLabelSafetySample, SafetyCorpusStats, SafetySample, TokenizedSample,
 };
+pub use classify_eval_report::{evaluate_checkpoint, ClassifyEvalReport, SSC_LABELS};
 pub use classify_pipeline::{
     BatchResult, ClassifyConfig, ClassifyPipeline, DataStats, DiagSeverity, HyperparamDiagnostic,
     HyperparamDiagnostics,
 };
-pub use classify_trainer::{
-    evaluate_checkpoint, ClassifyEvalReport, ClassifyTrainer, EpochMetrics, TrainResult,
-    TrainingConfig, SSC_LABELS,
-};
+pub use classify_trainer::{ClassifyTrainer, EpochMetrics, TrainResult, TrainingConfig};
 pub use classify_tuner::{
     default_classify_search_space, extract_trial_params, ClassifyTuner, SchedulerKind,
     TrialSummary, TuneConfig, TuneResult, TuneScheduler, TuneSearcher, TuneStrategy,

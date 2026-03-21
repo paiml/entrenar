@@ -2457,6 +2457,14 @@ pub struct CudaNf4TransformerBlock {
     w_up_scales: GpuBuffer<f32>,
     w_down_nf4: GpuBuffer<u8>,
     w_down_scales: GpuBuffer<f32>,
+    // ENT-287: Pre-dequantized fp32 weights for cuBLAS GEMM (correct weight layout)
+    w_q_fp32: GpuBuffer<f32>,
+    w_k_fp32: GpuBuffer<f32>,
+    w_v_fp32: GpuBuffer<f32>,
+    w_o_fp32: GpuBuffer<f32>,
+    w_gate_fp32: GpuBuffer<f32>,
+    w_up_fp32: GpuBuffer<f32>,
+    w_down_fp32: GpuBuffer<f32>,
     // LoRA adapters for Q and V projections (ENT-153: QLoRA backward)
     // None when LoRA is not active (inference-only or non-QLoRA training)
     lora_a_q: Option<GpuBuffer<f32>>, // [hidden_size, rank]
@@ -2596,6 +2604,17 @@ impl CudaNf4TransformerBlock {
         let (w_down_nf4, w_down_scales) =
             quantize_and_upload(w_down, hidden_size * intermediate_size)?;
 
+        // ENT-287: Upload original fp32 weights for cuBLAS GEMM (correct weight layout).
+        // These are the ORIGINAL fp32 values from HuggingFace, NOT dequantized NF4.
+        // cuBLAS handles the [N,K] row-major layout correctly via Trans/NoTrans ops.
+        let w_q_fp32 = GpuBuffer::from_host(&ctx, w_q)?;
+        let w_k_fp32 = GpuBuffer::from_host(&ctx, w_k)?;
+        let w_v_fp32 = GpuBuffer::from_host(&ctx, w_v)?;
+        let w_o_fp32 = GpuBuffer::from_host(&ctx, w_o)?;
+        let w_gate_fp32 = GpuBuffer::from_host(&ctx, w_gate)?;
+        let w_up_fp32 = GpuBuffer::from_host(&ctx, w_up)?;
+        let w_down_fp32 = GpuBuffer::from_host(&ctx, w_down)?;
+
         // NF4 blocks do NOT allocate scratch — shared across all layers (C-SCRATCH-001).
         // Pipeline allocates one CudaBlockScratch and passes &mut to each forward() call.
         // Saves (L-1) * 214 MB = 7.5 GB for Qwen3-4B (36 layers).
@@ -2668,6 +2687,13 @@ impl CudaNf4TransformerBlock {
             w_up_scales,
             w_down_nf4,
             w_down_scales,
+            w_q_fp32,
+            w_k_fp32,
+            w_v_fp32,
+            w_o_fp32,
+            w_gate_fp32,
+            w_up_fp32,
+            w_down_fp32,
             lora_a_q,
             lora_b_q,
             lora_a_v,
@@ -2680,10 +2706,13 @@ impl CudaNf4TransformerBlock {
         })
     }
 
-    /// Forward pass using NF4 fused dequant+GEMM kernels.
+    /// Forward pass using cuBLAS GEMM with pre-dequantized fp32 weights (ENT-287).
     ///
     /// Uses shared scratch buffers (C-SCRATCH-001) — caller allocates once,
     /// passes `&mut` to each layer sequentially. Saves 7.5 GB for Qwen3-4B.
+    ///
+    /// Weight layout: W is `[N,K]` row-major (HuggingFace convention).
+    /// cuBLAS call: `C[M,N] = A[M,K] @ W[N,K]^T` via `gemm_nf4_dequant_cublas`.
     pub(crate) fn forward(
         &self,
         input: &GpuBuffer<f32>,
@@ -2692,7 +2721,7 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_nf4_forward;
+        use crate::autograd::cuda_forward::gemm_nf4_dequant_cublas;
 
         let hidden_size = self.config.hidden_size;
         let q_dim = self.config.q_dim();
@@ -2709,12 +2738,11 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // === Q, K, V Projections (NF4 fused dequant + GEMM + LoRA) ===
-        // C-NF4GEMM-001: Q proj is C[seq,q_dim] = A[seq,hidden] @ B[hidden,q_dim]
-        gemm_nf4_forward(
+        // === Q, K, V Projections (cuBLAS fp32 GEMM + LoRA) ===
+        // ENT-287: Q proj is C[seq,q_dim] = A[seq,hidden] @ W_q[q_dim,hidden]^T
+        gemm_nf4_dequant_cublas(
             &scratch.norm1_out,
-            &self.w_q_nf4,
-            &self.w_q_scales,
+            &self.w_q_fp32,
             &mut scratch.q,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -2736,10 +2764,9 @@ impl CudaNf4TransformerBlock {
             cuda_add_inplace(&mut scratch.q, &scratch.lora_temp, seq_len * q_dim, stream)?;
         }
 
-        gemm_nf4_forward(
+        gemm_nf4_dequant_cublas(
             &scratch.norm1_out,
-            &self.w_k_nf4,
-            &self.w_k_scales,
+            &self.w_k_fp32,
             &mut scratch.k,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -2747,10 +2774,9 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        gemm_nf4_forward(
+        gemm_nf4_dequant_cublas(
             &scratch.norm1_out,
-            &self.w_v_nf4,
-            &self.w_v_scales,
+            &self.w_v_fp32,
             &mut scratch.v,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -2776,11 +2802,10 @@ impl CudaNf4TransformerBlock {
         self.compute_attention_cuda(seq_len, stream, scratch)?;
 
         // === Output Projection ===
-        // C-NF4GEMM-002: O proj is C[seq,hidden] = A[seq,q_dim] @ B[q_dim,hidden]
-        gemm_nf4_forward(
+        // ENT-287: O proj is C[seq,hidden] = A[seq,q_dim] @ W_o[hidden,q_dim]^T
+        gemm_nf4_dequant_cublas(
             &scratch.attn_out,
-            &self.w_o_nf4,
-            &self.w_o_scales,
+            &self.w_o_fp32,
             &mut scratch.o_proj_out,
             saturating_u32(seq_len),
             saturating_u32(q_dim),
@@ -2807,11 +2832,10 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // === FFN: Gate + Up Projections (NF4) ===
-        gemm_nf4_forward(
+        // === FFN: Gate + Up Projections (cuBLAS fp32) ===
+        gemm_nf4_dequant_cublas(
             &scratch.norm2_out,
-            &self.w_gate_nf4,
-            &self.w_gate_scales,
+            &self.w_gate_fp32,
             &mut scratch.gate_out,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -2819,10 +2843,9 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        gemm_nf4_forward(
+        gemm_nf4_dequant_cublas(
             &scratch.norm2_out,
-            &self.w_up_nf4,
-            &self.w_up_scales,
+            &self.w_up_fp32,
             &mut scratch.up_out,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -2839,11 +2862,10 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // === FFN: Down Projection (NF4) ===
-        gemm_nf4_forward(
+        // === FFN: Down Projection (cuBLAS fp32) ===
+        gemm_nf4_dequant_cublas(
             &scratch.swiglu_out,
-            &self.w_down_nf4,
-            &self.w_down_scales,
+            &self.w_down_fp32,
             &mut scratch.ffn_out,
             saturating_u32(seq_len),
             saturating_u32(intermediate_size),
@@ -3205,7 +3227,7 @@ impl CudaNf4TransformerBlock {
     ///
     /// # Gradient Flow
     ///
-    /// For frozen NF4 projections: uses `gemm_nf4_backward_a` (transposed GEMM)
+    /// For frozen NF4 projections: uses `gemm_nf4_backward_a_cublas` (cuBLAS GEMM, ENT-287)
     /// to propagate gradients without computing weight gradients.
     ///
     /// For LoRA adapters (Q, V): computes grad_A and grad_B using standard GEMM
@@ -3327,10 +3349,10 @@ impl CudaNf4TransformerBlock {
         Ok(())
     }
 
-    /// FFN backward for NF4 blocks.
+    /// FFN backward for NF4 blocks (ENT-287: cuBLAS fp32 GEMM).
     ///
     /// Propagates gradient through: down_proj → SwiGLU → gate/up projections.
-    /// Uses NF4 transposed GEMM for gradient flow through frozen projections.
+    /// Uses cuBLAS GEMM with pre-dequantized fp32 weights for correct layout.
     /// No weight gradients for frozen NF4 weights.
     fn backward_nf4_ffn(
         &self,
@@ -3341,23 +3363,22 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_nf4_backward_a;
+        use crate::autograd::cuda_forward::gemm_nf4_backward_a_cublas;
 
         let s = saturating_u32(seq_len);
         let h = saturating_u32(hidden_size);
         let i_size = saturating_u32(intermediate_size);
         let n_inter = saturating_u32(seq_len * intermediate_size);
 
-        // Step 1: grad_swiglu = grad_output @ w_down^T  [S,I]
-        // W_down is [H, I] in NF4 → transpose gives [I, H]
-        gemm_nf4_backward_a(
+        // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down[H,I]
+        // W_down is [H, I] row-major (HF: [hidden, intermediate])
+        gemm_nf4_backward_a_cublas(
             grad_output,
-            &self.w_down_nf4,
-            &self.w_down_scales,
+            &self.w_down_fp32,
             &mut scratch.grad_swiglu,
             s,
-            h,
-            i_size, // m=S, n=H (reduction), k=I (output cols)
+            i_size, // k = I (output cols)
+            h,      // n = H (shared dim)
             stream,
         )?;
 
@@ -3396,30 +3417,28 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // Step 3: Propagate through gate/up projections (NF4 transpose)
-        // grad_norm2_gate = d_gate @ w_gate^T  [S,H]
-        // W_gate is [I, H] in NF4
-        gemm_nf4_backward_a(
+        // Step 3: Propagate through gate/up projections (cuBLAS fp32)
+        // grad_norm2_gate[S,H] = d_gate[S,I] @ W_gate[I,H]
+        // W_gate is [I, H] row-major (HF: [intermediate, hidden])
+        gemm_nf4_backward_a_cublas(
             &scratch.up_out, // d_gate
-            &self.w_gate_nf4,
-            &self.w_gate_scales,
+            &self.w_gate_fp32,
             &mut scratch.ffn_out, // grad_norm2 part 1
             s,
-            i_size,
-            h, // m=S, n=I (reduction), k=H (output cols)
+            h,      // k = H (output cols)
+            i_size, // n = I (shared dim)
             stream,
         )?;
 
-        // grad_norm2_up = d_up @ w_up^T  [S,H]
-        // W_up is [I, H] in NF4
-        gemm_nf4_backward_a(
+        // grad_norm2_up[S,H] = d_up[S,I] @ W_up[I,H]
+        // W_up is [I, H] row-major (HF: [intermediate, hidden])
+        gemm_nf4_backward_a_cublas(
             &scratch.gate_out, // d_up
-            &self.w_up_nf4,
-            &self.w_up_scales,
+            &self.w_up_fp32,
             &mut scratch.grad_hidden, // grad_norm2 part 2
             s,
-            i_size,
-            h,
+            h,      // k = H (output cols)
+            i_size, // n = I (shared dim)
             stream,
         )?;
 
@@ -3434,10 +3453,11 @@ impl CudaNf4TransformerBlock {
         Ok(())
     }
 
-    /// Attention backward for NF4 blocks with LoRA gradient computation.
+    /// Attention backward for NF4 blocks with LoRA gradient computation (ENT-287).
     ///
     /// Propagates gradient through O projection, attention mechanism, and Q/K/V projections.
     /// Computes LoRA weight gradients for Q and V projections.
+    /// Uses cuBLAS GEMM with pre-dequantized fp32 weights.
     fn backward_nf4_attention(
         &self,
         grad_residual1: &GpuBuffer<f32>,
@@ -3446,7 +3466,7 @@ impl CudaNf4TransformerBlock {
         scratch: &mut CudaBlockScratch,
         grad_lora: &mut CudaLoraGradWorkspace,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_nf4_backward_a;
+        use crate::autograd::cuda_forward::gemm_nf4_backward_a_cublas;
 
         let hidden_size = self.config.hidden_size;
         let q_dim = self.config.q_dim();
@@ -3460,16 +3480,15 @@ impl CudaNf4TransformerBlock {
         let kvh = saturating_u32(kv_hidden_size);
 
         // Step 1: O projection backward
-        // grad_attn_out = grad_residual1 @ w_o^T  [S, q_dim]
-        // W_o is [H, q_dim] in NF4
-        gemm_nf4_backward_a(
+        // grad_attn_out[S, q_dim] = grad_residual1[S, H] @ W_o[H, q_dim]
+        // W_o is [H, q_dim] row-major (HF: [hidden, q_dim])
+        gemm_nf4_backward_a_cublas(
             grad_residual1,
-            &self.w_o_nf4,
-            &self.w_o_scales,
+            &self.w_o_fp32,
             &mut scratch.attn_out, // reuse as grad_attn_out [S, q_dim]
             s,
-            h,
-            qd,
+            qd, // k = q_dim (output cols)
+            h,  // n = H (shared dim)
             stream,
         )?;
 
@@ -3514,17 +3533,16 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
-        // Step 3: Q projection backward (NF4 + LoRA)
-        // Base: grad_norm1_q = grad_q @ w_q^T  [S, H]
-        // W_q is [q_dim, H] in NF4
-        gemm_nf4_backward_a(
+        // Step 3: Q projection backward (cuBLAS fp32 + LoRA)
+        // grad_norm1_q[S, H] = grad_q[S, q_dim] @ W_q[q_dim, H]
+        // W_q is [q_dim, H] row-major (HF: [q_dim, hidden])
+        gemm_nf4_backward_a_cublas(
             &scratch.q, // grad_q [S, q_dim]
-            &self.w_q_nf4,
-            &self.w_q_scales,
+            &self.w_q_fp32,
             &mut scratch.o_proj_out, // grad_norm1 (partial) [S, H]
             s,
-            qd,
-            h,
+            h,  // k = H (output cols)
+            qd, // n = q_dim (shared dim)
             stream,
         )?;
 
@@ -3588,32 +3606,30 @@ impl CudaNf4TransformerBlock {
         }
 
         // Step 4: K projection backward (no LoRA on K)
-        // grad_norm1_k = grad_k @ w_k^T  [S, H]
-        // W_k is [kv_hidden, H] in NF4
-        gemm_nf4_backward_a(
+        // grad_norm1_k[S, H] = grad_k[S, kv_hidden] @ W_k[kv_hidden, H]
+        // W_k is [kv_hidden, H] row-major (HF: [kv_hidden, hidden])
+        gemm_nf4_backward_a_cublas(
             &scratch.k, // grad_k [S, kv_hidden]
-            &self.w_k_nf4,
-            &self.w_k_scales,
+            &self.w_k_fp32,
             &mut scratch.ffn_out, // temp [S, H]
             s,
-            kvh,
-            h,
+            h,   // k = H (output cols)
+            kvh, // n = kv_hidden (shared dim)
             stream,
         )?;
         // Accumulate: grad_norm1 += grad_norm1_k
         cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;
 
-        // Step 5: V projection backward (NF4 + LoRA)
-        // Base: grad_norm1_v = grad_v @ w_v^T  [S, H]
-        // W_v is [kv_hidden, H] in NF4
-        gemm_nf4_backward_a(
+        // Step 5: V projection backward (cuBLAS fp32 + LoRA)
+        // grad_norm1_v[S, H] = grad_v[S, kv_hidden] @ W_v[kv_hidden, H]
+        // W_v is [kv_hidden, H] row-major (HF: [kv_hidden, hidden])
+        gemm_nf4_backward_a_cublas(
             &scratch.v, // grad_v [S, kv_hidden]
-            &self.w_v_nf4,
-            &self.w_v_scales,
+            &self.w_v_fp32,
             &mut scratch.ffn_out, // temp [S, H]
             s,
-            kvh,
-            h,
+            h,   // k = H (output cols)
+            kvh, // n = kv_hidden (shared dim)
             stream,
         )?;
         cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;

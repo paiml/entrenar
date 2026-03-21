@@ -2707,10 +2707,17 @@ impl CudaTransformerTrainer {
         let use_nf4 = self.config.quantize_nf4 && self.config.is_lora();
         if use_nf4 {
             let frozen_suffixes = [
-                "q_proj.weight", "k_proj.weight", "v_proj.weight", "o_proj.weight",
-                "gate_proj.weight", "up_proj.weight", "down_proj.weight",
+                "q_proj.weight",
+                "k_proj.weight",
+                "v_proj.weight",
+                "o_proj.weight",
+                "gate_proj.weight",
+                "up_proj.weight",
+                "down_proj.weight",
             ];
-            self.model.named_parameters().into_iter()
+            self.model
+                .named_parameters()
+                .into_iter()
                 .filter(|(n, _)| !frozen_suffixes.iter().any(|s| n.ends_with(s)))
                 .map(|(n, t)| (n, t.data().to_vec()))
                 .collect()
@@ -2721,8 +2728,15 @@ impl CudaTransformerTrainer {
 
     fn snapshot_lora_data(&self) -> Vec<(usize, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
         if self.config.quantize_nf4 && self.config.is_lora() {
-            self.cuda_blocks.iter().enumerate()
-                .filter_map(|(i, block)| block.download_lora_weights().ok().map(|(a_q, b_q, a_v, b_v)| (i, a_q, b_q, a_v, b_v)))
+            self.cuda_blocks
+                .iter()
+                .enumerate()
+                .filter_map(|(i, block)| {
+                    block
+                        .download_lora_weights()
+                        .ok()
+                        .map(|(a_q, b_q, a_v, b_v)| (i, a_q, b_q, a_v, b_v))
+                })
                 .collect()
         } else {
             Vec::new()
@@ -2793,6 +2807,7 @@ impl CudaTransformerTrainer {
         let name = name.to_string();
         let architecture = architecture.to_string();
         let model_config_json = serde_json::to_string(&self.config.model_config).ok();
+        let is_delta_checkpoint = self.config.quantize_nf4 && self.config.is_lora();
 
         Box::new(move |path: &std::path::Path| {
             use aprender::serialization::apr::AprWriter;
@@ -2805,7 +2820,7 @@ impl CudaTransformerTrainer {
             writer.set_metadata("architecture", Jv::String(architecture));
             writer.set_metadata(
                 "format",
-                Jv::String(if use_nf4 {
+                Jv::String(if is_delta_checkpoint {
                     "entrenar-delta-checkpoint".into()
                 } else {
                     "entrenar-checkpoint".into()
