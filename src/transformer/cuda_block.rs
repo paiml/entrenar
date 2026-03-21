@@ -2779,7 +2779,30 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === Q, K, V Projections (cuBLAS fp32 GEMM + LoRA) ===
-        // ENT-287: Q proj is C[seq,q_dim] = A[seq,hidden] @ W_q[q_dim,hidden]^T
+        // ENT-287: Q proj is C[seq,q_dim] = A[seq,hidden] @ W_t_q[hidden,q_dim]
+
+        // CONTRACT: FALSIFY-PARITY-V2-003 — verify buffers are non-zero before GEMM
+        if self.layer_idx == 0 {
+            let mut a_check = vec![0.0f32; 5.min(scratch.norm1_out.len())];
+            let _ = scratch.norm1_out.copy_to_host(&mut a_check);
+            let mut w_check = vec![0.0f32; 5.min(self.w_q_fp32.len())];
+            let _ = self.w_q_fp32.copy_to_host(&mut w_check);
+            eprintln!(
+                "[TRACE L0] q_proj GEMM: a_len={} w_len={} c_len={} m={} k={} n={}",
+                scratch.norm1_out.len(), self.w_q_fp32.len(), scratch.q.len(),
+                seq_len, hidden_size, q_dim,
+            );
+            eprintln!("[TRACE L0] a[:5]={a_check:?} w[:5]={w_check:?}");
+            debug_assert!(
+                a_check.iter().any(|&x| x != 0.0),
+                "CONTRACT VIOLATION: norm1_out is all zeros before q_proj GEMM"
+            );
+            debug_assert!(
+                w_check.iter().any(|&x| x != 0.0),
+                "CONTRACT VIOLATION: w_q_fp32 is all zeros"
+            );
+        }
+
         gemm_forward(
             &scratch.norm1_out,
             &self.w_q_fp32,
@@ -2789,6 +2812,17 @@ impl CudaNf4TransformerBlock {
             saturating_u32(q_dim),
             stream,
         )?;
+
+        // CONTRACT: verify output is non-zero after GEMM
+        if self.layer_idx == 0 {
+            stream.synchronize().ok();
+            let mut c_check = vec![0.0f32; 5.min(scratch.q.len())];
+            let _ = scratch.q.copy_to_host(&mut c_check);
+            eprintln!("[TRACE L0] q_proj output[:5]={c_check:?}");
+            if c_check.iter().all(|&x| x == 0.0) {
+                eprintln!("[TRACE L0] *** ALL ZEROS — cuBLAS GEMM produced no output ***");
+            }
+        }
 
         // ENT-153: Q LoRA: q += (norm1_out @ A_q) @ B_q  (B_q pre-scaled by lora_scale)
         if let (Some(a_q), Some(b_q)) = (&self.lora_a_q, &self.lora_b_q) {
