@@ -122,7 +122,15 @@ impl ForwardKernelCache {
         match self.modules.entry(name.to_string()) {
             Entry::Occupied(e) => Ok(e.into_mut()),
             Entry::Vacant(e) => {
-                let module = CudaModule::from_ptx(&self.ctx, ptx).map_err(|err| {
+                // trueno#200: Use from_ptx_direct on Blackwell
+                let (major, _) = self.ctx.compute_capability().map_err(|e| {
+                    CudaTensorError::KernelError(format!("compute_capability: {e:?}"))
+                })?;
+                let module = if major >= 12 {
+                    CudaModule::from_ptx_direct(&self.ctx, ptx)
+                } else {
+                    CudaModule::from_ptx(&self.ctx, ptx)
+                }.map_err(|err| {
                     CudaTensorError::KernelError(format!("Failed to compile {name}: {err:?}"))
                 })?;
                 Ok(e.insert(module))

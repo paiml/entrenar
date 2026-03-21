@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 
+// trueno#200: Blackwell Blackwell skip requires local trueno-gpu with from_ptx fix.
+// Add [patch.crates-io] trueno-gpu = { path = "../trueno/trueno-gpu" } to Cargo.toml.
+
 use super::super::cuda_tensor::{CudaTensorError, Result};
 
 /// Cached compiled CUDA modules for backward kernels
@@ -81,7 +84,20 @@ impl KernelCache {
             Entry::Occupied(e) => Ok(e.into_mut()),
             Entry::Vacant(e) => {
                 eprintln!("[BWD-CACHE] Compiling '{name}' (ptx_len={})", ptx.len());
-                let module = CudaModule::from_ptx(&self.ctx, ptx).map_err(|err| {
+
+                // trueno#200: On Blackwell, CudaModule::from_ptx uses cuModuleLoadDataEx
+                // which poisons the CUDA context. Bypass it entirely with direct
+                // cuModuleLoadData via the raw driver API.
+                let (major, _minor) = self.ctx.compute_capability().map_err(|e| {
+                    CudaTensorError::KernelError(format!("compute_capability: {e:?}"))
+                })?;
+
+                // trueno#200: Use from_ptx_direct on Blackwell to avoid context poisoning
+                let module = if major >= 12 {
+                    CudaModule::from_ptx_direct(&self.ctx, ptx)
+                } else {
+                    CudaModule::from_ptx(&self.ctx, ptx)
+                }.map_err(|err| {
                     eprintln!("[BWD-CACHE] FAILED '{name}': {err:?}");
                     CudaTensorError::KernelError(format!("Failed to compile {name}: {err:?}"))
                 })?;
@@ -140,7 +156,9 @@ pub fn pre_warm_lora_backward_kernels(
     };
     use trueno_gpu::kernels::Kernel;
 
+    eprintln!("[BWD-PREWARM] Called with lora_rank={lora_rank}, hidden={hidden_size}, inter={intermediate_size}");
     if lora_rank == 0 {
+        eprintln!("[BWD-PREWARM] Skipping (lora_rank=0)");
         return Ok(());
     }
 

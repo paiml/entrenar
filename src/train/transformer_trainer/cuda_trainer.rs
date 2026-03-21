@@ -498,6 +498,27 @@ impl CudaTransformerTrainer {
         )
         .map_err(|e| crate::error::Error::ConfigError(format!("Kernel pre-warm failed: {e:?}")))?;
 
+        // Step 2a: Pre-warm backward kernels (trueno#200)
+        // MUST happen before any GPU work — Blackwell's cuModuleLoadData fails
+        // with ILLEGAL_ADDRESS when called during active GPU computation.
+        {
+            use crate::autograd::cuda_backward::pre_warm_lora_backward_kernels;
+            let head_dim = mc.head_dim();
+            pre_warm_lora_backward_kernels(
+                hidden_size,
+                mc.num_attention_heads * head_dim,
+                mc.num_kv_heads * head_dim,
+                max_seq_len,
+                config.lora_rank.unwrap_or(0),
+                mc.intermediate_size,
+                mc.num_attention_heads,
+                config.quantize_nf4 && config.is_lora(),
+            ).map_err(|e| crate::error::Error::ConfigError(
+                format!("Backward kernel pre-warm failed: {e:?}")
+            ))?;
+            eprintln!("  ✓ Backward kernels pre-warmed (silu_backward, rms_norm_backward, etc.)");
+        }
+
         // Step 2b: Bind cuBLAS handles to training stream (ALB-075)
         // Must happen after kernel cache init, before any GEMM calls.
         if let Err(e) = crate::autograd::cuda_forward::set_forward_cublas_stream(stream) {
