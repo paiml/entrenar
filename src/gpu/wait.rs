@@ -121,7 +121,13 @@ pub fn timeout_bound(config: &WaitConfig) -> Duration {
 ///
 /// Contract: gpu-wait-queue-v1 / fairness_via_expiry
 pub fn fairness_via_expiry(ledger: &mut VramLedger) -> Vec<u32> {
-    ledger.expired_reservation_ids()
+    ledger
+        .read_reservations()
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| r.is_expired())
+        .map(|r| r.pid)
+        .collect()
 }
 
 /// Produce a structured progress report for the current wait state.
