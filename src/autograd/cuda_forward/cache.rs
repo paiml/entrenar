@@ -12,10 +12,10 @@ use std::sync::{Mutex, OnceLock};
 use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel, BatchedTransposeKernel,
-    BatchedVectorizedRmsNormKernel, ElementwiseMulKernel, FusedSwigluKernel, GemmKernel,
-    InterleavedToBatchedKernel, Kernel, Nf4GemmKernel, Nf4GemmTransposeKernel, ResidualAddKernel,
-    ScaleKernel, SiluKernel,
+    Batched4DGemmKernel, BatchedRopeBackwardKernel, BatchedRopeKernel, BatchedSoftmaxKernel,
+    BatchedToInterleavedKernel, BatchedTransposeKernel, BatchedVectorizedRmsNormKernel,
+    ElementwiseMulKernel, FusedSwigluKernel, GemmKernel, InterleavedToBatchedKernel, Kernel,
+    Nf4GemmKernel, Nf4GemmTransposeKernel, ResidualAddKernel, ScaleKernel, SiluKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -432,6 +432,13 @@ pub fn pre_warm_forward_kernels(
     head_dim: usize,
     max_seq_len: usize,
 ) -> Result<()> {
+    // Also pre-warm backward kernels that live in the forward cache.
+    // trueno#200: On Blackwell, ANY kernel compiled during active GPU work
+    // triggers CUDA_ERROR_ILLEGAL_ADDRESS. All kernels must be compiled
+    // BEFORE the first GPU operation.
+    pre_warm_backward_kernels_in_forward_cache(
+        num_heads, num_kv_heads, head_dim, max_seq_len,
+    )?;
     let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
@@ -444,6 +451,56 @@ pub fn pre_warm_forward_kernels(
         head_dim,
         max_seq_len,
     )
+}
+
+/// Pre-warm backward kernels in forward cache (trueno#200 Blackwell).
+///
+/// CONTRACT: All backward kernels must be compiled before GPU work starts.
+/// On Blackwell (sm_121), cuModuleLoadData fails during active GPU computation.
+#[cfg(feature = "cuda")]
+fn pre_warm_backward_kernels_in_forward_cache(
+    num_heads: usize,
+    _num_kv_heads: usize,
+    head_dim: usize,
+    max_seq_len: usize,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let target = cache.sm_target.clone();
+    let nh = num_heads as u32;
+    let hd = head_dim as u32;
+    let s = max_seq_len as u32;
+
+    macro_rules! warm {
+        ($key:expr, $kernel:expr) => {{
+            let ptx = $kernel.emit_ptx_for_target(&target);
+            cache.get_or_compile(&$key, &ptx)?;
+        }};
+    }
+
+    // Batched RoPE backward — missing from pre_warm_for_model, causes
+    // CUDA context poisoning on Blackwell when compiled during backward pass.
+    // Need BOTH num_heads AND num_kv_heads variants (GQA uses different head count for K/V).
+    let nh = num_heads as u32;
+    let nkv = _num_kv_heads as u32;
+    let hd = head_dim as u32;
+    let s = max_seq_len as u32;
+    warm!(
+        format!("batched_rope_bwd_{nh}_{hd}"),
+        BatchedRopeBackwardKernel::new(nh, hd, s, 1_000_000.0)
+    );
+    if nkv != nh {
+        warm!(
+            format!("batched_rope_bwd_{nkv}_{hd}"),
+            BatchedRopeBackwardKernel::new(nkv, hd, s, 1_000_000.0)
+        );
+    }
+
+    eprintln!("  ✓ Backward rope kernel pre-warmed in forward cache");
+    Ok(())
 }
 
 /// Pre-warm LoRA backward GEMM kernels for QLoRA training (ENT-153).

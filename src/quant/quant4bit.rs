@@ -37,6 +37,7 @@ impl Quantized4Bit {
     }
 
     /// Get compression ratio vs f32
+    #[provable_contracts_macros::contract("quantization-v1", equation = "compression_ratio")]
     pub fn compression_ratio(&self) -> f32 {
         let original_bytes = self.len * 4; // f32
         let compressed_bytes = self.memory_bytes();

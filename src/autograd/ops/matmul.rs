@@ -440,6 +440,7 @@ fn wgpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Option<Vec
 /// * `m` - Number of rows in A
 /// * `k` - Number of columns in A (= rows in B)
 /// * `n` - Number of columns in B
+#[provable_contracts_macros::contract("matmul-v1", equation = "matmul")]
 pub fn matmul(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor {
     assert_eq!(a.len(), m * k, "Matrix A size mismatch");
     assert_eq!(b.len(), k * n, "Matrix B size mismatch");
@@ -538,6 +539,7 @@ impl BackwardOp for MatmulBackward {
 ///
 /// - `∂L/∂A = ∂L/∂C @ B`  — (M,N) @ (N,K) = (M,K)
 /// - `∂L/∂B = ∂L/∂C^T @ A` — (N,M) @ (M,K) = (N,K)
+#[provable_contracts_macros::contract("matmul-v1", equation = "matmul_nt")]
 pub fn matmul_nt(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor {
     assert_eq!(
         a.len(),

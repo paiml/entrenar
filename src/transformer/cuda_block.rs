@@ -966,6 +966,7 @@ impl CudaTransformerBlock {
     /// - `scratch.grad_post_attn_norm` - Gradient for post-attention RMSNorm weight
     /// - `scratch.grad_gate/up/down` - Gradients for FFN weights
     /// - `scratch.grad_w_q/w_k/w_v/w_o` - Gradients for attention projection weights
+    #[provable_contracts_macros::contract("backward-pass-v1", equation = "backward")]
     pub fn backward(
         &mut self,
         input: &GpuBuffer<f32>,

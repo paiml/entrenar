@@ -1648,6 +1648,24 @@ impl InstructPipeline {
             input_is_a = !input_is_a;
         }
 
+        // TRACE: Check output of each layer (first forward only)
+        {
+            static LAYER_TRACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !LAYER_TRACE.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                stream.synchronize().ok();
+                // Check output of last layer
+                let final_buf = unsafe {
+                    if input_is_a { &*scratch_a_ptr } else { &*scratch_b_ptr }
+                };
+                let mut out = vec![0.0f32; final_buf.len()];
+                let _ = final_buf.copy_to_host(&mut out);
+                let nz = out.iter().filter(|&&x| x != 0.0).count();
+                let o5: Vec<f32> = out.iter().copied().take(5).collect();
+                eprintln!("[TRACE] After 36 layers: len={} nonzero={nz}/{} first5={o5:?}",
+                    out.len(), out.len());
+            }
+        }
+
         // After ping-pong: result is in the buffer that would be "input" for the next iteration
         let final_output = unsafe {
             if input_is_a {
@@ -2038,6 +2056,20 @@ impl InstructPipeline {
         };
         let stream = trainer.stream();
 
+        // TRACE: Check hidden state before lm_head
+        {
+            stream.synchronize().ok();
+            let mut h = vec![0.0f32; training.lm_head_hidden_buf.len()];
+            let _ = training.lm_head_hidden_buf.copy_to_host(&mut h);
+            let nz = h.iter().filter(|&&x| x != 0.0).count();
+            let h5: Vec<f32> = h.iter().copied().take(5).collect();
+            static TRACE_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let c = TRACE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if c == 0 {
+                eprintln!("[TRACE] lm_head input: len={} nonzero={nz} first5={h5:?}", h.len());
+            }
+        }
+
         if gemm_forward(
             &training.lm_head_hidden_buf,
             &training.embed_transposed,
@@ -2051,6 +2083,20 @@ impl InstructPipeline {
         {
             eprintln!("[CUDA] lm_head forward GEMM failed");
             return false;
+        }
+
+        // TRACE: Check logits after lm_head
+        {
+            stream.synchronize().ok();
+            let mut l = vec![0.0f32; training.logits_buf.len()];
+            let _ = training.logits_buf.copy_to_host(&mut l);
+            let nz = l.iter().filter(|&&x| x != 0.0).count();
+            let l5: Vec<f32> = l.iter().copied().take(5).collect();
+            static TRACE_COUNT2: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let c = TRACE_COUNT2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if c == 0 {
+                eprintln!("[TRACE] logits output: len={} nonzero={nz} first5={l5:?}", l.len());
+            }
         }
 
         // KAIZEN-064: No logits download — logits stay in training.logits_buf for fused kernel.
