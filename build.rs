@@ -164,4 +164,42 @@ fn main() {
     println!("cargo:rustc-env=CONTRACT_IMPLEMENTED={implemented}");
     println!("cargo:rustc-env=CONTRACT_PARTIAL={partial}");
     println!("cargo:rustc-env=CONTRACT_GAPS={not_implemented}");
+    emit_contract_assertions_phase2();
+}
+
+// Phase 2: Emit PRE/POST env vars from contracts/*.yaml for #[contract] proc macro
+fn emit_contract_assertions_phase2() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("contracts");
+    if !dir.exists() { return; }
+    let Ok(es) = std::fs::read_dir(&dir) else { return };
+    #[derive(serde::Deserialize, Default)]
+    struct CY { #[serde(default)] equations: std::collections::BTreeMap<String, EY> }
+    #[derive(serde::Deserialize, Default)]
+    struct EY { #[serde(default)] preconditions: Vec<String>, #[serde(default)] postconditions: Vec<String> }
+    let (mut tp, mut tq) = (0, 0);
+    for e in es.flatten() {
+        let p = e.path();
+        if p.extension().and_then(|x| x.to_str()) != Some("yaml") { continue; }
+        if p.file_name().is_some_and(|n| n.to_string_lossy().contains("binding")) { continue; }
+        println!("cargo:rerun-if-changed={}", p.display());
+        let s = p.file_stem().and_then(|x| x.to_str()).unwrap_or("x").to_uppercase().replace('-', "_");
+        if let Ok(c) = std::fs::read_to_string(&p) {
+            if let Ok(y) = serde_yaml_ng::from_str::<CY>(&c) {
+                for (n, eq) in &y.equations {
+                    let k = format!("CONTRACT_{}_{}", s, n.to_uppercase().replace('-', "_"));
+                    if !eq.preconditions.is_empty() {
+                        println!("cargo:rustc-env={k}_PRE_COUNT={}", eq.preconditions.len());
+                        for (i, v) in eq.preconditions.iter().enumerate() { println!("cargo:rustc-env={k}_PRE_{i}={v}"); }
+                        tp += eq.preconditions.len();
+                    }
+                    if !eq.postconditions.is_empty() {
+                        println!("cargo:rustc-env={k}_POST_COUNT={}", eq.postconditions.len());
+                        for (i, v) in eq.postconditions.iter().enumerate() { println!("cargo:rustc-env={k}_POST_{i}={v}"); }
+                        tq += eq.postconditions.len();
+                    }
+                }
+            }
+        }
+    }
+    println!("cargo:warning=[contract] Assertions: {tp} preconditions, {tq} postconditions from YAML");
 }
