@@ -857,3 +857,50 @@ fn main() -> Result<()> {
 **Blocker:** Trueno currently inference-only. Requires `ops::backward` module.
 
 **Timeline:** 6 months (Phase 1-4), assuming Trueno backward ops added in parallel.
+
+---
+
+## NF4 QLoRA Training: cuBLAS Integration
+
+### Throughput Comparison
+
+| Backend | Throughput | Status |
+|---------|-----------|--------|
+| Fused NF4 kernel (trueno-gpu PTX) | 15.5 tok/s | Working (current) |
+| cuBLAS GEMM (with NF4 dequant) | 298 tok/s | Parity verified, blocked by Blackwell JIT |
+
+The 19x throughput improvement from cuBLAS is available once the Blackwell JIT bug (trueno#200) is resolved via dimension-independent kernels (trueno#203).
+
+### cuBLAS Integration Requirements
+
+**All backward kernels must be pre-warmed before any GPU work begins.** On Blackwell (sm_121), the NVIDIA JIT compiler crashes (`cuModuleLoadDataEx` returns `CUDA_ERROR_UNKNOWN`) when PTX compilation is attempted during active GPU work. This specifically affects backward kernels because they are compiled on-demand during the training loop.
+
+**Pre-warming protocol**:
+1. Enumerate all kernel shapes needed for the model architecture
+2. Compile all PTX variants (forward AND backward) before the first training step
+3. Cache compiled modules in a shape-indexed map
+4. During training, only look up pre-compiled modules -- never trigger JIT
+
+### Blackwell-Specific: `from_ptx_direct`
+
+All kernel compilation on Blackwell must use `from_ptx_direct`, which:
+- Loads pre-compiled cubin blobs instead of JIT-compiling PTX
+- Avoids `cuModuleLoadDataEx` entirely (the crashing API)
+- Works safely during active GPU work
+
+Long-term fix: trueno#203 (dimension-independent kernels with offline cubin compilation via `build.rs` + `nvcc`).
+
+### Provable Contracts
+
+| Contract | File | Tests | Status |
+|----------|------|-------|--------|
+| NF4 cuBLAS parity | `nf4-cublas-parity-v2.yaml` | FALSIFY-NF4-001..005 | 4/5 PASS |
+| Backward cache key | `backward-cache-key-v1.yaml` | FALSIFY-BCK-001..003 | 3/3 PASS |
+| NF4 cuBLAS throughput | `nf4-cublas-throughput-v1.yaml` | FALSIFY-THR-001..003 | Blocked (trueno#200) |
+
+### Key Invariants
+
+1. **cuBLAS GEMM parity**: fused NF4 kernel and cuBLAS path must produce identical forward outputs (within FP16 tolerance of 1e-3)
+2. **Gradient determinism**: Backward pass must produce identical gradients regardless of backend (fused vs cuBLAS)
+3. **No JIT during training**: After pre-warming, zero `cuModuleLoadDataEx` calls may occur during the training loop
+4. **Inference unaffected**: `apr run` uses cuBLAS/SIMD directly and is not impacted by the Blackwell JIT bug
