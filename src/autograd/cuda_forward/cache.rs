@@ -206,23 +206,14 @@ impl ForwardKernelCache {
         // 7. Residual add (seq * hidden)
         warm!("residual_add_forward".to_string(), ResidualAddKernel::new(sh));
 
-        // 8. Interleaved-to-batched: Q (S, NH, HD) and K/V (S, NKV, HD)
+        // 8. Interleaved-to-batched (dimension-independent: one module handles all dims)
         warm!(
-            format!("interleaved_to_batched_{s}_{nh}_{hd}"),
+            "interleaved_to_batched".to_string(),
             InterleavedToBatchedKernel::new(s, nh, hd)
         );
-        if nkv != nh {
-            warm!(
-                format!("interleaved_to_batched_{s}_{nkv}_{hd}"),
-                InterleavedToBatchedKernel::new(s, nkv, hd)
-            );
-        }
 
-        // 9. Batched transpose: K^T (NH, S, HD)
-        warm!(format!("batched_transpose_{nh}_{s}_{hd}"), BatchedTransposeKernel::new(nh, s, hd));
-
-        // 9b. Batched transpose: backward reverse (NH, HD, S)
-        warm!(format!("batched_transpose_{nh}_{hd}_{s}"), BatchedTransposeKernel::new(nh, hd, s));
+        // 9. Batched transpose (dimension-independent: one module handles all dims)
+        warm!("batched_transpose".to_string(), BatchedTransposeKernel::new(nh, s, hd));
 
         // 10. Batched 4D GEMM: Q@K^T (1, NH, S, S, HD)
         warm!(
@@ -234,10 +225,10 @@ impl ForwardKernelCache {
         let score_n = nh * s * s;
         warm!("scale_forward".to_string(), ScaleKernel::new(score_n));
 
-        // 12. Batched softmax: (NH * S rows, S cols)
+        // 12. Batched softmax (dimension-independent: one module handles all dims)
         let softmax_rows = nh * s;
         warm!(
-            format!("batched_softmax_forward_{softmax_rows}_{s}"),
+            "batched_softmax_forward".to_string(),
             BatchedSoftmaxKernel::new(softmax_rows, s)
         );
 
@@ -253,9 +244,9 @@ impl ForwardKernelCache {
             Batched4DGemmKernel::new(1, nh, hd, s, s)
         );
 
-        // 14. Batched-to-interleaved: attention output (S, NH, HD)
+        // 14. Batched-to-interleaved (dimension-independent: one module handles all dims)
         warm!(
-            format!("batched_to_interleaved_{s}_{nh}_{hd}"),
+            "batched_to_interleaved".to_string(),
             BatchedToInterleavedKernel::new(s, nh, hd)
         );
 

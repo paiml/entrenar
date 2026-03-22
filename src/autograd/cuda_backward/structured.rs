@@ -103,13 +103,16 @@ pub fn batched_softmax_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("batched_softmax_backward_{total_rows}_{row_size}");
-    let module = match cache.get_cached(&key) {
+    // Contract: dimension-independent-kernels-v1.yaml
+    // Note: BatchedSoftmaxBackwardKernel not yet dimension-independent in trueno,
+    // but using generic key prepares for the fix.
+    let key = "batched_softmax_backward";
+    let module = match cache.get_cached(key) {
         Some(m) => m,
         None => {
             let kernel = BatchedSoftmaxBackwardKernel::new(total_rows, row_size);
             let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-            cache.get_or_compile(&key, &ptx)?
+            cache.get_or_compile(key, &ptx)?
         }
     };
 
@@ -172,13 +175,14 @@ pub fn rms_norm_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let key = format!("batched_rms_norm_backward_{batch_size}_{hidden_size}");
-    let module = match cache.get_cached(&key) {
+    // Contract: dimension-independent-kernels-v1.yaml (FALSIFY-DIM-001)
+    let key = "batched_rms_norm_backward";
+    let module = match cache.get_cached(key) {
         Some(m) => m,
         None => {
             let kernel = BatchedRmsNormBackwardKernel::new(batch_size, hidden_size, eps);
             let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-            cache.get_or_compile(&key, &ptx)?
+            cache.get_or_compile(key, &ptx)?
         }
     };
 

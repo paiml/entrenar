@@ -236,12 +236,13 @@ pub fn batched_softmax_forward(
     let kernel = BatchedSoftmaxKernel::new(total_rows, row_size);
     let kernel_name = kernel.name();
 
-    let key = format!("batched_softmax_forward_{total_rows}_{row_size}");
-    let module = match cache.get_cached(&key) {
+    // Contract: dimension-independent-kernels-v1.yaml (FALSIFY-DIM-004)
+    let key = "batched_softmax_forward";
+    let module = match cache.get_cached(key) {
         Some(m) => m,
         None => {
             let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-            cache.get_or_compile(&key, &ptx)?
+            cache.get_or_compile(key, &ptx)?
         }
     };
 

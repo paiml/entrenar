@@ -269,17 +269,17 @@ pub fn pre_warm_lora_backward_kernels(
     warm!("silu_backward".to_string(), SiluBackwardKernel::new(si));
 
     // ── Structured backward kernels (attention + normalization) ──
-    // Batched softmax backward: (num_heads * seq_len, seq_len)
+    // Batched softmax backward (dimension-independent)
     let softmax_rows = nh * s;
     warm!(
-        format!("batched_softmax_backward_{softmax_rows}_{s}"),
+        "batched_softmax_backward".to_string(),
         BatchedSoftmaxBackwardKernel::new(softmax_rows, s)
     );
 
-    // RMSNorm backward: (seq_len, hidden_size) — called twice per block
+    // RMSNorm backward (dimension-independent)
     let eps = 1e-5_f32;
     warm!(
-        format!("batched_rms_norm_backward_{s}_{h}"),
+        "batched_rms_norm_backward".to_string(),
         BatchedRmsNormBackwardKernel::new(s, h, eps)
     );
 

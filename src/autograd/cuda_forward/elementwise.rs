@@ -265,13 +265,16 @@ pub fn interleaved_to_batched_forward(
     })?;
 
     let total = seq_len * n_heads * head_dim;
-    let key = format!("interleaved_to_batched_{seq_len}_{n_heads}_{head_dim}");
-    let module = match cache.get_cached(&key) {
+    // Contract: dimension-independent-kernels-v1.yaml (FALSIFY-DIM-004)
+    // Use generic cache key — PTX is dimension-independent, one module handles all dims.
+    let key = "interleaved_to_batched";
+    let module = match cache.get_cached(key) {
         Some(m) => m,
         None => {
+            // Constructor args don't matter — PTX is identical for any dimensions
             let kernel = InterleavedToBatchedKernel::new(seq_len, n_heads, head_dim);
             let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-            cache.get_or_compile(&key, &ptx)?
+            cache.get_or_compile(key, &ptx)?
         }
     };
 
@@ -281,8 +284,15 @@ pub fn interleaved_to_batched_forward(
     let input_ptr = input.as_ptr();
     let output_ptr = output.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 2] =
-        [&input_ptr as *const _ as *mut _, &output_ptr as *const _ as *mut _];
+    // Dimension-independent kernel: pass dims as runtime params
+    let mut args: [*mut std::ffi::c_void; 6] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &seq_len as *const _ as *mut _,
+        &n_heads as *const _ as *mut _,
+        &head_dim as *const _ as *mut _,
+        &total as *const _ as *mut _,
+    ];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations.
     unsafe {
@@ -322,13 +332,14 @@ pub fn batched_transpose_forward(
     })?;
 
     let total_per_batch = rows * cols;
-    let key = format!("batched_transpose_{batch}_{rows}_{cols}");
-    let module = match cache.get_cached(&key) {
+    // Contract: dimension-independent-kernels-v1.yaml (FALSIFY-DIM-004)
+    let key = "batched_transpose";
+    let module = match cache.get_cached(key) {
         Some(m) => m,
         None => {
             let kernel = BatchedTransposeKernel::new(batch, rows, cols);
             let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-            cache.get_or_compile(&key, &ptx)?
+            cache.get_or_compile(key, &ptx)?
         }
     };
 
@@ -342,12 +353,14 @@ pub fn batched_transpose_forward(
     let input_ptr = input.as_ptr();
     let output_ptr = output.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 5] = [
+    // Dimension-independent kernel: pass dims as runtime params
+    let mut args: [*mut std::ffi::c_void; 6] = [
         &input_ptr as *const _ as *mut _,
         &output_ptr as *const _ as *mut _,
         &batch as *const _ as *mut _,
         &rows as *const _ as *mut _,
         &cols as *const _ as *mut _,
+        &total_per_batch as *const _ as *mut _,
     ];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations.
@@ -386,13 +399,14 @@ pub fn batched_to_interleaved_forward(
     })?;
 
     let total = seq_len * n_heads * head_dim;
-    let key = format!("batched_to_interleaved_{seq_len}_{n_heads}_{head_dim}");
-    let module = match cache.get_cached(&key) {
+    // Contract: dimension-independent-kernels-v1.yaml (FALSIFY-DIM-004)
+    let key = "batched_to_interleaved";
+    let module = match cache.get_cached(key) {
         Some(m) => m,
         None => {
             let kernel = BatchedToInterleavedKernel::new(seq_len, n_heads, head_dim);
             let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-            cache.get_or_compile(&key, &ptx)?
+            cache.get_or_compile(key, &ptx)?
         }
     };
 
@@ -402,8 +416,15 @@ pub fn batched_to_interleaved_forward(
     let input_ptr = input.as_ptr();
     let output_ptr = output.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 2] =
-        [&input_ptr as *const _ as *mut _, &output_ptr as *const _ as *mut _];
+    // Dimension-independent kernel: pass dims as runtime params
+    let mut args: [*mut std::ffi::c_void; 6] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &seq_len as *const _ as *mut _,
+        &n_heads as *const _ as *mut _,
+        &head_dim as *const _ as *mut _,
+        &total as *const _ as *mut _,
+    ];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations.
     unsafe {
