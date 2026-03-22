@@ -130,7 +130,8 @@ impl ForwardKernelCache {
                     CudaModule::from_ptx_direct(&self.ctx, ptx)
                 } else {
                     CudaModule::from_ptx(&self.ctx, ptx)
-                }.map_err(|err| {
+                }
+                .map_err(|err| {
                     CudaTensorError::KernelError(format!("Failed to compile {name}: {err:?}"))
                 })?;
                 Ok(e.insert(module))
@@ -207,10 +208,7 @@ impl ForwardKernelCache {
         warm!("residual_add_forward".to_string(), ResidualAddKernel::new(sh));
 
         // 8. Interleaved-to-batched (dimension-independent: one module handles all dims)
-        warm!(
-            "interleaved_to_batched".to_string(),
-            InterleavedToBatchedKernel::new(s, nh, hd)
-        );
+        warm!("interleaved_to_batched".to_string(), InterleavedToBatchedKernel::new(s, nh, hd));
 
         // 9. Batched transpose (dimension-independent: one module handles all dims)
         warm!("batched_transpose".to_string(), BatchedTransposeKernel::new(nh, s, hd));
@@ -227,10 +225,7 @@ impl ForwardKernelCache {
 
         // 12. Batched softmax (dimension-independent: one module handles all dims)
         let softmax_rows = nh * s;
-        warm!(
-            "batched_softmax_forward".to_string(),
-            BatchedSoftmaxKernel::new(softmax_rows, s)
-        );
+        warm!("batched_softmax_forward".to_string(), BatchedSoftmaxKernel::new(softmax_rows, s));
 
         // 13. Batched 4D GEMM: attn@V (1, NH, S, HD, S)
         warm!(
@@ -245,10 +240,7 @@ impl ForwardKernelCache {
         );
 
         // 14. Batched-to-interleaved (dimension-independent: one module handles all dims)
-        warm!(
-            "batched_to_interleaved".to_string(),
-            BatchedToInterleavedKernel::new(s, nh, hd)
-        );
+        warm!("batched_to_interleaved".to_string(), BatchedToInterleavedKernel::new(s, nh, hd));
 
         // 15. Element-wise multiply (used in FFN backward for SwiGLU gate * up)
         warm!("elementwise_mul_forward".to_string(), ElementwiseMulKernel::new(si));
@@ -427,9 +419,7 @@ pub fn pre_warm_forward_kernels(
     // trueno#200: On Blackwell, ANY kernel compiled during active GPU work
     // triggers CUDA_ERROR_ILLEGAL_ADDRESS. All kernels must be compiled
     // BEFORE the first GPU operation.
-    pre_warm_backward_kernels_in_forward_cache(
-        num_heads, num_kv_heads, head_dim, max_seq_len,
-    )?;
+    pre_warm_backward_kernels_in_forward_cache(num_heads, num_kv_heads, head_dim, max_seq_len)?;
     let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())

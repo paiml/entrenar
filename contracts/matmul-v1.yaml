@@ -16,7 +16,7 @@ equations:
       - "k > 0"
     postconditions:
       - "ret.len() == m * n"
-      - "ret.iter().all(|v| v.is_finite())"
+      - "ret.data().iter().all(|v| v.is_finite())"
     invariants:
       - "Inner dimensions must match: cols(A) == rows(B)"
       - "Output shape: (m, n)"
@@ -29,7 +29,7 @@ equations:
       - "k > 0"
     postconditions:
       - "ret.len() == m * n"
-      - "ret.iter().all(|v| v.is_finite())"
+      - "ret.data().iter().all(|v| v.is_finite())"
     invariants:
       - "Equivalent to matmul(A, transpose(B))"
       - "Avoids explicit transpose allocation"

@@ -513,9 +513,10 @@ impl CudaTransformerTrainer {
                 mc.intermediate_size,
                 mc.num_attention_heads,
                 config.quantize_nf4 && config.is_lora(),
-            ).map_err(|e| crate::error::Error::ConfigError(
-                format!("Backward kernel pre-warm failed: {e:?}")
-            ))?;
+            )
+            .map_err(|e| {
+                crate::error::Error::ConfigError(format!("Backward kernel pre-warm failed: {e:?}"))
+            })?;
             eprintln!("  ✓ Backward kernels pre-warmed (silu_backward, rms_norm_backward, etc.)");
         }
 

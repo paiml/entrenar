@@ -1650,19 +1650,27 @@ impl InstructPipeline {
 
         // TRACE: Check output of each layer (first forward only)
         {
-            static LAYER_TRACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            static LAYER_TRACE: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
             if !LAYER_TRACE.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 stream.synchronize().ok();
                 // Check output of last layer
                 let final_buf = unsafe {
-                    if input_is_a { &*scratch_a_ptr } else { &*scratch_b_ptr }
+                    if input_is_a {
+                        &*scratch_a_ptr
+                    } else {
+                        &*scratch_b_ptr
+                    }
                 };
                 let mut out = vec![0.0f32; final_buf.len()];
                 let _ = final_buf.copy_to_host(&mut out);
                 let nz = out.iter().filter(|&&x| x != 0.0).count();
                 let o5: Vec<f32> = out.iter().copied().take(5).collect();
-                eprintln!("[TRACE] After 36 layers: len={} nonzero={nz}/{} first5={o5:?}",
-                    out.len(), out.len());
+                eprintln!(
+                    "[TRACE] After 36 layers: len={} nonzero={nz}/{} first5={o5:?}",
+                    out.len(),
+                    out.len()
+                );
             }
         }
 
@@ -2092,7 +2100,8 @@ impl InstructPipeline {
             let _ = training.logits_buf.copy_to_host(&mut l);
             let nz = l.iter().filter(|&&x| x != 0.0).count();
             let l5: Vec<f32> = l.iter().copied().take(5).collect();
-            static TRACE_COUNT2: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            static TRACE_COUNT2: std::sync::atomic::AtomicU32 =
+                std::sync::atomic::AtomicU32::new(0);
             let c = TRACE_COUNT2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             if c == 0 {
                 eprintln!("[TRACE] logits output: len={} nonzero={nz} first5={l5:?}", l.len());

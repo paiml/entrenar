@@ -36,8 +36,7 @@ equations:
     formula: "ratio = 32 / (4 + 32/block_size) for 4-bit with f32 scales"
     domain: "block_size = 64"
     preconditions:
-      - "block_size > 0"
-      - "bits == 4"
+      - "self.len > 0"
     postconditions:
       - "ret > 1.0"
       - "ret.is_finite()"

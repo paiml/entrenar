@@ -22,9 +22,7 @@ mod parity_tests {
     use std::sync::Arc;
 
     use trueno_gpu::driver::{CudaContext, CudaStream, GpuBuffer};
-    use trueno_gpu::kernels::{
-        dequantize_nf4, quantize_nf4, Nf4Quantized, NF4_BLOCK_SIZE,
-    };
+    use trueno_gpu::kernels::{dequantize_nf4, quantize_nf4, Nf4Quantized, NF4_BLOCK_SIZE};
 
     use entrenar::autograd::cuda_forward::{
         gemm_forward, gemm_nf4_backward_a, gemm_nf4_forward, init_forward_kernel_cache,
@@ -43,18 +41,13 @@ mod parity_tests {
 
     /// Generate a random f32 matrix with values in [-1, 1].
     fn random_matrix(rows: usize, cols: usize, seed: u64) -> Vec<f32> {
-        (0..rows * cols)
-            .map(|i| pseudo_random(seed, i))
-            .collect()
+        (0..rows * cols).map(|i| pseudo_random(seed, i)).collect()
     }
 
     /// Compute max absolute difference between two slices.
     fn max_abs_diff(a: &[f32], b: &[f32]) -> f32 {
         assert_eq!(a.len(), b.len(), "slice length mismatch");
-        a.iter()
-            .zip(b.iter())
-            .map(|(&x, &y)| (x - y).abs())
-            .fold(0.0f32, f32::max)
+        a.iter().zip(b.iter()).map(|(&x, &y)| (x - y).abs()).fold(0.0f32, f32::max)
     }
 
     /// CPU reference GEMM: C[M,N] = A[M,K] @ B[K,N]
@@ -84,10 +77,7 @@ mod parity_tests {
         total: usize,
     ) -> (GpuBuffer<u8>, GpuBuffer<f32>, Nf4Quantized) {
         assert_eq!(weights.len(), total);
-        assert!(
-            total % NF4_BLOCK_SIZE == 0,
-            "total {total} not divisible by NF4 block size"
-        );
+        assert!(total % NF4_BLOCK_SIZE == 0, "total {total} not divisible by NF4 block size");
 
         let q = quantize_nf4(weights, total / NF4_BLOCK_SIZE, NF4_BLOCK_SIZE);
         let nf4_buf = GpuBuffer::from_host(ctx, &q.data).unwrap();
@@ -129,8 +119,7 @@ mod parity_tests {
 
         // Pre-warm kernels for our test dimensions
         // hidden=64, intermediate=128, heads=4, kv_heads=1, head_dim=16, seq=8
-        pre_warm_forward_kernels(64, 128, 4, 1, 16, 8)
-            .expect("Failed to pre-warm kernels");
+        pre_warm_forward_kernels(64, 128, 4, 1, 16, 8).expect("Failed to pre-warm kernels");
 
         (ctx, stream)
     }
@@ -162,8 +151,7 @@ mod parity_tests {
         let w_host = random_matrix(n, k, 137); // W is [N, K] = [64, 64]
 
         // --- NF4 fused path ---
-        let (nf4_data, nf4_scales, nf4_q) =
-            quantize_and_upload_nf4(&ctx, &w_host, n * k);
+        let (nf4_data, nf4_scales, nf4_q) = quantize_and_upload_nf4(&ctx, &w_host, n * k);
 
         let a_gpu = GpuBuffer::from_host(&ctx, &a_host).unwrap();
         let mut c_fused = GpuBuffer::<f32>::new(&ctx, m * n).unwrap();
@@ -192,16 +180,8 @@ mod parity_tests {
         let mut c_cublas = GpuBuffer::<f32>::new(&ctx, m * n).unwrap();
 
         // gemm_forward: C[M,N] = A[M,K] @ B[K,N]
-        gemm_forward(
-            &a_gpu,
-            &w_t_gpu,
-            &mut c_cublas,
-            m as u32,
-            k as u32,
-            n as u32,
-            &stream,
-        )
-        .expect("gemm_forward failed");
+        gemm_forward(&a_gpu, &w_t_gpu, &mut c_cublas, m as u32, k as u32, n as u32, &stream)
+            .expect("gemm_forward failed");
 
         stream.synchronize().unwrap();
 
@@ -281,8 +261,7 @@ mod parity_tests {
         let grad_out_host = random_matrix(m, n, 999);
 
         // --- NF4 backward path ---
-        let (nf4_data, nf4_scales, nf4_q) =
-            quantize_and_upload_nf4(&ctx, &w_host, n * k);
+        let (nf4_data, nf4_scales, nf4_q) = quantize_and_upload_nf4(&ctx, &w_host, n * k);
 
         let grad_out_gpu = GpuBuffer::from_host(&ctx, &grad_out_host).unwrap();
         let mut grad_in_fused = GpuBuffer::<f32>::new(&ctx, m * k).unwrap();
@@ -429,8 +408,7 @@ mod parity_tests {
             let w_host = random_matrix(n, k, seed_w); // W[N,K] HuggingFace layout
 
             // --- NF4 fused path ---
-            let (nf4_data, nf4_scales, nf4_q) =
-                quantize_and_upload_nf4(&ctx, &w_host, n * k);
+            let (nf4_data, nf4_scales, nf4_q) = quantize_and_upload_nf4(&ctx, &w_host, n * k);
             let a_gpu = GpuBuffer::from_host(&ctx, &a_host).unwrap();
             let mut c_fused = GpuBuffer::<f32>::new(&ctx, m * n).unwrap();
 
@@ -455,16 +433,8 @@ mod parity_tests {
             let w_t_gpu = dequant_transpose_upload(&ctx, &nf4_q, n, k);
             let mut c_cublas = GpuBuffer::<f32>::new(&ctx, m * n).unwrap();
 
-            gemm_forward(
-                &a_gpu,
-                &w_t_gpu,
-                &mut c_cublas,
-                m as u32,
-                k as u32,
-                n as u32,
-                &stream,
-            )
-            .unwrap_or_else(|e| panic!("{name}: gemm_forward failed: {e:?}"));
+            gemm_forward(&a_gpu, &w_t_gpu, &mut c_cublas, m as u32, k as u32, n as u32, &stream)
+                .unwrap_or_else(|e| panic!("{name}: gemm_forward failed: {e:?}"));
 
             stream.synchronize().unwrap();
 
@@ -576,8 +546,7 @@ mod parity_tests {
             let a_host = random_matrix(*m, *k, 42);
             let w_host = random_matrix(*n, *k, 137);
 
-            let (nf4_data, nf4_scales, nf4_q) =
-                quantize_and_upload_nf4(&ctx, &w_host, *n * *k);
+            let (nf4_data, nf4_scales, nf4_q) = quantize_and_upload_nf4(&ctx, &w_host, *n * *k);
             let a_gpu = GpuBuffer::from_host(&ctx, &a_host).unwrap();
             let mut c_fused = GpuBuffer::<f32>::new(&ctx, *m * *n).unwrap();
 

@@ -97,7 +97,8 @@ impl KernelCache {
                     CudaModule::from_ptx_direct(&self.ctx, ptx)
                 } else {
                     CudaModule::from_ptx(&self.ctx, ptx)
-                }.map_err(|err| {
+                }
+                .map_err(|err| {
                     eprintln!("[BWD-CACHE] FAILED '{name}': {err:?}");
                     CudaTensorError::KernelError(format!("Failed to compile {name}: {err:?}"))
                 })?;
@@ -278,10 +279,7 @@ pub fn pre_warm_lora_backward_kernels(
 
     // RMSNorm backward (dimension-independent)
     let eps = 1e-5_f32;
-    warm!(
-        "batched_rms_norm_backward".to_string(),
-        BatchedRmsNormBackwardKernel::new(s, h, eps)
-    );
+    warm!("batched_rms_norm_backward".to_string(), BatchedRmsNormBackwardKernel::new(s, h, eps));
 
     let _ = count;
     Ok(())

@@ -161,14 +161,7 @@ pub fn progress_report(
 ) -> WaitProgress {
     let elapsed = start.elapsed();
     let remaining = config.timeout.saturating_sub(elapsed);
-    WaitProgress {
-        attempt,
-        elapsed,
-        remaining,
-        budget_mb,
-        available_mb,
-        reserved_mb,
-    }
+    WaitProgress { attempt, elapsed, remaining, budget_mb, available_mb, reserved_mb }
 }
 
 #[cfg(test)]
