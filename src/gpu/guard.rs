@@ -78,6 +78,37 @@ impl VramGuard {
     pub fn status(&self) -> Result<String, GpuError> {
         super::ledger::gpu_status_display(&self.ledger)
     }
+    /// Check if actual VRAM usage overshoots the budget.
+    ///
+    /// Returns `Some((actual, budget))` if overshoot detected, `None` if within budget.
+    ///
+    /// Contract: vram-guard-v1 / budget_overshoot
+    pub fn check_overshoot(&self) -> Option<(usize, usize)> {
+        let actual = self
+            .ledger
+            .read_reservations()
+            .ok()?
+            .iter()
+            .filter(|r| r.pid == std::process::id() as u32)
+            .filter_map(|r| r.actual_mb)
+            .next()?;
+        if actual > self.budget_mb {
+            Some((actual, self.budget_mb))
+        } else {
+            None
+        }
+    }
+
+    /// Auto-estimate the VRAM budget for a model based on parameter count.
+    ///
+    /// Uses rule of thumb: ~2 bytes per parameter for f16 weights + 20% overhead.
+    ///
+    /// Contract: vram-guard-v1 / auto_budget_estimate
+    pub fn auto_estimate_budget(param_count: usize) -> usize {
+        let weight_mb = (param_count * 2) / (1024 * 1024);
+        let overhead = weight_mb / 5; // 20% overhead for activations + KV cache
+        weight_mb + overhead
+    }
 }
 
 #[cfg(test)]

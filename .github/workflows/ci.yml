@@ -1,96 +1,21 @@
-# Per-repo CI workflow — self-hosted clean-room runners for sovereignty (§2.1.1)
-# Spec: docs/specifications/unified-ci-pipeline.md
-#
-# Calls the unified reusable gate workflow in paiml/.github.
-# Branch protection requires "unified / gate" to pass before merge.
-
+# Sovereign CI — calls reusable workflow from paiml/.github
+# Change once in paiml/.github → applies to all repos
 name: CI
 
 on:
-  pull_request_target:
-    branches: [main, master]
   push:
     branches: [main, master]
-  workflow_dispatch:  # manual trigger for testing
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
 
-# One CI run per branch/PR; cancel stale runs on same branch
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  unified:
-    uses: paiml/.github/.github/workflows/unified-gate.yml@b6c24635217fe302ca1a67352b7de540fb3e02e7 # pin to SHA
+  ci:
+    uses: paiml/.github/.github/workflows/sovereign-ci.yml@main
     with:
       repo: ${{ github.event.repository.name }}
-      pr_sha: ${{ github.event.pull_request.head.sha || github.sha }}
     secrets: inherit
-
-  test:
-    runs-on: [self-hosted, clean-room]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo test --no-default-features --lib
-
-  coverage:
-    runs-on: [self-hosted, clean-room]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-cov-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo install cargo-llvm-cov --locked || true
-      - run: cargo llvm-cov test --no-default-features --lib --lcov --output-path lcov.info
-      - uses: codecov/codecov-action@v4
-        with:
-          files: lcov.info
-        continue-on-error: true
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-audit --locked || true
-      - run: cargo audit
-
-  lint:
-    runs-on: [self-hosted, clean-room]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo clippy --no-default-features -- -D warnings
-
-  gate:
-    name: gate
-    runs-on: [self-hosted, clean-room]
-    if: always()
-    needs: [test, lint, coverage, security]
-    steps:
-      - name: Check all jobs
-        run: |
-          if [ "${{ needs.test.result }}" = "failure" ] || [ "${{ needs.lint.result }}" = "failure" ]; then
-            exit 1
-          fi

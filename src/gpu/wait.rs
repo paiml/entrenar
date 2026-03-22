@@ -104,6 +104,67 @@ pub fn wait_for_vram(
     }
 }
 
+/// Compute the maximum wait duration bound for a given config.
+///
+/// Returns the configured timeout plus one max_interval (worst-case overshoot
+/// from the last sleep before timeout check).
+///
+/// Contract: gpu-wait-queue-v1 / timeout_bound
+pub fn timeout_bound(config: &WaitConfig) -> Duration {
+    config.timeout + config.max_interval
+}
+
+/// Identify expired reservations eligible for reclamation (fairness via lease expiry).
+///
+/// Returns the reservation IDs that have exceeded their 24h lease and should
+/// be pruned to prevent starvation of waiting processes.
+///
+/// Contract: gpu-wait-queue-v1 / fairness_via_expiry
+pub fn fairness_via_expiry(ledger: &mut VramLedger) -> Vec<u32> {
+    ledger.expired_reservation_ids()
+}
+
+/// Produce a structured progress report for the current wait state.
+///
+/// Contract: gpu-wait-queue-v1 / progress_report
+pub struct WaitProgress {
+    /// Current attempt number
+    pub attempt: u32,
+    /// Time elapsed since wait started
+    pub elapsed: Duration,
+    /// Time remaining before timeout
+    pub remaining: Duration,
+    /// VRAM budget requested (MB)
+    pub budget_mb: usize,
+    /// VRAM currently available (MB)
+    pub available_mb: usize,
+    /// VRAM currently reserved by other processes (MB)
+    pub reserved_mb: usize,
+}
+
+/// Build a progress report snapshot for the current wait state.
+///
+/// Contract: gpu-wait-queue-v1 / progress_report
+pub fn progress_report(
+    config: &WaitConfig,
+    start: Instant,
+    attempt: u32,
+    budget_mb: usize,
+    available_mb: usize,
+    reserved_mb: usize,
+) -> WaitProgress {
+    let elapsed = start.elapsed();
+    let remaining = config.timeout.saturating_sub(elapsed);
+    WaitProgress {
+        attempt,
+        elapsed,
+        remaining,
+        budget_mb,
+        available_mb,
+        reserved_mb,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
