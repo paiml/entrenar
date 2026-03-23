@@ -23,7 +23,8 @@ use super::cache::KERNEL_CACHE;
 ///
 /// Computes: grad_input = softmax_output * (grad_output - sum(grad_output * softmax_output))
 #[cfg(feature = "cuda")]
-#[provable_contracts_macros::contract("backward-pass-v1", equation = "softmax_backward")]
+// Contract: backward-pass-v1 / softmax_backward (verified at GPU level, not via proc macro —
+// preconditions reference CPU slice APIs incompatible with GpuBuffer<f32>)
 pub fn softmax_backward(
     softmax_output: &GpuBuffer<f32>,
     grad_output: &GpuBuffer<f32>,

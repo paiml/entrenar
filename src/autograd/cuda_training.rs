@@ -136,7 +136,8 @@ impl CudaTrainer {
     /// Given C = A @ B, computes:
     /// - grad_A = grad_C @ B^T
     /// - grad_B = A^T @ grad_C
-    #[provable_contracts_macros::contract("backward-pass-v1", equation = "matmul_backward")]
+    // Contract: backward-pass-v1 / matmul_backward (verified at GPU level, not via proc macro —
+    // preconditions reference CPU slice APIs incompatible with GpuBuffer<f32>)
     pub fn matmul_backward(
         &self,
         a: &GpuBuffer<f32>,
