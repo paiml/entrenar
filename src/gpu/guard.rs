@@ -89,9 +89,8 @@ impl VramGuard {
             .read_reservations()
             .ok()?
             .iter()
-            .filter(|r| r.pid == std::process::id() as u32)
-            .filter_map(|r| r.actual_mb)
-            .next()?;
+            .filter(|r| r.pid == std::process::id())
+            .find_map(|r| r.actual_mb)?;
         if actual > self.budget_mb {
             Some((actual, self.budget_mb))
         } else {

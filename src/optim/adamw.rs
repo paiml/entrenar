@@ -26,6 +26,7 @@ pub struct AdamW {
 
 impl AdamW {
     /// Create a new AdamW optimizer
+    #[allow(clippy::manual_range_contains)]
     #[requires(lr > 0.0 && beta1 >= 0.0 && beta1 < 1.0 && beta2 >= 0.0 && beta2 < 1.0 && epsilon > 0.0 && weight_decay >= 0.0)]
     pub fn new(lr: f32, beta1: f32, beta2: f32, epsilon: f32, weight_decay: f32) -> Self {
         Self { lr, beta1, beta2, epsilon, weight_decay, t: 0, m: Vec::new(), v: Vec::new() }
