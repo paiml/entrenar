@@ -1,6 +1,6 @@
 // build.rs — Read provable-contracts binding.yaml and set CONTRACT_* env vars
 //
-// Policy: WarnOnGaps. Emits warnings for partial/not_implemented bindings
+// Policy: AllImplemented. Emits warnings for partial/not_implemented bindings
 // but does NOT fail the build. Entrenar has 5 known gaps (GPU wait queue,
 // QLora learning_rate_scaling) tracked via paiml/provable-contracts#11.
 //
@@ -116,6 +116,7 @@ fn main() {
     let mut implemented = 0u32;
     let mut partial = 0u32;
     let mut not_implemented = 0u32;
+    let mut gaps: Vec<String> = Vec::new();
 
     let mut keys: Vec<_> = seen.keys().cloned().collect();
     keys.sort();
@@ -138,6 +139,7 @@ fn main() {
             }
             "not_implemented" => {
                 not_implemented += 1;
+                gaps.push(var_name.clone());
                 let note = bindings
                     .bindings
                     .iter()
@@ -154,9 +156,20 @@ fn main() {
 
     let total = implemented + partial + not_implemented;
     println!(
-        "cargo:warning=[contract] Summary: {implemented}/{total} implemented, \
-         {partial} partial, {not_implemented} gaps (WarnOnGaps policy)"
+        "cargo:warning=[contract] AllImplemented: {implemented}/{total} implemented, \
+         {partial} partial, {not_implemented} gaps"
     );
+
+    // AllImplemented policy: fail build on any not_implemented gap
+    if not_implemented > 0 {
+        for gap in &gaps {
+            println!("cargo:warning=[contract] UNALLOWED GAP: {gap}");
+        }
+        panic!(
+            "[contract] AllImplemented policy violation: {not_implemented} binding(s) are \
+             not_implemented. Fix: implement the binding or update binding.yaml status."
+        );
+    }
 
     println!("cargo:rustc-env=CONTRACT_BINDING_SOURCE=binding.yaml");
     println!("cargo:rustc-env=CONTRACT_BINDING_VERSION={}", bindings.version);
