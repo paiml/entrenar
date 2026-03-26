@@ -108,6 +108,10 @@ pub struct CudaTransformerBlock {
 /// - **Invariant**: NF4 layers run sequentially — one shared scratch is safe
 #[cfg(feature = "cuda")]
 pub(crate) struct CudaBlockScratch {
+    /// C-CAUSAL-001: Causal attention mask [seq_len * seq_len]
+    /// Contains 0.0 for j <= i (attend) and -inf for j > i (mask)
+    /// Precomputed at init, applied additively to attention scores before softmax
+    causal_mask: GpuBuffer<f32>,
     /// After input RMSNorm (seq_len * hidden_size)
     norm1_out: GpuBuffer<f32>,
     /// Q projection output (seq_len * hidden_size)
@@ -186,7 +190,29 @@ impl CudaBlockScratch {
         let lora_inter_size = (max_seq_len * lora_rank).max(1);
         let lora_temp_size = (max_seq_len * max_proj_dim).max(1);
 
+        // C-CAUSAL-001: Precompute causal mask on CPU, upload once
+        // Tiled for all heads: [num_heads * seq * seq] — each head gets the same mask
+        let single_mask: Vec<f32> = (0..max_seq_len * max_seq_len)
+            .map(|idx| {
+                let row = idx / max_seq_len; // query position
+                let col = idx % max_seq_len; // key position
+                if col <= row {
+                    0.0f32 // attend: no bias
+                } else {
+                    f32::NEG_INFINITY // mask: -inf makes softmax output 0
+                }
+            })
+            .collect();
+        let causal_mask_data: Vec<f32> = single_mask
+            .iter()
+            .cycle()
+            .take(num_heads * max_seq_len * max_seq_len)
+            .copied()
+            .collect();
+        let causal_mask = GpuBuffer::from_host(ctx, &causal_mask_data)?;
+
         Ok(Self {
+            causal_mask,
             norm1_out: GpuBuffer::new(ctx, max_seq_len * hidden_size)?,
             q: GpuBuffer::new(ctx, max_seq_len * q_dim)?,
             k: GpuBuffer::new(ctx, max_seq_len * kv_hidden_size)?,
@@ -849,6 +875,34 @@ impl CudaTransformerBlock {
                 total_scores,
                 stream,
             )?;
+            leak(scores_view);
+        }
+
+        // Step 5.5 (C-CAUSAL-001): Apply causal mask — add -inf to future positions
+        // scores += causal_mask (element-wise add, tiled for all heads)
+        // SAFETY: In-place aliasing is safe for ResidualAddKernel — each element
+        // is read before being written (output[i] = a[i] + b[i]).
+        {
+            let mask_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    self.scratch.causal_mask.as_ptr(),
+                    (nh * seq * seq) as usize,
+                )
+            };
+            let scores_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    self.scratch.attn_scores.as_ptr(),
+                    self.scratch.attn_scores.len(),
+                )
+            };
+            residual_add_forward(
+                &mask_view,
+                &scores_view,
+                &mut self.scratch.attn_scores,
+                nh * seq * seq,
+                stream,
+            )?;
+            leak(mask_view);
             leak(scores_view);
         }
 
@@ -3113,6 +3167,31 @@ impl CudaNf4TransformerBlock {
         leak(scores_view);
 
         // Softmax (in-place: input aliased with output via unsafe view)
+        // C-CAUSAL-001: Apply causal mask before softmax (NF4 path)
+        {
+            let mask_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    scratch.causal_mask.as_ptr(),
+                    (num_heads * seq_len * seq_len),
+                )
+            };
+            let scores_input = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    scratch.attn_scores.as_ptr(),
+                    scratch.attn_scores.len(),
+                )
+            };
+            residual_add_forward(
+                &mask_view,
+                &scores_input,
+                &mut scratch.attn_scores,
+                saturating_u32(num_heads * seq_len * seq_len),
+                stream,
+            )?;
+            leak(mask_view);
+            leak(scores_input);
+        }
+
         // SAFETY: The softmax kernel reads each row completely into shared memory / registers
         // before writing output. The view is forgotten to prevent double-free.
         let scores_view = unsafe {
