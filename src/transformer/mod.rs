@@ -16,6 +16,7 @@ mod embedding;
 mod encoder;
 mod encoder_block;
 mod feedforward;
+pub mod init;
 mod model;
 mod norm;
 pub(crate) mod weights;

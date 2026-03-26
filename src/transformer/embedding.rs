@@ -18,10 +18,11 @@ pub struct Embedding {
 impl Embedding {
     /// Create new embedding layer with initialized weights
     pub fn new(vocab_size: usize, hidden_size: usize) -> Self {
-        let scale = (1.0 / hidden_size as f32).sqrt();
+        use super::init::{get_init_seed, rand_normal_seeded};
+        // C-INIT-001: normal(0, 0.02) matching HuggingFace LLaMA
         Self {
             weight: Tensor::from_vec(
-                (0..vocab_size * hidden_size).map(|i| ((i as f32 * 0.111).sin() * scale)).collect(),
+                rand_normal_seeded(vocab_size * hidden_size, get_init_seed(), "embed_tokens"),
                 true,
             ),
             vocab_size,

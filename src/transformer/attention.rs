@@ -279,36 +279,19 @@ pub struct MultiHeadAttention {
 impl MultiHeadAttention {
     /// Create new attention layer with initialized weights
     pub fn new(config: &TransformerConfig) -> Self {
+        use super::init::{get_init_seed, rand_normal_seeded};
         let hidden_size = config.hidden_size;
         let q_dim = config.q_dim();
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
+        let seed = get_init_seed();
 
-        // Xavier initialization scale
-        let q_scale = (2.0 / (hidden_size + q_dim) as f32).sqrt();
-        let kv_scale = (2.0 / (hidden_size + kv_hidden_size) as f32).sqrt();
-
+        // C-INIT-001: normal(0, 0.02) matching HuggingFace LLaMA
         Self {
             config: config.clone(),
-            w_q: Tensor::from_vec(
-                (0..q_dim * hidden_size).map(|i| ((i as f32 * 0.123).sin() * q_scale)).collect(),
-                true,
-            ),
-            w_k: Tensor::from_vec(
-                (0..kv_hidden_size * hidden_size)
-                    .map(|i| ((i as f32 * 0.234).sin() * kv_scale))
-                    .collect(),
-                true,
-            ),
-            w_v: Tensor::from_vec(
-                (0..kv_hidden_size * hidden_size)
-                    .map(|i| ((i as f32 * 0.345).sin() * kv_scale))
-                    .collect(),
-                true,
-            ),
-            w_o: Tensor::from_vec(
-                (0..hidden_size * q_dim).map(|i| ((i as f32 * 0.456).sin() * q_scale)).collect(),
-                true,
-            ),
+            w_q: Tensor::from_vec(rand_normal_seeded(q_dim * hidden_size, seed, "w_q"), true),
+            w_k: Tensor::from_vec(rand_normal_seeded(kv_hidden_size * hidden_size, seed, "w_k"), true),
+            w_v: Tensor::from_vec(rand_normal_seeded(kv_hidden_size * hidden_size, seed, "w_v"), true),
+            w_o: Tensor::from_vec(rand_normal_seeded(hidden_size * q_dim, seed, "w_o"), true),
             b_q: None,
             b_k: None,
             b_v: None,

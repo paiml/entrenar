@@ -198,6 +198,9 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     // Resolve model path (downloads from HF Hub if repo ID)
     let resolved_path = resolve_model_path(&spec.model.path)?;
 
+    // C-INIT-001: Set init seed BEFORE model construction (entrenar#309)
+    crate::transformer::init::set_init_seed(spec.training.seed.unwrap_or(42));
+
     // Try to load model weights if path exists (ENT-117)
     // ALB-097: Check output_dir first for checkpoint resume, then model_path for initial weights
     #[cfg(feature = "cuda")]

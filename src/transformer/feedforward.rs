@@ -21,35 +21,18 @@ pub struct FeedForward {
 }
 
 impl FeedForward {
-    /// Create new FFN layer with initialized weights
+    /// Create new FFN layer with random normal initialization (C-INIT-001).
     pub fn new(config: &TransformerConfig) -> Self {
+        use super::init::{get_init_seed, rand_normal_seeded};
         let hidden_size = config.hidden_size;
         let intermediate_size = config.intermediate_size;
-
-        // Xavier initialization scale
-        let scale_up = (2.0 / (hidden_size + intermediate_size) as f32).sqrt();
-        let scale_down = (2.0 / (intermediate_size + hidden_size) as f32).sqrt();
+        let seed = get_init_seed();
 
         Self {
             config: config.clone(),
-            w_gate: Tensor::from_vec(
-                (0..hidden_size * intermediate_size)
-                    .map(|i| ((i as f32 * 0.567).sin() * scale_up))
-                    .collect(),
-                true,
-            ),
-            w_up: Tensor::from_vec(
-                (0..hidden_size * intermediate_size)
-                    .map(|i| ((i as f32 * 0.678).sin() * scale_up))
-                    .collect(),
-                true,
-            ),
-            w_down: Tensor::from_vec(
-                (0..intermediate_size * hidden_size)
-                    .map(|i| ((i as f32 * 0.789).sin() * scale_down))
-                    .collect(),
-                true,
-            ),
+            w_gate: Tensor::from_vec(rand_normal_seeded(hidden_size * intermediate_size, seed, "w_gate"), true),
+            w_up: Tensor::from_vec(rand_normal_seeded(hidden_size * intermediate_size, seed, "w_up"), true),
+            w_down: Tensor::from_vec(rand_normal_seeded(intermediate_size * hidden_size, seed, "w_down"), true),
         }
     }
 
@@ -164,24 +147,18 @@ pub struct EncoderFeedForward {
 }
 
 impl EncoderFeedForward {
-    /// Create new encoder FFN with deterministic initialization
+    /// Create new encoder FFN with random normal initialization (C-INIT-001).
     pub fn new(config: &TransformerConfig) -> Self {
+        use super::init::{get_init_seed, rand_normal_seeded};
         let h = config.hidden_size;
         let inter = config.intermediate_size;
-        let scale_up = (2.0 / (h + inter) as f32).sqrt();
-        let scale_down = (2.0 / (inter + h) as f32).sqrt();
+        let seed = get_init_seed();
 
         Self {
             config: config.clone(),
-            w_up: Tensor::from_vec(
-                (0..h * inter).map(|i| ((i as f32 * 0.567).sin() * scale_up)).collect(),
-                true,
-            ),
+            w_up: Tensor::from_vec(rand_normal_seeded(h * inter, seed, "enc_w_up"), true),
             b_up: Tensor::from_vec(vec![0.0; inter], true),
-            w_down: Tensor::from_vec(
-                (0..inter * h).map(|i| ((i as f32 * 0.789).sin() * scale_down)).collect(),
-                true,
-            ),
+            w_down: Tensor::from_vec(rand_normal_seeded(inter * h, seed, "enc_w_down"), true),
             b_down: Tensor::from_vec(vec![0.0; h], true),
         }
     }
