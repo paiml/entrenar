@@ -74,10 +74,10 @@ impl SiluKernelV1 for EntrenarKernels {
 // LayernormKernelV1 -- layer_norm (Tensor-based) + statistics (pure math)
 // ---------------------------------------------------------------------------
 impl LayernormKernelV1 for EntrenarKernels {
-    fn layernorm(&self, input: &[f32]) -> Vec<f32> {
-        let n = input.len();
-        let x = entrenar::Tensor::from_vec(input.to_vec(), false);
-        let gamma = entrenar::Tensor::from_vec(vec![1.0f32; n], false);
+    fn layernorm(&self, xinrd: &[f32], gammainrd: &[f32]) -> Vec<f32> {
+        let n = xinrd.len();
+        let x = entrenar::Tensor::from_vec(xinrd.to_vec(), false);
+        let gamma = entrenar::Tensor::from_vec(gammainrd.to_vec(), false);
         let beta = entrenar::Tensor::from_vec(vec![0.0f32; n], false);
         let eps = 1e-5_f32;
         let out = entrenar::autograd::layer_norm(&x, &gamma, &beta, eps);
@@ -135,14 +135,10 @@ impl RopeKernelV1 for EntrenarKernels {
 // numerically stable cross_entropy_loss via Tensor API)
 // ---------------------------------------------------------------------------
 impl CrossEntropyKernelV1 for EntrenarKernels {
-    fn cross_entropy(&self, input: &[f32]) -> Vec<f32> {
-        // Convention: input = [logits_0..logits_{n/2}, targets_0..targets_{n/2}]
-        let half = input.len() / 2;
-        let logits = &input[..half];
-        let targets = &input[half..];
-        let log_probs = self.log_softmax(logits);
+    fn cross_entropy(&self, targetsin0: &[f32], logitsinrn: &[f32]) -> Vec<f32> {
+        let log_probs = self.log_softmax(logitsinrn);
         let loss: f32 =
-            targets.iter().zip(log_probs.iter()).map(|(&t, &lp)| -t * lp).sum();
+            targetsin0.iter().zip(log_probs.iter()).map(|(&t, &lp)| -t * lp).sum();
         vec![loss]
     }
 
@@ -160,28 +156,20 @@ impl CrossEntropyKernelV1 for EntrenarKernels {
 // math that entrenar::optim::AdamW::step() uses internally.
 // ---------------------------------------------------------------------------
 impl AdamwKernelV1 for EntrenarKernels {
-    fn adam_moments(&self, input: &[f32]) -> Vec<f32> {
-        // Convention: input = [g_0..g_{n/2}, m_prev_0..m_prev_{n/2}]
+    fn adam_moments(&self, g_tinrd: &[f32], m_00: &[f32]) -> Vec<f32> {
         // beta1 = 0.9 (entrenar default)
-        let half = input.len() / 2;
-        let g = &input[..half];
-        let m_prev = &input[half..];
         let beta1: f32 = 0.9;
-        g.iter()
-            .zip(m_prev.iter())
+        g_tinrd.iter()
+            .zip(m_00.iter())
             .map(|(&gi, &mi)| beta1 * mi + (1.0 - beta1) * gi)
             .collect()
     }
 
-    fn adam_variance(&self, input: &[f32]) -> Vec<f32> {
-        // Convention: input = [g_0..g_{n/2}, v_prev_0..v_prev_{n/2}]
+    fn adam_variance(&self, g_tinrd: &[f32], v_00: &[f32]) -> Vec<f32> {
         // beta2 = 0.999 (entrenar default)
-        let half = input.len() / 2;
-        let g = &input[..half];
-        let v_prev = &input[half..];
         let beta2: f32 = 0.999;
-        g.iter()
-            .zip(v_prev.iter())
+        g_tinrd.iter()
+            .zip(v_00.iter())
             .map(|(&gi, &vi)| beta2 * vi + (1.0 - beta2) * gi * gi)
             .collect()
     }
@@ -271,7 +259,7 @@ fn silu_trait_compiles() {
 #[test]
 fn layernorm_trait_compiles() {
     let k = EntrenarKernels;
-    let out = LayernormKernelV1::layernorm(&k, &[1.0, 2.0, 3.0, 4.0]);
+    let out = LayernormKernelV1::layernorm(&k, &[1.0, 2.0, 3.0, 4.0], &[1.0, 1.0, 1.0, 1.0]);
     assert_eq!(out.len(), 4);
     let mean: f32 = out.iter().sum::<f32>() / out.len() as f32;
     assert!(mean.abs() < 1e-5, "layernorm output mean ~ 0");
@@ -312,8 +300,8 @@ fn cross_entropy_trait_compiles() {
     assert_eq!(log_sm.len(), 3);
     assert!(log_sm.iter().all(|&v| v <= 0.0), "log_softmax <= 0");
 
-    // input = [logits..., targets...] (one-hot target on class 2)
-    let ce = CrossEntropyKernelV1::cross_entropy(&k, &[1.0, 2.0, 3.0, 0.0, 0.0, 1.0]);
+    // targets (one-hot on class 2), logits
+    let ce = CrossEntropyKernelV1::cross_entropy(&k, &[0.0, 0.0, 1.0], &[1.0, 2.0, 3.0]);
     assert_eq!(ce.len(), 1);
     assert!(ce[0] >= 0.0, "cross-entropy >= 0");
 }
@@ -322,14 +310,14 @@ fn cross_entropy_trait_compiles() {
 fn adamw_trait_compiles() {
     let k = EntrenarKernels;
 
-    // adam_moments: input = [gradients, m_prev]
-    let moments = AdamwKernelV1::adam_moments(&k, &[0.5, 0.3, 0.0, 0.0]);
+    // adam_moments: g_t = [0.5, 0.3], m_prev = [0.0, 0.0]
+    let moments = AdamwKernelV1::adam_moments(&k, &[0.5, 0.3], &[0.0, 0.0]);
     assert_eq!(moments.len(), 2);
     // m = 0.9 * 0 + 0.1 * g = 0.1 * g
     assert!((moments[0] - 0.05).abs() < 1e-6, "m = 0.1 * 0.5 = 0.05");
 
-    // adam_variance: input = [gradients, v_prev]
-    let variance = AdamwKernelV1::adam_variance(&k, &[0.5, 0.3, 0.0, 0.0]);
+    // adam_variance: g_t = [0.5, 0.3], v_prev = [0.0, 0.0]
+    let variance = AdamwKernelV1::adam_variance(&k, &[0.5, 0.3], &[0.0, 0.0]);
     assert_eq!(variance.len(), 2);
     assert!(variance[0] > 0.0, "variance > 0 for non-zero gradient");
 
