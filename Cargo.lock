@@ -1888,6 +1888,7 @@ dependencies = [
  "presentar-core",
  "presentar-terminal",
  "proptest",
+ "provable-contracts",
  "provable-contracts-macros 0.1.1",
  "rand 0.9.2",
  "realizar",
@@ -4457,6 +4458,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "provable-contracts"
+version = "0.1.1"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

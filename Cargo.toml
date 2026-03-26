@@ -231,6 +231,7 @@ parquet = { version = "57", default-features = false }  # For ALB-007 Parquet wr
 insta = { version = "1.42", features = ["json", "yaml"] }  # Snapshot testing for PMAT QA
 dirs = "5.0"  # Cache directory detection for examples
 jugar-probar = "1.0"  # TUI snapshot testing (ENT-140)
+provable-contracts = { path = "../provable-contracts/crates/provable-contracts" }  # Contract trait enforcement (Section 23)
 
 [[bench]]
 name = "monitor_bench"
