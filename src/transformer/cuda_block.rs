@@ -486,8 +486,25 @@ impl CudaTransformerBlock {
         let w_up = GpuBuffer::from_host(&ctx, w_up)?;
         let w_down = GpuBuffer::from_host(&ctx, w_down)?;
 
+        // C-CAUSAL-001: Precompute causal mask for NF4 path
+        let single_mask: Vec<f32> = (0..max_seq_len * max_seq_len)
+            .map(|idx| {
+                let row = idx / max_seq_len;
+                let col = idx % max_seq_len;
+                if col <= row { 0.0f32 } else { f32::NEG_INFINITY }
+            })
+            .collect();
+        let causal_mask_data: Vec<f32> = single_mask
+            .iter()
+            .cycle()
+            .take(num_heads * max_seq_len * max_seq_len)
+            .copied()
+            .collect();
+        let causal_mask = GpuBuffer::from_host(&ctx, &causal_mask_data)?;
+
         // Allocate scratch buffers — Q and attn_out need q_dim, not hidden_size
         let scratch = CudaBlockScratch {
+            causal_mask,
             norm1_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             q: GpuBuffer::new(&ctx, max_seq_len * q_dim)?,
             k: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
