@@ -26,7 +26,7 @@ struct EntrenarKernels;
 // SoftmaxKernelV1 -- delegates to autograd::ops::softmax (Tensor-based)
 // ---------------------------------------------------------------------------
 impl SoftmaxKernelV1 for EntrenarKernels {
-    fn softmax(&self, x: &[f32], _n1: &[f32]) -> Vec<f32> {
+    fn softmax(&self, x: &[f32]) -> Vec<f32> {
         let t = entrenar::Tensor::from_vec(x.to_vec(), false);
         let out = entrenar::autograd::softmax(&t);
         out.data().to_vec()
@@ -60,12 +60,12 @@ impl ActivationKernelV1 for EntrenarKernels {
 // SiluKernelV1 -- sigmoid and silu (element-wise via trueno scalars)
 // ---------------------------------------------------------------------------
 impl SiluKernelV1 for EntrenarKernels {
-    fn sigmoid(&self, xinr: &[f32]) -> Vec<f32> {
-        xinr.iter().map(|&x| 1.0 / (1.0 + (-x).exp())).collect()
+    fn sigmoid(&self, x: &[f32]) -> Vec<f32> {
+        x.iter().map(|&xi| 1.0 / (1.0 + (-xi).exp())).collect()
     }
 
-    fn silu(&self, xinr: &[f32]) -> Vec<f32> {
-        let t = entrenar::Tensor::from_vec(xinr.to_vec(), false);
+    fn silu(&self, x: &[f32]) -> Vec<f32> {
+        let t = entrenar::Tensor::from_vec(x.to_vec(), false);
         let out = entrenar::autograd::swish(&t);
         out.data().to_vec()
     }
@@ -75,19 +75,19 @@ impl SiluKernelV1 for EntrenarKernels {
 // SwigluKernelV1 -- silu + swiglu (split-input convention)
 // ---------------------------------------------------------------------------
 impl SwigluKernelV1 for EntrenarKernels {
-    fn silu(&self, xinr: &[f32]) -> Vec<f32> {
-        let t = entrenar::Tensor::from_vec(xinr.to_vec(), false);
+    fn silu(&self, x: &[f32]) -> Vec<f32> {
+        let t = entrenar::Tensor::from_vec(x.to_vec(), false);
         let out = entrenar::autograd::swish(&t);
         out.data().to_vec()
     }
 
-    fn swiglu(&self, xinrd: &[f32], winrdxh: &[f32], vinrdxh: &[f32], binrh: &[f32], cinrh: &[f32]) -> Vec<f32> {
-        let _ = (winrdxh, vinrdxh, binrh, cinrh);
-        let half = xinrd.len() / 2;
-        let x = &xinrd[..half];
-        let gate = &xinrd[half..];
+    fn swiglu(&self, x: &[f32], w: &[f32], v: &[f32], b: &[f32], c: &[f32]) -> Vec<f32> {
+        let _ = (w, v, b, c);
+        let half = x.len() / 2;
+        let x_part = &x[..half];
+        let gate = &x[half..];
         // SwiGLU(x, gate) = SiLU(x) * gate
-        x.iter()
+        x_part.iter()
             .zip(gate.iter())
             .map(|(&xi, &gi)| {
                 let silu_xi = xi / (1.0 + (-xi).exp());
@@ -101,20 +101,20 @@ impl SwigluKernelV1 for EntrenarKernels {
 // LayernormKernelV1 -- layer_norm (Tensor-based) + statistics (pure math)
 // ---------------------------------------------------------------------------
 impl LayernormKernelV1 for EntrenarKernels {
-    fn layernorm(&self, xinrd: &[f32], gammainrd: &[f32]) -> Vec<f32> {
-        let n = xinrd.len();
-        let x = entrenar::Tensor::from_vec(xinrd.to_vec(), false);
-        let gamma = entrenar::Tensor::from_vec(gammainrd.to_vec(), false);
+    fn layernorm(&self, x: &[f32], gamma: &[f32]) -> Vec<f32> {
+        let n = x.len();
+        let xt = entrenar::Tensor::from_vec(x.to_vec(), false);
+        let gt = entrenar::Tensor::from_vec(gamma.to_vec(), false);
         let beta = entrenar::Tensor::from_vec(vec![0.0f32; n], false);
         let eps = 1e-5_f32;
-        let out = entrenar::autograd::layer_norm(&x, &gamma, &beta, eps);
+        let out = entrenar::autograd::layer_norm(&xt, &gt, &beta, eps);
         out.data().to_vec()
     }
 
-    fn statistics(&self, xinrd: &[f32]) -> Vec<f32> {
-        let n = xinrd.len() as f32;
-        let mean: f32 = xinrd.iter().sum::<f32>() / n;
-        let var: f32 = xinrd.iter().map(|&x| (x - mean) * (x - mean)).sum::<f32>() / n;
+    fn statistics(&self, x: &[f32]) -> Vec<f32> {
+        let n = x.len() as f32;
+        let mean: f32 = x.iter().sum::<f32>() / n;
+        let var: f32 = x.iter().map(|&xi| (xi - mean) * (xi - mean)).sum::<f32>() / n;
         vec![mean, var]
     }
 }
@@ -162,17 +162,17 @@ impl RopeKernelV1 for EntrenarKernels {
 // numerically stable cross_entropy_loss via Tensor API)
 // ---------------------------------------------------------------------------
 impl CrossEntropyKernelV1 for EntrenarKernels {
-    fn cross_entropy(&self, targetsin0: &[f32], logitsinrn: &[f32]) -> Vec<f32> {
-        let log_probs = self.log_softmax(logitsinrn);
+    fn cross_entropy(&self, targets: &[f32], logits: &[f32]) -> Vec<f32> {
+        let log_probs = self.log_softmax(logits);
         let loss: f32 =
-            targetsin0.iter().zip(log_probs.iter()).map(|(&t, &lp)| -t * lp).sum();
+            targets.iter().zip(log_probs.iter()).map(|(&t, &lp)| -t * lp).sum();
         vec![loss]
     }
 
-    fn log_softmax(&self, xinrn: &[f32]) -> Vec<f32> {
-        let max_val = xinrn.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let log_sum_exp: f32 = xinrn.iter().map(|&x| (x - max_val).exp()).sum::<f32>().ln() + max_val;
-        xinrn.iter().map(|&x| x - log_sum_exp).collect()
+    fn log_softmax(&self, x: &[f32]) -> Vec<f32> {
+        let max_val = x.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let log_sum_exp: f32 = x.iter().map(|&xi| (xi - max_val).exp()).sum::<f32>().ln() + max_val;
+        x.iter().map(|&xi| xi - log_sum_exp).collect()
     }
 }
 
@@ -183,20 +183,26 @@ impl CrossEntropyKernelV1 for EntrenarKernels {
 // math that entrenar::optim::AdamW::step() uses internally.
 // ---------------------------------------------------------------------------
 impl AdamwKernelV1 for EntrenarKernels {
-    fn adam_moments(&self, g_tinrd: &[f32], m_00: &[f32]) -> Vec<f32> {
-        // beta1 = 0.9 (entrenar default)
+    fn adam_moments(&self, g_t: &[f32]) -> Vec<f32> {
+        // Convention: g_t contains [gradients, m_prev] packed together
+        let half = g_t.len() / 2;
+        let grads = &g_t[..half];
+        let m_prev = &g_t[half..];
         let beta1: f32 = 0.9;
-        g_tinrd.iter()
-            .zip(m_00.iter())
+        grads.iter()
+            .zip(m_prev.iter())
             .map(|(&gi, &mi)| beta1 * mi + (1.0 - beta1) * gi)
             .collect()
     }
 
-    fn adam_variance(&self, g_tinrd: &[f32], v_00: &[f32]) -> Vec<f32> {
-        // beta2 = 0.999 (entrenar default)
+    fn adam_variance(&self, g_t: &[f32]) -> Vec<f32> {
+        // Convention: g_t contains [gradients, v_prev] packed together
+        let half = g_t.len() / 2;
+        let grads = &g_t[..half];
+        let v_prev = &g_t[half..];
         let beta2: f32 = 0.999;
-        g_tinrd.iter()
-            .zip(v_00.iter())
+        grads.iter()
+            .zip(v_prev.iter())
             .map(|(&gi, &vi)| beta2 * vi + (1.0 - beta2) * gi * gi)
             .collect()
     }
@@ -218,17 +224,17 @@ impl AdamwKernelV1 for EntrenarKernels {
         result
     }
 
-    fn weight_update(&self, thetainrd: &[f32]) -> Vec<f32> {
+    fn weight_update(&self, theta: &[f32]) -> Vec<f32> {
         // Convention: input = [theta_0..theta_{n/3}, m_hat_0..m_hat_{n/3}, v_hat_0..v_hat_{n/3}]
         // Uses entrenar's default: lr=0.001, eps=1e-8, weight_decay=0.01
-        let third = thetainrd.len() / 3;
-        let theta = &thetainrd[..third];
-        let m_hat = &thetainrd[third..2 * third];
-        let v_hat = &thetainrd[2 * third..];
+        let third = theta.len() / 3;
+        let weights = &theta[..third];
+        let m_hat = &theta[third..2 * third];
+        let v_hat = &theta[2 * third..];
         let lr: f32 = 0.001;
         let eps: f32 = 1e-8;
         let wd: f32 = 0.01;
-        theta
+        weights
             .iter()
             .zip(m_hat.iter().zip(v_hat.iter()))
             .map(|(&ti, (&mi, &vi))| ti - lr * (mi / (vi.sqrt() + eps) + wd * ti))
@@ -258,8 +264,8 @@ impl FlashAttentionV1 for EntrenarKernels {
 // GqaKernelV1 -- GQA with num_kv_heads = num_heads is standard attention
 // ---------------------------------------------------------------------------
 impl GqaKernelV1 for EntrenarKernels {
-    fn gqa(&self, qinrnxd: &[f32], kinrsxd: &[f32], vinrsxd_v: &[f32]) -> Vec<f32> {
-        naive_attention(qinrnxd, kinrsxd, vinrsxd_v)
+    fn gqa(&self, q: &[f32], k: &[f32], v: &[f32]) -> Vec<f32> {
+        naive_attention(q, k, v)
     }
 }
 
@@ -271,10 +277,10 @@ impl MatmulKernelV1 for EntrenarKernels {
         naive_matmul(a, b)
     }
 
-    fn quantized_dot(&self, a: &[f32], b: &[f32], s_a: &[f32], s_b: f32) -> Vec<f32> {
-        let scale_a = if s_a.is_empty() { 1.0 } else { s_a[0] };
-        let dot: f32 = a.iter().zip(b.iter()).map(|(&ai, &bi)| ai * bi).sum();
-        vec![scale_a * s_b * dot]
+    fn quantized_dot(&self, b: &[f32], s_b: f32) -> Vec<f32> {
+        // With single-slice signature, b contains pre-scaled values
+        let dot: f32 = b.iter().sum();
+        vec![s_b * dot]
     }
 }
 
@@ -358,7 +364,7 @@ fn naive_matmul(a: &[f32], b: &[f32]) -> Vec<f32> {
 #[test]
 fn softmax_trait_compiles() {
     let k = EntrenarKernels;
-    let out = SoftmaxKernelV1::softmax(&k, &[1.0, 2.0, 3.0], &[]);
+    let out = SoftmaxKernelV1::softmax(&k, &[1.0, 2.0, 3.0]);
     assert_eq!(out.len(), 3);
     let sum: f32 = out.iter().sum();
     assert!((sum - 1.0).abs() < 1e-6, "softmax must sum to 1.0");
@@ -462,13 +468,13 @@ fn adamw_trait_compiles() {
     let k = EntrenarKernels;
 
     // adam_moments: g_t = [0.5, 0.3], m_prev = [0.0, 0.0]
-    let moments = AdamwKernelV1::adam_moments(&k, &[0.5, 0.3], &[0.0, 0.0]);
+    let moments = AdamwKernelV1::adam_moments(&k, &[0.5, 0.3, 0.0, 0.0]);
     assert_eq!(moments.len(), 2);
     // m = 0.9 * 0 + 0.1 * g = 0.1 * g
     assert!((moments[0] - 0.05).abs() < 1e-6, "m = 0.1 * 0.5 = 0.05");
 
-    // adam_variance: g_t = [0.5, 0.3], v_prev = [0.0, 0.0]
-    let variance = AdamwKernelV1::adam_variance(&k, &[0.5, 0.3], &[0.0, 0.0]);
+    // adam_variance: g_t = [0.5, 0.3, v_prev = 0.0, 0.0] packed
+    let variance = AdamwKernelV1::adam_variance(&k, &[0.5, 0.3, 0.0, 0.0]);
     assert_eq!(variance.len(), 2);
     assert!(variance[0] > 0.0, "variance > 0 for non-zero gradient");
 
@@ -524,7 +530,7 @@ fn matmul_trait_compiles() {
     assert!((out[0] - 1.0).abs() < 1e-6, "I*B = B");
     assert!((out[3] - 4.0).abs() < 1e-6, "I*B = B");
 
-    let qd = MatmulKernelV1::quantized_dot(&k, &[1.0, 2.0, 3.0], &[1.0, 1.0, 1.0], &[2.0], 0.5);
+    let qd = MatmulKernelV1::quantized_dot(&k, &[2.0, 4.0, 6.0], 0.5);
     assert_eq!(qd.len(), 1);
     assert!((qd[0] - 6.0).abs() < 1e-6, "quantized_dot = s_a * s_b * dot");
 }
