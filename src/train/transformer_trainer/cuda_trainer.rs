@@ -115,14 +115,16 @@ fn compute_workspace_clip_scale_gpu(
     }
 
     // Collect results: download partial sums (~1KB each) and combine.
+    // C-CLIP-001: squared_sum_collect returns sum(x²) = ||g||².
+    // Accumulate directly — do NOT re-square (entrenar#311 fix).
     let mut total_sq = 0.0f64;
     for p in &pending {
-        if let Ok(norm) = squared_sum_collect(p) {
-            total_sq += f64::from(norm) * f64::from(norm);
+        if let Ok(sq_norm) = squared_sum_collect(p) {
+            total_sq += f64::from(sq_norm); // sq_norm is already ||g||²
         }
     }
 
-    let grad_norm = total_sq.sqrt() as f32;
+    let grad_norm = total_sq.sqrt() as f32; // L2 norm = sqrt(sum of squared norms)
     let scale = if grad_norm > max_norm { max_norm / grad_norm } else { 1.0 };
     (scale, grad_norm)
 }
@@ -1382,10 +1384,12 @@ impl CudaTransformerTrainer {
         // KAIZEN-049: GPU norm reduction.
         // KAIZEN-051: No explicit sync needed — same stream ordering.
         // ALB-071: Always compute LM head grad norm for observability (R-004).
-        let lm_norm =
+        // C-CLIP-001: squared_sum_cuda returns ||g||². Take sqrt for L2 norm (entrenar#311).
+        let lm_sq_norm =
             squared_sum_cuda(&self.lm_head_grad_gpu, self.lm_head_grad_gpu.len() as u32, stream)
                 .unwrap_or(0.0);
-        self.last_grad_norm = lm_norm; // R-004: capture for observability (now on unscaled grads)
+        let lm_norm = lm_sq_norm.sqrt(); // L2 norm, NOT squared
+        self.last_grad_norm = lm_norm; // R-004: capture for observability
         if let Some(max_norm) = max_grad_norm {
             let clip_scale = if lm_norm > max_norm { max_norm / lm_norm } else { 1.0 };
             let n = self.lm_head_grad_gpu.len() as u32;
