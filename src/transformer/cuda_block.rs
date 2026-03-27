@@ -1906,11 +1906,15 @@ impl CudaTransformerBlock {
         stream: &CudaStream,
         grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
-        // KAIZEN-057: residual1 = input + o_proj_out; grad_input += grad_residual1
-        // In-place add replaces residual_add_forward + D2D copy back.
-        cuda_add_inplace(grad_input, grad_output, seq_len * hidden_size, stream)?;
+        // Forward was: norm_out = RMSNorm(input); attn_out = Attn(norm_out); residual1 = input + attn_out
+        // Backward: grad_input = RMSNorm_backward(grad_through_attention) + grad_output
+        //
+        // C-RESIDUAL-001 / entrenar#313: The residual skip (grad_output) must be added
+        // AFTER RMSNorm backward, not before. RMSNorm backward should only transform
+        // the gradient that flows through the norm/attention path. The identity skip
+        // bypasses the norm entirely.
 
-        // D2D copy grad_input to grad_hidden (rms_norm_backward needs separate input/output)
+        // D2D copy grad_input (attention path gradient) to grad_hidden
         // SAFETY: Both buffers are valid GPU allocations with matching sizes.
         unsafe {
             self.scratch.grad_hidden.copy_from_buffer_async(grad_input, stream).map_err(|e| {
@@ -1920,6 +1924,7 @@ impl CudaTransformerBlock {
             })?;
         }
 
+        // RMSNorm backward: only applied to the attention path gradient
         rms_norm_backward(
             input,
             &self.input_norm_weight,
@@ -1930,7 +1935,10 @@ impl CudaTransformerBlock {
             saturating_u32(hidden_size),
             eps,
             stream,
-        )
+        )?;
+
+        // NOW add the residual skip: grad_input += grad_output (identity connection)
+        cuda_add_inplace(grad_input, grad_output, seq_len * hidden_size, stream)
     }
 
     /// Initialize GPU-resident AdamW optimizer state for all block weights.
