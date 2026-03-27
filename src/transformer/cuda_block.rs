@@ -1045,19 +1045,14 @@ impl CudaTransformerBlock {
         // grad_output flows to BOTH residual1 (identity skip) and ffn_output path.
         self.backward_ffn(grad_output, seq_len, hidden_size, intermediate_size, stream, grad_ws)?;
 
-        // C-RESIDUAL-001 / entrenar#313: Second residual skip gradient.
-        // backward_ffn writes FFN-path gradient to scratch.norm2_out.
-        // The identity skip (grad_residual1 = grad_output) must be ADDED
-        // before it flows to the attention/norm path below.
-        cuda_add_inplace(
-            &mut self.scratch.norm2_out,
-            grad_output,
-            seq_len * hidden_size,
-            stream,
-        )?;
-
-        // Backward through post-attention RMSNorm
+        // Backward through post-attention RMSNorm (FFN path gradient only)
         self.backward_post_attn_norm(grad_input, seq_len, hidden_size, eps, stream, grad_ws)?;
+
+        // C-RESIDUAL-001 / entrenar#313: Second residual skip gradient.
+        // Forward: output = residual1 + ffn_output
+        // The identity skip grad_residual1 = grad_output must bypass the
+        // post-attention RMSNorm backward entirely — add AFTER norm backward.
+        cuda_add_inplace(grad_input, grad_output, seq_len * hidden_size, stream)?;
 
         // Backward through attention: output projection, attention weights, Q/K/V projections
         // (ENT-151b: previously missing — attention params received no gradients)
