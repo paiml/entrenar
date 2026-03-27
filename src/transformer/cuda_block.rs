@@ -1041,8 +1041,20 @@ impl CudaTransformerBlock {
         // so buffers must be zeroed before each call to prevent cross-step accumulation.
         grad_ws.zero_norm_grads(&self.norm_zero_buf)?;
 
-        // Backward through final residual: grad_output flows to both residual1 and ffn_out
+        // Backward through final residual: output = residual1 + ffn_output
+        // grad_output flows to BOTH residual1 (identity skip) and ffn_output path.
         self.backward_ffn(grad_output, seq_len, hidden_size, intermediate_size, stream, grad_ws)?;
+
+        // C-RESIDUAL-001 / entrenar#313: Second residual skip gradient.
+        // backward_ffn writes FFN-path gradient to scratch.norm2_out.
+        // The identity skip (grad_residual1 = grad_output) must be ADDED
+        // before it flows to the attention/norm path below.
+        cuda_add_inplace(
+            &mut self.scratch.norm2_out,
+            grad_output,
+            seq_len * hidden_size,
+            stream,
+        )?;
 
         // Backward through post-attention RMSNorm
         self.backward_post_attn_norm(grad_input, seq_len, hidden_size, eps, stream, grad_ws)?;
