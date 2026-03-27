@@ -1650,20 +1650,20 @@ impl CudaTransformerTrainer {
                     )
                     .ok()?;
 
-                // KAIZEN-054: Per-block gradient clipping re-enabled via GPU-side norm.
-                // ALB-078: Fused GPU clip (zero sync) or sync-based fallback.
-                if let Some(max_norm) = max_grad_norm {
-                    if let Some(ref state) = self.fused_clip {
-                        fused_clip_workspace_gradients(
-                            &mut self.cuda_grad_workspace,
-                            max_norm,
-                            state,
-                            stream,
-                        );
-                    } else {
-                        clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
-                    }
-                }
+                // C-CLIP-001 / entrenar#312: DISABLED per-block gradient clipping.
+                // PyTorch clips ALL parameters globally with ONE clip_grad_norm_() call.
+                // Per-block clipping distorts gradient flow across layers — blocks with
+                // larger gradients get clipped more, breaking relative magnitudes.
+                //
+                // The config's grad_clip is still respected via the LM head and final norm
+                // clipping above, plus the training loop's gnorm reporting. For full
+                // PyTorch parity, global clipping should be implemented after all blocks
+                // complete their backward pass.
+                //
+                // Previous code:
+                // if let Some(max_norm) = max_grad_norm {
+                //     clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
+                // }
 
                 // R-038: Either accumulate workspace grads or run optimizer per-block.
                 if accumulate_only {
