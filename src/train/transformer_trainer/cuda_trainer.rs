@@ -1481,9 +1481,14 @@ impl CudaTransformerTrainer {
                 )?;
             }
         } else {
+            // entrenar#314: Skip GPU LM head optimizer for tied weights.
+            // CPU handles the combined (LM head + embedding) gradient and
+            // re-uploads the weight. Running GPU AdamW here would waste work
+            // AND desync lm_head_m/lm_head_v from the actual weight.
+            let tied = self.model.lm_head.is_none();
             Self::run_nonblock_optimizer_step(
                 &mut self.gpu_training,
-                &mut self.lm_head_weight_gpu,
+                if tied { None } else { Some(&mut self.lm_head_weight_gpu) },
                 &self.lm_head_grad_gpu,
                 &mut self.lm_head_m,
                 &mut self.lm_head_v,
@@ -1786,7 +1791,7 @@ impl CudaTransformerTrainer {
     #[allow(clippy::too_many_arguments)]
     fn run_nonblock_optimizer_step(
         gpu_training: &mut GpuPretrainState,
-        lm_head_weight_gpu: &mut GpuBuffer<f32>,
+        lm_head_weight_gpu: Option<&mut GpuBuffer<f32>>,
         lm_head_grad_gpu: &GpuBuffer<f32>,
         lm_head_m: &mut GpuBuffer<f32>,
         lm_head_v: &mut GpuBuffer<f32>,
@@ -1801,21 +1806,25 @@ impl CudaTransformerTrainer {
         gpu_training.step += 1;
         let step = gpu_training.step;
 
-        let n_lm = lm_head_weight_gpu.len() as u32;
-        let _ = adamw_step_cuda(
-            lm_head_weight_gpu,
-            lm_head_grad_gpu,
-            lm_head_m,
-            lm_head_v,
-            lr,
-            beta1,
-            beta2,
-            1e-8,
-            weight_decay,
-            step,
-            n_lm,
-            stream,
-        );
+        // entrenar#314: Skip LM head optimizer for tied weights (None).
+        // CPU handles the combined gradient and re-uploads the weight.
+        if let Some(lm_head_weight) = lm_head_weight_gpu {
+            let n_lm = lm_head_weight.len() as u32;
+            let _ = adamw_step_cuda(
+                lm_head_weight,
+                lm_head_grad_gpu,
+                lm_head_m,
+                lm_head_v,
+                lr,
+                beta1,
+                beta2,
+                1e-8,
+                weight_decay,
+                step,
+                n_lm,
+                stream,
+            );
+        }
 
         let n_norm = gpu_training.final_norm_weight.len() as u32;
         let _ = adamw_step_cuda(
@@ -1917,21 +1926,24 @@ impl CudaTransformerTrainer {
             )
             .ok()?;
 
-        let n_lm = self.lm_head_weight_gpu.len() as u32;
-        let _ = adamw_step_cuda(
-            &mut self.lm_head_weight_gpu,
-            &self.lm_head_grad_gpu,
-            &mut self.lm_head_m,
-            &mut self.lm_head_v,
-            lr,
-            beta1,
-            beta2,
-            1e-8,
-            weight_decay,
-            step,
-            n_lm,
-            stream,
-        );
+        // entrenar#314: Skip LM head GPU optimizer for tied weights.
+        if self.model.lm_head.is_some() {
+            let n_lm = self.lm_head_weight_gpu.len() as u32;
+            let _ = adamw_step_cuda(
+                &mut self.lm_head_weight_gpu,
+                &self.lm_head_grad_gpu,
+                &mut self.lm_head_m,
+                &mut self.lm_head_v,
+                lr,
+                beta1,
+                beta2,
+                1e-8,
+                weight_decay,
+                step,
+                n_lm,
+                stream,
+            );
+        }
 
         // Final norm optimizer step
         let n_norm = self.gpu_training.final_norm_weight.len() as u32;
@@ -2044,25 +2056,28 @@ impl CudaTransformerTrainer {
         }
 
         // Upload accumulated LM head gradients and run AdamW step
-        // SAFETY: async host-to-device copy; host buffer (accum.lm_head_grad) is stable.
-        unsafe {
-            self.lm_head_grad_gpu.copy_from_host_async(&accum.lm_head_grad, stream).ok()?;
+        // entrenar#314: Skip GPU LM head optimizer for tied weights.
+        if self.model.lm_head.is_some() {
+            // SAFETY: async host-to-device copy; host buffer (accum.lm_head_grad) is stable.
+            unsafe {
+                self.lm_head_grad_gpu.copy_from_host_async(&accum.lm_head_grad, stream).ok()?;
+            }
+            let n_lm = self.lm_head_weight_gpu.len() as u32;
+            let _ = adamw_step_cuda(
+                &mut self.lm_head_weight_gpu,
+                &self.lm_head_grad_gpu,
+                &mut self.lm_head_m,
+                &mut self.lm_head_v,
+                lr,
+                beta1,
+                beta2,
+                1e-8,
+                weight_decay,
+                step,
+                n_lm,
+                stream,
+            );
         }
-        let n_lm = self.lm_head_weight_gpu.len() as u32;
-        let _ = adamw_step_cuda(
-            &mut self.lm_head_weight_gpu,
-            &self.lm_head_grad_gpu,
-            &mut self.lm_head_m,
-            &mut self.lm_head_v,
-            lr,
-            beta1,
-            beta2,
-            1e-8,
-            weight_decay,
-            step,
-            n_lm,
-            stream,
-        );
 
         // Upload accumulated final norm gradients and run AdamW step
         // SAFETY: async host-to-device copy; host buffer (accum.final_norm_grad) is stable.
