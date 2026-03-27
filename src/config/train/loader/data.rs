@@ -968,7 +968,25 @@ fn load_lm_batches_from_parquet_dir(
         );
     }
 
-    println!("  Total: {} batches from {} shards", all_batches.len(), total_shards);
+    // entrenar#315: Shuffle all batches across shards to prevent overfitting.
+    // Without this, the model sees all sequences from shard 1 before shard 2,
+    // causing memorization of shard 1 by step 2K (v22: val_ppl regressed
+    // from 9.44 to 118 between step 2K and 3K).
+    //
+    // PyTorch DataLoader with shuffle=True provides this by default.
+    // We shuffle deterministically using the config seed for reproducibility.
+    {
+        let seed = 123u64; // TODO: propagate config seed
+        let mut rng_state = seed;
+        // Fisher-Yates shuffle with simple LCG
+        for i in (1..all_batches.len()).rev() {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let j = (rng_state >> 33) as usize % (i + 1);
+            all_batches.swap(i, j);
+        }
+    }
+
+    println!("  Total: {} batches from {} shards (shuffled)", all_batches.len(), total_shards);
     Ok(all_batches)
 }
 
