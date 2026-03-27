@@ -1390,6 +1390,10 @@ impl CudaTransformerTrainer {
                 .unwrap_or(0.0);
         let lm_norm = lm_sq_norm.sqrt(); // L2 norm, NOT squared
         self.last_grad_norm = lm_norm; // R-004: capture for observability
+        // C-BACKPARITY-001: LM head gradient norm tracing (pre-clip).
+        if std::env::var("ENTRENAR_TRACE_GRADIENTS").is_ok() {
+            eprintln!("[grad-trace] lm_head gnorm={lm_norm:.6}");
+        }
         if let Some(max_norm) = max_grad_norm {
             let clip_scale = if lm_norm > max_norm { max_norm / lm_norm } else { 1.0 };
             let n = self.lm_head_grad_gpu.len() as u32;
@@ -1651,19 +1655,20 @@ impl CudaTransformerTrainer {
                     .ok()?;
 
                 // C-CLIP-001 / entrenar#312: DISABLED per-block gradient clipping.
-                // PyTorch clips ALL parameters globally with ONE clip_grad_norm_() call.
-                // Per-block clipping distorts gradient flow across layers — blocks with
-                // larger gradients get clipped more, breaking relative magnitudes.
-                //
-                // The config's grad_clip is still respected via the LM head and final norm
-                // clipping above, plus the training loop's gnorm reporting. For full
-                // PyTorch parity, global clipping should be implemented after all blocks
-                // complete their backward pass.
-                //
-                // Previous code:
-                // if let Some(max_norm) = max_grad_norm {
-                //     clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
-                // }
+                // Per-block clipping distorts gradient flow across layers.
+
+                // C-BACKPARITY-001: Per-block gradient norm tracing for parity testing.
+                // Only runs when ENTRENAR_TRACE_GRADIENTS=1 — zero overhead in production.
+                if std::env::var("ENTRENAR_TRACE_GRADIENTS").is_ok() {
+                    let (_, block_gnorm) = compute_workspace_clip_scale_gpu(
+                        &self.cuda_grad_workspace,
+                        f32::MAX,
+                        stream,
+                    );
+                    eprintln!(
+                        "[grad-trace] block={layer_idx} gnorm={block_gnorm:.6}"
+                    );
+                }
 
                 // R-038: Either accumulate workspace grads or run optimizer per-block.
                 if accumulate_only {
