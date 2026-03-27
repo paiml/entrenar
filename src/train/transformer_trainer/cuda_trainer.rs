@@ -1393,6 +1393,13 @@ impl CudaTransformerTrainer {
         // C-BACKPARITY-001: LM head gradient norm tracing (pre-clip).
         if std::env::var("ENTRENAR_TRACE_GRADIENTS").is_ok() {
             eprintln!("[grad-trace] lm_head gnorm={lm_norm:.6}");
+            // Also trace the grad_hidden flowing to blocks
+            let gh_sq = squared_sum_cuda(
+                &self.gpu_training.lm_head_grad_hidden,
+                self.gpu_training.lm_head_grad_hidden.len() as u32,
+                stream,
+            ).unwrap_or(0.0);
+            eprintln!("[grad-trace] lm_head_grad_hidden gnorm={:.6}", gh_sq.sqrt());
         }
         if let Some(max_norm) = max_grad_norm {
             let clip_scale = if lm_norm > max_norm { max_norm / lm_norm } else { 1.0 };
@@ -1665,8 +1672,15 @@ impl CudaTransformerTrainer {
                         f32::MAX,
                         stream,
                     );
+                    // Also trace the activation gradient (flows between blocks)
+                    let act_sq = squared_sum_cuda(
+                        grad_input,
+                        grad_input.len() as u32,
+                        stream,
+                    ).unwrap_or(0.0);
+                    let act_gnorm = act_sq.sqrt();
                     eprintln!(
-                        "[grad-trace] block={layer_idx} gnorm={block_gnorm:.6}"
+                        "[grad-trace] block={layer_idx} weight_gnorm={block_gnorm:.6} act_gnorm={act_gnorm:.6}"
                     );
                 }
 

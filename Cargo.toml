@@ -427,5 +427,6 @@ replace = "## [{{version}}] - {{date}}"
 
 
 [patch.crates-io]
+trueno = { path = "../trueno" }
 trueno-gpu = { path = "../trueno/trueno-gpu" }
 

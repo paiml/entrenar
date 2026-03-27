@@ -17,6 +17,8 @@ pub mod step_profiler;
 pub mod tensor_parallel;
 mod trainer;
 mod utils;
+#[cfg(feature = "gpu")]
+pub mod wgpu_trainer;
 pub mod zero;
 
 #[cfg(test)]
