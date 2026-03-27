@@ -487,3 +487,56 @@ Remove this patch once trueno 0.4.36 is published.
 ### Ship Gate Status
 
 **PASS**: Canary evaluation achieves 90% accuracy on shell safety classification. The classifier ships with the current fused-kernel path (15.5 tok/s). cuBLAS integration (298 tok/s) is a performance improvement, not a correctness blocker.
+
+## WGPU Training Support (AMD/Cross-Platform GPU)
+
+### Overview
+
+`WgpuTransformerTrainer` provides GPU-accelerated transformer training via WebGPU (WGSL shaders), enabling training on AMD, Intel, and other non-NVIDIA GPUs.
+
+- **Implementation**: `src/train/transformer_trainer/wgpu_trainer.rs`
+- **Feature gate**: `--features gpu` required to build
+- **Backend**: Uses trueno's `GpuDevice` and WGSL backward shaders for gradient computation
+- **Tested hardware**: AMD Radeon Pro W5700X (FALSIFY-WGPU-002 PASS)
+
+### Building
+
+```bash
+# Build with WGPU support
+cargo build --features gpu
+
+# Run tests
+cargo test --features gpu wgpu
+```
+
+### Local trueno Patch (Required)
+
+WGPU training depends on trueno's WGSL backward shaders which may not yet be published to crates.io. Use a path patch:
+
+```toml
+[patch.crates-io]
+trueno = { path = "../trueno" }
+```
+
+Remove this patch once the required trueno version is published.
+
+### Current Status
+
+- **Phase 2 COMPLETE**: Forward pass, loss computation, backward pass (gradient computation via WGSL shaders)
+- **Phase 3 PENDING**: Full LoRA training loop integration (optimizer step, checkpoint save/restore)
+
+### Provable Contracts
+
+WGPU training correctness is verified via FALSIFY tests:
+
+- `wgpu-training-v1.yaml` — 4 FALSIFY tests for AMD WGPU training (FALSIFY-WGPU-001..004)
+- FALSIFY-WGPU-002 (forward-backward parity): PASS on AMD W5700X
+
+### Relationship to cuBLAS Path
+
+| Aspect | cuBLAS | WGPU |
+|--------|--------|------|
+| Vendor | NVIDIA only | AMD, Intel, NVIDIA (cross-platform) |
+| Backend | CUDA PTX kernels | WGSL shaders via WebGPU |
+| Maturity | 8 bugs found/fixed, Blackwell JIT blocked | Phase 2 complete |
+| Performance | 298 tok/s (forward) | TBD (Phase 3) |

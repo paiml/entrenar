@@ -50,6 +50,7 @@
 - **Training Loop** - Callbacks, checkpoints, early stopping
 - **Monitoring** - Real-time metrics, drift detection, Andon alerts
 - **Explainability** - Feature attribution via SHAP, Integrated Gradients
+- **GPU Training** - WGPU backend for AMD/Intel/cross-platform GPU training, CUDA/cuBLAS for NVIDIA
 
 Part of the [PAIML Stack](https://github.com/paiml), built on [trueno](https://crates.io/crates/trueno) for
 SIMD-accelerated operations.
@@ -73,6 +74,12 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 entrenar = "0.7"
+```
+
+For GPU-accelerated training (AMD, Intel, or other WGPU-compatible GPUs):
+
+```bash
+cargo build --features gpu
 ```
 
 ### Basic Training
@@ -319,7 +326,7 @@ entrenar/
 ├── distill/      Knowledge distillation
 ├── finetune/     ClassifyPipeline, ClassifyTrainer, evaluation
 ├── eval/         Classification metrics, drift detection, Andon
-├── train/        Trainer, callbacks, metrics
+├── train/        Trainer, callbacks, metrics, WGPU transformer trainer
 ├── monitor/      Real-time monitoring, Andon
 ├── config/       Declarative YAML config
 └── io/           Model persistence
