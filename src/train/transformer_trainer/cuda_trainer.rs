@@ -1082,6 +1082,29 @@ impl CudaTransformerTrainer {
             // Step 12: Embedding backward (CPU scatter-add always accumulates)
             self.profiler.begin(StepProfiler::EMBED_BWD);
             self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a);
+
+            // entrenar#314: Tied weight gradient accumulation.
+            // With tie_word_embeddings=True, PyTorch accumulates BOTH the LM head
+            // gradient and the embedding gradient to the same parameter. Entrenar
+            // splits them into separate GPU/CPU optimizer paths. Fix: download the
+            // LM head gradient to CPU and add it to the embedding gradient so the
+            // CPU optimizer sees the combined signal.
+            if self.model.lm_head.is_none() {
+                // Tied weights — lm_head IS embed_tokens
+                let stream = self.cuda_trainer.stream();
+                stream.synchronize().ok();
+                let mut lm_grad_host = vec![0.0f32; self.lm_head_grad_gpu.len()];
+                if self.lm_head_grad_gpu.copy_to_host(&mut lm_grad_host).is_ok() {
+                    let embed_weight = &mut self.model.embed_tokens.weight;
+                    let grad_cell = embed_weight.grad_cell();
+                    let mut grad_ref = grad_cell.borrow_mut();
+                    if let Some(grad) = grad_ref.as_mut() {
+                        for (g, &lg) in grad.iter_mut().zip(lm_grad_host.iter()) {
+                            *g += lg;
+                        }
+                    }
+                }
+            }
             self.profiler.end(StepProfiler::EMBED_BWD);
         }
 
@@ -2196,6 +2219,15 @@ impl CudaTransformerTrainer {
         // CPU optimizer step for embedding weight
         let mut embed_params = vec![&mut self.model.embed_tokens.weight];
         self.embed_optimizer.step_refs(&mut embed_params);
+
+        // entrenar#314: Sync updated embedding weight back to GPU LM head.
+        // With tied weights, the CPU embedding weight IS the LM head weight.
+        // After the CPU optimizer step, re-upload to keep GPU copy in sync.
+        if self.model.lm_head.is_none() {
+            if let Some(slice) = self.model.embed_tokens.weight.data().as_slice() {
+                let _ = self.lm_head_weight_gpu.copy_from_host(slice);
+            }
+        }
 
         self.step += 1;
         self.metrics.losses.push(self.accumulated_loss);
