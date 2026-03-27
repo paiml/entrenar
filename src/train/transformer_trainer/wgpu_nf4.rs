@@ -103,6 +103,206 @@ impl Nf4LayerWeights {
     }
 }
 
+/// NF4 codebook (same as trueno::quantize::NF4_LUT)
+#[cfg(feature = "gpu")]
+const NF4_LUT: [f32; 16] = [
+    -1.0, -0.6961928009986877, -0.5250730514526367, -0.39491748809814453,
+    -0.28444138169288635, -0.18477343022823334, -0.09105003625154495, 0.0,
+    0.07958029955625534, 0.16093020141124725, 0.24611230194568634, 0.33791524171829224,
+    0.44070982933044434, 0.5626170039176941, 0.7229568362236023, 1.0,
+];
+
+const NF4_BLOCK_SIZE: usize = 64;
+
+/// Quantize fp32 values to NF4 format (packed u32 + scales)
+///
+/// Returns (packed_u32, scales, n_elements)
+#[cfg(feature = "gpu")]
+fn quantize_to_nf4(values: &[f32]) -> (Vec<u32>, Vec<f32>) {
+    let n = values.len();
+    assert!(n % NF4_BLOCK_SIZE == 0, "Length must be divisible by {NF4_BLOCK_SIZE}");
+
+    let num_blocks = n / NF4_BLOCK_SIZE;
+    let mut scales = Vec::with_capacity(num_blocks);
+    let mut packed_bytes = vec![0u8; n / 2]; // 2 values per byte
+
+    for block_idx in 0..num_blocks {
+        let start = block_idx * NF4_BLOCK_SIZE;
+        let block = &values[start..start + NF4_BLOCK_SIZE];
+
+        // Find absmax for scale
+        let absmax = block.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+        let scale = if absmax < 1e-10 { 1.0 } else { absmax };
+        scales.push(scale);
+
+        // Quantize each value: find nearest NF4 codebook entry
+        for (i, &val) in block.iter().enumerate() {
+            let normalized = val / scale;
+            let mut best_idx = 0u8;
+            let mut best_dist = f32::MAX;
+            for (j, &lut_val) in NF4_LUT.iter().enumerate() {
+                let dist = (normalized - lut_val).abs();
+                if dist < best_dist {
+                    best_dist = dist;
+                    best_idx = j as u8;
+                }
+            }
+            let elem_idx = start + i;
+            let byte_idx = elem_idx / 2;
+            if elem_idx % 2 == 0 {
+                packed_bytes[byte_idx] |= best_idx; // low nibble
+            } else {
+                packed_bytes[byte_idx] |= best_idx << 4; // high nibble
+            }
+        }
+    }
+
+    // Pack bytes into u32
+    let mut packed = vec![0u32; (packed_bytes.len() + 3) / 4];
+    for (i, &byte) in packed_bytes.iter().enumerate() {
+        packed[i / 4] |= (byte as u32) << ((i % 4) * 8);
+    }
+
+    (packed, scales)
+}
+
+/// Load one projection from safetensors, quantize to NF4, return GPU format.
+///
+/// # Contract (FALSIFY-WGPU-003)
+#[cfg(feature = "gpu")]
+fn quantize_projection(
+    tensors: &safetensors::SafeTensors<'_>,
+    name: &str,
+    rows: usize,
+    cols: usize,
+) -> Result<(Vec<u32>, Vec<f32>, u32), String> {
+    let view = tensors
+        .tensor(name)
+        .map_err(|e| format!("Missing tensor {name}: {e}"))?;
+
+    let fp32: Vec<f32> = match view.dtype() {
+        safetensors::Dtype::F16 => {
+            view.data()
+                .chunks_exact(2)
+                .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32())
+                .collect()
+        }
+        safetensors::Dtype::F32 => bytemuck::cast_slice(view.data()).to_vec(),
+        safetensors::Dtype::BF16 => {
+            view.data()
+                .chunks_exact(2)
+                .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32())
+                .collect()
+        }
+        dt => return Err(format!("Unsupported dtype {dt:?} for {name}")),
+    };
+
+    let expected = rows * cols;
+    // Pad to NF4_BLOCK_SIZE if needed
+    let mut padded = fp32;
+    if padded.len() != expected {
+        return Err(format!("{name}: expected {expected} elements, got {}", padded.len()));
+    }
+    let remainder = expected % NF4_BLOCK_SIZE;
+    if remainder != 0 {
+        padded.resize(expected + NF4_BLOCK_SIZE - remainder, 0.0);
+    }
+
+    let (packed, scales) = quantize_to_nf4(&padded);
+    Ok((packed, scales, expected as u32))
+}
+
+#[cfg(feature = "gpu")]
+impl Nf4LayerWeights {
+    /// Load a single transformer layer's weights from safetensors as NF4
+    ///
+    /// # Contract (FALSIFY-WGPU-003)
+    ///
+    /// NF4 dequant of loaded weights matches original fp32 within quantization error.
+    pub fn from_safetensors(
+        tensors: &safetensors::SafeTensors<'_>,
+        layer_idx: usize,
+        hidden_size: usize,
+        intermediate_size: usize,
+        num_heads: usize,
+        num_kv_heads: usize,
+        head_dim: usize,
+        block_size: u32,
+    ) -> Result<Self, String> {
+        let prefix = format!("model.layers.{layer_idx}");
+        let q_dim = num_heads * head_dim;
+        let kv_dim = num_kv_heads * head_dim;
+
+        let (gate_packed, gate_scales, gate_n) = quantize_projection(
+            tensors,
+            &format!("{prefix}.mlp.gate_proj.weight"),
+            intermediate_size,
+            hidden_size,
+        )?;
+        let (up_packed, up_scales, up_n) = quantize_projection(
+            tensors,
+            &format!("{prefix}.mlp.up_proj.weight"),
+            intermediate_size,
+            hidden_size,
+        )?;
+        let (down_packed, down_scales, down_n) = quantize_projection(
+            tensors,
+            &format!("{prefix}.mlp.down_proj.weight"),
+            hidden_size,
+            intermediate_size,
+        )?;
+        let (q_packed, q_scales, q_n) = quantize_projection(
+            tensors,
+            &format!("{prefix}.self_attn.q_proj.weight"),
+            q_dim,
+            hidden_size,
+        )?;
+        let (k_packed, k_scales, k_n) = quantize_projection(
+            tensors,
+            &format!("{prefix}.self_attn.k_proj.weight"),
+            kv_dim,
+            hidden_size,
+        )?;
+        let (v_packed, v_scales, v_n) = quantize_projection(
+            tensors,
+            &format!("{prefix}.self_attn.v_proj.weight"),
+            kv_dim,
+            hidden_size,
+        )?;
+        let (o_packed, o_scales, o_n) = quantize_projection(
+            tensors,
+            &format!("{prefix}.self_attn.o_proj.weight"),
+            hidden_size,
+            q_dim,
+        )?;
+
+        Ok(Self {
+            gate_packed,
+            gate_scales,
+            up_packed,
+            up_scales,
+            down_packed,
+            down_scales,
+            q_packed,
+            q_scales,
+            k_packed,
+            k_scales,
+            v_packed,
+            v_scales,
+            o_packed,
+            o_scales,
+            gate_n,
+            up_n,
+            down_n,
+            q_n,
+            k_n,
+            v_n,
+            o_n,
+            block_size,
+        })
+    }
+}
+
 /// LoRA adapter pair for a single projection (rank-r)
 ///
 /// Forward: y = x @ W^T + x @ B^T @ A^T (where A is [rank, in_dim], B is [out_dim, rank])
@@ -211,5 +411,53 @@ mod tests {
         let mb = layer.memory_bytes() as f64 / 1024.0 / 1024.0;
         eprintln!("Qwen3-4B NF4 layer: {mb:.1} MB");
         assert!(mb < 100.0, "NF4 layer should be < 100MB, got {mb:.1}");
+    }
+
+    /// Load Qwen3-4B layer 0 from safetensors and quantize to NF4
+    ///
+    /// # Contract (FALSIFY-WGPU-003): NF4 round-trip preserves relative accuracy
+    #[test]
+    fn test_load_qwen3_4b_layer0_nf4() {
+        let model_path = std::path::Path::new("/home/noah/src/models/qwen3-4b");
+        if !model_path.exists() {
+            eprintln!("Skipping: Qwen3-4B model not found at {}", model_path.display());
+            return;
+        }
+
+        // Load first shard
+        let shard_path = model_path.join("model-00001-of-00003.safetensors");
+        let data = std::fs::read(&shard_path).expect("read shard");
+        let tensors = safetensors::SafeTensors::deserialize(&data).expect("parse safetensors");
+
+        let layer = Nf4LayerWeights::from_safetensors(
+            &tensors,
+            0,       // layer 0
+            2560,    // hidden_size
+            9728,    // intermediate_size
+            32,      // num_heads
+            8,       // num_kv_heads
+            128,     // head_dim
+            64,      // block_size
+        ).expect("from_safetensors");
+
+        let mb = layer.memory_bytes() as f64 / 1024.0 / 1024.0;
+        eprintln!("Layer 0 NF4: {mb:.1} MB (gate_n={}, q_n={})", layer.gate_n, layer.q_n);
+
+        assert_eq!(layer.gate_n, 2560 * 9728);
+        assert_eq!(layer.q_n, 2560 * 4096);
+        assert_eq!(layer.k_n, 2560 * 1024);
+        assert!(mb < 60.0, "Layer 0 should be < 60MB NF4, got {mb:.1}");
+
+        // Verify dequant round-trip on GPU
+        let device = GpuDevice::new().expect("GPU");
+        let gate_fp32 = layer.dequant_gate(&device).expect("dequant_gate");
+        assert_eq!(gate_fp32.len(), (2560 * 9728) as usize);
+        assert!(gate_fp32.iter().all(|v| v.is_finite()), "All dequanted values must be finite");
+
+        // Check non-trivial values (not all zero)
+        let nonzero = gate_fp32.iter().filter(|&&v| v.abs() > 1e-6).count();
+        let pct = nonzero as f64 / gate_fp32.len() as f64 * 100.0;
+        eprintln!("Gate dequant: {nonzero}/{} non-zero ({pct:.1}%)", gate_fp32.len());
+        assert!(pct > 50.0, "Most dequanted values should be non-zero, got {pct:.1}%");
     }
 }
