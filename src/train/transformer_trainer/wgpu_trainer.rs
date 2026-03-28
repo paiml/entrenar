@@ -139,46 +139,59 @@ impl WgpuModelState {
             all_data.push(data);
         }
 
-        // Load each layer
+        // Parse all shards upfront
+        let parsed: Vec<safetensors::SafeTensors<'_>> = all_data.iter()
+            .map(|d| safetensors::SafeTensors::deserialize(d))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Deserialize error: {e}"))?;
+
+        // Load each layer — projections may be split across shards
         let mut layers = Vec::with_capacity(num_layers);
         let q_dim = num_heads * head_dim;
+        let block_size = 64u32;
 
         for layer_idx in 0..num_layers {
-            // Try each shard until we find this layer's tensors
             let prefix = format!("model.layers.{layer_idx}");
-            let mut loaded = false;
 
-            for data in &all_data {
-                let tensors = safetensors::SafeTensors::deserialize(data)
-                    .map_err(|e| format!("Deserialize error: {e}"))?;
-
-                // Check if this shard has this layer
-                let test_name = format!("{prefix}.mlp.gate_proj.weight");
-                if tensors.tensor(&test_name).is_err() {
-                    continue;
+            // Helper: find tensor across all shards
+            let find_and_quantize = |name: &str, rows: usize, cols: usize|
+                -> Result<(Vec<u32>, Vec<f32>, u32), String> {
+                for tensors in &parsed {
+                    if tensors.tensor(name).is_ok() {
+                        return super::wgpu_nf4::Nf4LayerWeights::quantize_projection_from_tensors(
+                            tensors, name, rows, cols,
+                        );
+                    }
                 }
+                Err(format!("Tensor {name} not found in any shard"))
+            };
 
-                let layer = super::wgpu_nf4::Nf4LayerWeights::from_safetensors(
-                    &tensors,
-                    layer_idx,
-                    hidden_size,
-                    intermediate_size,
-                    num_heads,
-                    num_kv_heads,
-                    head_dim,
-                    64, // NF4 block size
-                )?;
+            let kv_dim = num_kv_heads * head_dim;
+            let (gate_p, gate_s, gate_n) = find_and_quantize(&format!("{prefix}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
+            let (up_p, up_s, up_n) = find_and_quantize(&format!("{prefix}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
+            let (down_p, down_s, down_n) = find_and_quantize(&format!("{prefix}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
+            let (q_p, q_s, q_n) = find_and_quantize(&format!("{prefix}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
+            let (k_p, k_s, k_n) = find_and_quantize(&format!("{prefix}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
+            let (v_p, v_s, v_n) = find_and_quantize(&format!("{prefix}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
+            let (o_p, o_s, o_n) = find_and_quantize(&format!("{prefix}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
 
-                let mb = layer.memory_bytes() as f64 / 1024.0 / 1024.0;
+            let layer = super::wgpu_nf4::Nf4LayerWeights {
+                gate_packed: gate_p, gate_scales: gate_s,
+                up_packed: up_p, up_scales: up_s,
+                down_packed: down_p, down_scales: down_s,
+                q_packed: q_p, q_scales: q_s,
+                k_packed: k_p, k_scales: k_s,
+                v_packed: v_p, v_scales: v_s,
+                o_packed: o_p, o_scales: o_s,
+                gate_n, up_n, down_n, q_n, k_n, v_n, o_n,
+                block_size,
+            };
+
+            let mb = layer.memory_bytes() as f64 / 1024.0 / 1024.0;
+            if layer_idx % 6 == 0 || layer_idx == num_layers - 1 {
                 eprintln!("  Layer {layer_idx}: {mb:.1} MB NF4");
-                layers.push(layer);
-                loaded = true;
-                break;
             }
-
-            if !loaded {
-                return Err(format!("Layer {layer_idx} not found in any shard"));
-            }
+            layers.push(layer);
         }
 
         // Create LoRA adapters for Q and V

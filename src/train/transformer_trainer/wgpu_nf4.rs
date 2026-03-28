@@ -101,6 +101,18 @@ impl Nf4LayerWeights {
             + self.o_scales.len()) * 4;
         packed_bytes + scale_bytes
     }
+
+    /// Quantize a single projection from pre-parsed safetensors
+    ///
+    /// Public so the model loader can call it per-shard.
+    pub fn quantize_projection_from_tensors(
+        tensors: &safetensors::SafeTensors<'_>,
+        name: &str,
+        rows: usize,
+        cols: usize,
+    ) -> Result<(Vec<u32>, Vec<f32>, u32), String> {
+        quantize_projection(tensors, name, rows, cols)
+    }
 }
 
 /// NF4 codebook (same as trueno::quantize::NF4_LUT)
