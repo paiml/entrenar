@@ -474,6 +474,17 @@ impl WgpuTransformerTrainer {
         for layer_idx in 0..n_layers {
             let layer = &model.layers[layer_idx];
 
+            // RMSNorm before FFN (prevents hidden state explosion across 36 layers)
+            let eps = 1e-5f32;
+            for si in 0..s as usize {
+                let row = &hidden[si * h as usize..(si + 1) * h as usize];
+                let rms = (row.iter().map(|x| x * x).sum::<f32>() / h as f32 + eps).sqrt();
+                let inv_rms = 1.0 / rms;
+                for hi in 0..h as usize {
+                    hidden[si * h as usize + hi] *= inv_rms;
+                }
+            }
+
             // Dequant FFN weights on GPU
             let gate_fp32 = layer.dequant_gate(&self.device)?;
             let up_fp32 = layer.dequant_up(&self.device)?;
