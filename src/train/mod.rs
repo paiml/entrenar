@@ -36,7 +36,7 @@ mod curriculum;
 mod loss;
 mod metrics;
 mod trainer;
-mod transformer_trainer;
+pub mod transformer_trainer;
 pub mod tui;
 
 #[cfg(test)]
