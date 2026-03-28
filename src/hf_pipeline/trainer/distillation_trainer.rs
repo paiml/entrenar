@@ -51,6 +51,9 @@ impl<T: TeacherModel> DistillationTrainer<T> {
         student_attention: Option<&[ndarray::Array2<f32>]>,
         teacher_attention: Option<&[ndarray::Array2<f32>]>,
     ) -> f32 {
+        // Contract: cross-entropy-kernel-v1.yaml precondition (pv codegen)
+        contract_pre_cross_entropy!(student_logits.as_slice().unwrap_or(&[]));
+
         // Base distillation loss
         let mut total_loss =
             self.config.distillation_loss.forward(student_logits, teacher_logits, targets);
