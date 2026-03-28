@@ -20,6 +20,8 @@ mod utils;
 #[cfg(feature = "gpu")]
 pub mod wgpu_nf4;
 #[cfg(feature = "gpu")]
+pub mod wgpu_runner;
+#[cfg(feature = "gpu")]
 pub mod wgpu_trainer;
 pub mod zero;
 
