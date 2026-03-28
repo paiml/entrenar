@@ -490,40 +490,23 @@ impl WgpuTransformerTrainer {
             let up_fp32 = layer.dequant_up(&self.device)?;
             let down_fp32 = layer.dequant_down(&self.device)?;
 
-            // FFN forward: SwiGLU(hidden @ gate^T, hidden @ up^T) @ down^T + hidden
+            // FFN forward on GPU: gate_out = hidden @ gate^T, up_out = hidden @ up^T
+            // gemm_backward_a computes: output = A @ B^T (perfect for hidden @ weight^T)
             let mut gate_out = vec![0.0f32; (s * i) as usize];
-            let mut up_out = vec![0.0f32; (s * i) as usize];
-            for si in 0..s as usize {
-                for ii in 0..i as usize {
-                    let mut g_sum = 0.0f32;
-                    let mut u_sum = 0.0f32;
-                    for hi in 0..h as usize {
-                        let x = hidden[si * h as usize + hi];
-                        g_sum += x * gate_fp32[ii * h as usize + hi];
-                        u_sum += x * up_fp32[ii * h as usize + hi];
-                    }
-                    gate_out[si * i as usize + ii] = g_sum;
-                    up_out[si * i as usize + ii] = u_sum;
-                }
-            }
+            self.device.gemm_backward_a(&hidden, &gate_fp32, &mut gate_out, s, i, h)?;
 
-            // SiLU(gate) * up
+            let mut up_out = vec![0.0f32; (s * i) as usize];
+            self.device.gemm_backward_a(&hidden, &up_fp32, &mut up_out, s, i, h)?;
+
+            // SiLU(gate) * up (element-wise, CPU — small compared to GEMM)
             let swiglu: Vec<f32> = gate_out.iter().zip(up_out.iter()).map(|(&g, &u)| {
                 let sig = 1.0 / (1.0 + (-g).exp());
                 g * sig * u
             }).collect();
 
-            // Down: ffn_out = swiglu @ down^T
+            // Down: ffn_out = swiglu @ down^T (GPU GEMM)
             let mut ffn_out = vec![0.0f32; (s * h) as usize];
-            for si in 0..s as usize {
-                for hi in 0..h as usize {
-                    let mut sum = 0.0f32;
-                    for ii in 0..i as usize {
-                        sum += swiglu[si * i as usize + ii] * down_fp32[hi * i as usize + ii];
-                    }
-                    ffn_out[si * h as usize + hi] = sum;
-                }
-            }
+            self.device.gemm_backward_a(&swiglu, &down_fp32, &mut ffn_out, s, h, i)?;
 
             // Residual
             for j in 0..(s * h) as usize {
@@ -531,17 +514,10 @@ impl WgpuTransformerTrainer {
             }
         }
 
-        // --- LM head + loss ---
+        // --- LM head + loss (GPU GEMM) ---
+        // logits = hidden @ lm_head^T (gemm_backward_a computes A @ B^T)
         let mut logits = vec![0.0f32; (s * v) as usize];
-        for si in 0..s as usize {
-            for vi in 0..v as usize {
-                let mut sum = 0.0f32;
-                for hi in 0..h as usize {
-                    sum += hidden[si * h as usize + hi] * model.lm_head[vi * h as usize + hi];
-                }
-                logits[si * v as usize + vi] = sum;
-            }
-        }
+        self.device.gemm_backward_a(&hidden, &model.lm_head, &mut logits, s, v, h)?;
 
         // Cross-entropy loss
         let mut loss = 0.0f32;
