@@ -29,6 +29,10 @@
 //! - **cli**: Command-line interface handlers
 //! - **finetune**: Fine-tuning pipeline with Popperian QA (SPEC-FT-001)
 
+// Contract assertions from YAML (pv codegen)
+#[macro_use]
+#[allow(unused_macros)]
+mod generated_contracts;
 pub mod aprender_compat;
 pub mod autograd;
 #[cfg(feature = "citl")]
