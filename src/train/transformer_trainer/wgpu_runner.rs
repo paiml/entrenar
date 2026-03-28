@@ -43,11 +43,7 @@ fn tokenize_example(
     let len = tokens.len().min(max_len);
     let input_ids = tokens[..len].to_vec();
     // Target = shifted input (next token prediction)
-    let target_ids: Vec<u32> = if len > 1 {
-        tokens[1..len].to_vec()
-    } else {
-        vec![0]
-    };
+    let target_ids: Vec<u32> = if len > 1 { tokens[1..len].to_vec() } else { vec![0] };
     (input_ids, target_ids)
 }
 
@@ -63,25 +59,22 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
 
     // 1. Load tokenizer
     let tokenizer_path = config.model_dir.join("tokenizer.json");
-    let tokenizer = HfTokenizer::from_file(&tokenizer_path)
-        .map_err(|e| format!("Tokenizer: {e}"))?;
+    let tokenizer =
+        HfTokenizer::from_file(&tokenizer_path).map_err(|e| format!("Tokenizer: {e}"))?;
     eprintln!("Tokenizer loaded: {}", tokenizer_path.display());
 
     // 2. Load model
-    let mut model = WgpuModelState::load_qwen3_4b(
-        &config.model_dir,
-        config.lora_rank,
-        config.lora_alpha,
-    )?;
+    let mut model =
+        WgpuModelState::load_qwen3_4b(&config.model_dir, config.lora_rank, config.lora_alpha)?;
     eprintln!("Model: {} trainable params\n", model.trainable_params());
 
     // 3. Load data
-    let data_str = std::fs::read_to_string(&config.data_path)
-        .map_err(|e| format!("Data: {e}"))?;
+    let data_str = std::fs::read_to_string(&config.data_path).map_err(|e| format!("Data: {e}"))?;
     let examples: Vec<String> = data_str
         .lines()
         .filter_map(|line| {
-            serde_json::from_str::<serde_json::Value>(line).ok()
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
                 .and_then(|v| v["text"].as_str().map(|s| s.to_string()))
         })
         .collect();
@@ -132,18 +125,34 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
                 let avg_loss = total_loss / step as f32;
                 eprintln!(
                     "  step={step} loss={loss:.3} avg_loss={avg_loss:.3} gnorm={gnorm:.2e} [{}/{}]",
-                    idx + 1, examples.len()
+                    idx + 1,
+                    examples.len()
                 );
             }
 
             if config.save_every > 0 && step % config.save_every == 0 {
-                eprintln!("  [checkpoint at step {step}]");
-                // TODO: save LoRA adapters
+                model.save_checkpoint(
+                    &config.output_dir,
+                    step as u32,
+                    loss,
+                    config.lora_rank,
+                    config.lora_alpha,
+                )?;
             }
         }
     }
 
     let final_avg = total_loss / step.max(1) as f32;
+
+    // Save final checkpoint
+    model.save_checkpoint(
+        &config.output_dir,
+        step as u32,
+        final_avg,
+        config.lora_rank,
+        config.lora_alpha,
+    )?;
+
     eprintln!("\n=== Training complete: {step} steps, avg_loss={final_avg:.3} ===");
     Ok(())
 }
@@ -156,7 +165,8 @@ mod tests {
     #[test]
     fn test_wgpu_training_smoke() {
         let model_dir = std::path::Path::new("/home/noah/src/models/qwen3-4b");
-        let data_path = std::path::Path::new("/home/noah/src/bashrs/training/conversations_v4.jsonl");
+        let data_path =
+            std::path::Path::new("/home/noah/src/bashrs/training/conversations_v4.jsonl");
 
         if !model_dir.exists() || !data_path.exists() {
             eprintln!("Skipping: model or data not found");
@@ -174,7 +184,11 @@ mod tests {
         let text = text["text"].as_str().expect("text field");
 
         let (input_ids, target_ids) = tokenize_example(&tokenizer, text, 32);
-        eprintln!("Tokenized: {} tokens, first 5: {:?}", input_ids.len(), &input_ids[..5.min(input_ids.len())]);
+        eprintln!(
+            "Tokenized: {} tokens, first 5: {:?}",
+            input_ids.len(),
+            &input_ids[..5.min(input_ids.len())]
+        );
 
         assert!(input_ids.len() >= 2, "Need at least 2 tokens");
         assert_eq!(target_ids.len(), input_ids.len() - 1);
@@ -202,11 +216,14 @@ mod tests {
         }
 
         let start = std::time::Instant::now();
-        let (loss, gnorm) = trainer.full_train_step(&hidden, &target_ids, &mut model)
-            .expect("train step");
+        let (loss, gnorm) =
+            trainer.full_train_step(&hidden, &target_ids, &mut model).expect("train step");
         let elapsed = start.elapsed();
 
-        eprintln!("WGPU smoke: loss={loss:.3}, gnorm={gnorm:.2e}, time={:.1}s", elapsed.as_secs_f64());
+        eprintln!(
+            "WGPU smoke: loss={loss:.3}, gnorm={gnorm:.2e}, time={:.1}s",
+            elapsed.as_secs_f64()
+        );
         assert!(loss.is_finite(), "Loss must be finite");
         assert!(loss > 0.0, "Loss must be positive");
     }

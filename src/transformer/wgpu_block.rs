@@ -501,20 +501,13 @@ mod tests {
             return;
         }
 
-        let config = TransformerConfig {
-            hidden_size: 64,
-            num_hidden_layers: 2,
-            num_attention_heads: 4,
-            num_kv_heads: 4,
-            intermediate_size: 128,
-            vocab_size: 100,
-            max_position_embeddings: 512,
-            rms_norm_eps: 1e-6,
-            rope_theta: 10000.0,
-            use_bias: false,
-            head_dim_override: None,
-            architecture: ModelArchitecture::Decoder,
-        };
+        let mut config = TransformerConfig::llama2_7b();
+        config.hidden_size = 64;
+        config.num_hidden_layers = 2;
+        config.num_attention_heads = 4;
+        config.num_kv_heads = 4;
+        config.intermediate_size = 128;
+        config.vocab_size = 100;
 
         let pass = WgpuForwardPass::new_default(&config);
         assert!(pass.is_ok(), "WgpuForwardPass creation failed: {:?}", pass.err());
@@ -527,20 +520,13 @@ mod tests {
             return;
         }
 
-        let config = TransformerConfig {
-            hidden_size: 8,
-            num_hidden_layers: 1,
-            num_attention_heads: 2,
-            num_kv_heads: 2,
-            intermediate_size: 16,
-            vocab_size: 32,
-            max_position_embeddings: 64,
-            rms_norm_eps: 1e-6,
-            rope_theta: 10000.0,
-            use_bias: false,
-            head_dim_override: None,
-            architecture: ModelArchitecture::Decoder,
-        };
+        let mut config = TransformerConfig::llama2_7b();
+        config.hidden_size = 8;
+        config.num_hidden_layers = 1;
+        config.num_attention_heads = 2;
+        config.num_kv_heads = 2;
+        config.intermediate_size = 16;
+        config.vocab_size = 32;
 
         let pass =
             WgpuForwardPass::new_default(&config).expect("GPU available but creation failed");

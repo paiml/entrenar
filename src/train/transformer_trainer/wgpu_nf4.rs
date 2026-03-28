@@ -93,12 +93,22 @@ impl Nf4LayerWeights {
 
     /// Memory usage in bytes (NF4 packed + scales)
     pub fn memory_bytes(&self) -> usize {
-        let packed_bytes = (self.gate_packed.len() + self.up_packed.len() + self.down_packed.len()
-            + self.q_packed.len() + self.k_packed.len() + self.v_packed.len()
-            + self.o_packed.len()) * 4;
-        let scale_bytes = (self.gate_scales.len() + self.up_scales.len() + self.down_scales.len()
-            + self.q_scales.len() + self.k_scales.len() + self.v_scales.len()
-            + self.o_scales.len()) * 4;
+        let packed_bytes = (self.gate_packed.len()
+            + self.up_packed.len()
+            + self.down_packed.len()
+            + self.q_packed.len()
+            + self.k_packed.len()
+            + self.v_packed.len()
+            + self.o_packed.len())
+            * 4;
+        let scale_bytes = (self.gate_scales.len()
+            + self.up_scales.len()
+            + self.down_scales.len()
+            + self.q_scales.len()
+            + self.k_scales.len()
+            + self.v_scales.len()
+            + self.o_scales.len())
+            * 4;
         packed_bytes + scale_bytes
     }
 
@@ -118,10 +128,22 @@ impl Nf4LayerWeights {
 /// NF4 codebook (same as trueno::quantize::NF4_LUT)
 #[cfg(feature = "gpu")]
 const NF4_LUT: [f32; 16] = [
-    -1.0, -0.6961928009986877, -0.5250730514526367, -0.39491748809814453,
-    -0.28444138169288635, -0.18477343022823334, -0.09105003625154495, 0.0,
-    0.07958029955625534, 0.16093020141124725, 0.24611230194568634, 0.33791524171829224,
-    0.44070982933044434, 0.5626170039176941, 0.7229568362236023, 1.0,
+    -1.0,
+    -0.6961928009986877,
+    -0.5250730514526367,
+    -0.39491748809814453,
+    -0.28444138169288635,
+    -0.18477343022823334,
+    -0.09105003625154495,
+    0.0,
+    0.07958029955625534,
+    0.16093020141124725,
+    0.24611230194568634,
+    0.33791524171829224,
+    0.44070982933044434,
+    0.5626170039176941,
+    0.7229568362236023,
+    1.0,
 ];
 
 const NF4_BLOCK_SIZE: usize = 64;
@@ -188,24 +210,20 @@ fn quantize_projection(
     rows: usize,
     cols: usize,
 ) -> Result<(Vec<u32>, Vec<f32>, u32), String> {
-    let view = tensors
-        .tensor(name)
-        .map_err(|e| format!("Missing tensor {name}: {e}"))?;
+    let view = tensors.tensor(name).map_err(|e| format!("Missing tensor {name}: {e}"))?;
 
     let fp32: Vec<f32> = match view.dtype() {
-        safetensors::Dtype::F16 => {
-            view.data()
-                .chunks_exact(2)
-                .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32())
-                .collect()
-        }
+        safetensors::Dtype::F16 => view
+            .data()
+            .chunks_exact(2)
+            .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32())
+            .collect(),
         safetensors::Dtype::F32 => bytemuck::cast_slice(view.data()).to_vec(),
-        safetensors::Dtype::BF16 => {
-            view.data()
-                .chunks_exact(2)
-                .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32())
-                .collect()
-        }
+        safetensors::Dtype::BF16 => view
+            .data()
+            .chunks_exact(2)
+            .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32())
+            .collect(),
         dt => return Err(format!("Unsupported dtype {dt:?} for {name}")),
     };
 
@@ -351,7 +369,9 @@ impl LoraAdapter {
         let mut a = vec![0.0f32; a_len];
         // Simple deterministic pseudo-random init
         for (i, val) in a.iter_mut().enumerate() {
-            let hash = ((i as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)) as f32;
+            let hash = ((i as u64)
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407)) as f32;
             *val = (hash / u64::MAX as f32 * 2.0 - 1.0) * scale;
         }
 
@@ -442,15 +462,15 @@ mod tests {
         let tensors = safetensors::SafeTensors::deserialize(&data).expect("parse safetensors");
 
         let layer = Nf4LayerWeights::from_safetensors(
-            &tensors,
-            0,       // layer 0
-            2560,    // hidden_size
-            9728,    // intermediate_size
-            32,      // num_heads
-            8,       // num_kv_heads
-            128,     // head_dim
-            64,      // block_size
-        ).expect("from_safetensors");
+            &tensors, 0,    // layer 0
+            2560, // hidden_size
+            9728, // intermediate_size
+            32,   // num_heads
+            8,    // num_kv_heads
+            128,  // head_dim
+            64,   // block_size
+        )
+        .expect("from_safetensors");
 
         let mb = layer.memory_bytes() as f64 / 1024.0 / 1024.0;
         eprintln!("Layer 0 NF4: {mb:.1} MB (gate_n={}, q_n={})", layer.gate_n, layer.q_n);

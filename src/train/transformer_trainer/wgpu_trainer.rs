@@ -1,28 +1,8 @@
-//! WGPU-accelerated transformer trainer
-//!
-//! Enables training on non-NVIDIA GPUs (AMD, Intel Arc, Apple Silicon) via
-//! WebGPU/Vulkan/Metal compute shaders. Uses trueno's WGSL backward shaders.
+//! WGPU-accelerated transformer trainer for non-NVIDIA GPUs (AMD/Intel/Apple).
 //!
 //! # Contract: wgpu-training-v1.yaml (FALSIFY-WGPU-002)
-//!
-//! - **Precondition**: Model weights loaded, WGPU device available
-//! - **Postcondition**: Loss decreases by >50% within 100 steps on toy data
-//! - **Invariant**: Gradients flow through all ops (no zero gradients after step 1)
-//!
-//! # Architecture
-//!
-//! ```text
-//! WgpuTransformerTrainer
-//! ├── WgpuForwardPass (existing — FFN matmuls on GPU)
-//! ├── GpuDevice (trueno — backward shaders)
-//! │   ├── silu_backward()
-//! │   ├── gemm_backward_a/b()
-//! │   ├── rmsnorm_backward()
-//! │   ├── rope_backward()
-//! │   ├── adamw_step()
-//! │   └── nf4_dequant()
-//! └── CPU fallback for attention (softmax, cross-entropy)
-//! ```
+//! - Loss decreases by >50% within 100 steps on toy data
+//! - Gradients flow through all ops (no zero gradients after step 1)
 
 #[cfg(feature = "gpu")]
 use crate::transformer::TransformerConfig;
@@ -266,6 +246,16 @@ impl WgpuModelState {
         let lora: usize = self.lora_q.iter().chain(self.lora_v.iter())
             .map(|l| l.num_params()).sum();
         lora + self.lm_head.len()
+    }
+
+    /// Save LoRA checkpoint (delegates to wgpu_checkpoint)
+    pub fn save_checkpoint(&self, dir: &std::path::Path, step: u32, loss: f32, rank: u32, alpha: f32) -> Result<std::path::PathBuf, String> {
+        super::wgpu_checkpoint::save_lora_checkpoint(&self.lora_q, &self.lora_v, self.hidden_size, dir, step, loss, rank, alpha)
+    }
+
+    /// Load LoRA checkpoint (delegates to wgpu_checkpoint)
+    pub fn load_checkpoint(&mut self, path: &std::path::Path) -> Result<(u32, f32), String> {
+        super::wgpu_checkpoint::load_lora_checkpoint(&mut self.lora_q, &mut self.lora_v, self.num_layers, self.hidden_size, path)
     }
 }
 
