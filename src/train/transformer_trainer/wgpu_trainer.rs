@@ -55,6 +55,195 @@ pub struct WgpuTransformerTrainer {
     weight_decay: f32,
     /// LoRA rank (0 = full fine-tuning)
     lora_rank: u32,
+    /// LoRA alpha for scaling
+    lora_alpha: f32,
+}
+
+/// Full model state for WGPU training
+///
+/// Holds NF4 weights + LoRA adapters for all layers.
+/// Per-layer dequant strategy: only one layer's fp32 weights in VRAM at a time.
+#[cfg(feature = "gpu")]
+pub struct WgpuModelState {
+    /// NF4 weights per layer (compact, stays in CPU RAM)
+    pub layers: Vec<super::wgpu_nf4::Nf4LayerWeights>,
+    /// LoRA Q adapters per layer (trainable, fp32)
+    pub lora_q: Vec<super::wgpu_nf4::LoraAdapter>,
+    /// LoRA V adapters per layer (trainable, fp32)
+    pub lora_v: Vec<super::wgpu_nf4::LoraAdapter>,
+    /// LM head weight [vocab_size, hidden_size] fp32
+    pub lm_head: Vec<f32>,
+    /// LM head optimizer state
+    pub lm_head_m: Vec<f32>,
+    pub lm_head_v: Vec<f32>,
+    /// Config
+    pub hidden_size: usize,
+    pub num_layers: usize,
+    pub vocab_size: usize,
+    pub num_heads: usize,
+    pub num_kv_heads: usize,
+    pub head_dim: usize,
+    pub intermediate_size: usize,
+}
+
+#[cfg(feature = "gpu")]
+impl WgpuModelState {
+    /// Load Qwen3-4B model from safetensors directory
+    ///
+    /// Quantizes all weights to NF4 (stays in CPU RAM).
+    /// Creates LoRA adapters for Q and V projections.
+    ///
+    /// # Contract (C-WGPU-TRAIN-003)
+    pub fn load_qwen3_4b(
+        model_dir: &std::path::Path,
+        lora_rank: u32,
+        lora_alpha: f32,
+    ) -> Result<Self, String> {
+        use std::fs;
+
+        let config_path = model_dir.join("config.json");
+        let config_str = fs::read_to_string(&config_path)
+            .map_err(|e| format!("Cannot read config.json: {e}"))?;
+        let config: serde_json::Value = serde_json::from_str(&config_str)
+            .map_err(|e| format!("Invalid config.json: {e}"))?;
+
+        let hidden_size = config["hidden_size"].as_u64().unwrap_or(2560) as usize;
+        let num_layers = config["num_hidden_layers"].as_u64().unwrap_or(36) as usize;
+        let num_heads = config["num_attention_heads"].as_u64().unwrap_or(32) as usize;
+        let num_kv_heads = config["num_key_value_heads"].as_u64().unwrap_or(8) as usize;
+        let intermediate_size = config["intermediate_size"].as_u64().unwrap_or(9728) as usize;
+        let vocab_size = config["vocab_size"].as_u64().unwrap_or(151936) as usize;
+        let head_dim = config["head_dim"].as_u64().unwrap_or(128) as usize;
+
+        eprintln!("Loading Qwen3-4B: {num_layers} layers, h={hidden_size}, i={intermediate_size}");
+
+        // Find safetensors shards
+        let mut shards: Vec<String> = fs::read_dir(model_dir)
+            .map_err(|e| format!("Cannot read model dir: {e}"))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".safetensors"))
+            .collect();
+        shards.sort();
+
+        if shards.is_empty() {
+            return Err("No .safetensors files found".to_string());
+        }
+
+        // Load all shards into memory
+        let mut all_data: Vec<Vec<u8>> = Vec::new();
+        for shard in &shards {
+            let path = model_dir.join(shard);
+            eprintln!("  Loading {shard}...");
+            let data = fs::read(&path).map_err(|e| format!("Cannot read {shard}: {e}"))?;
+            all_data.push(data);
+        }
+
+        // Load each layer
+        let mut layers = Vec::with_capacity(num_layers);
+        let q_dim = num_heads * head_dim;
+
+        for layer_idx in 0..num_layers {
+            // Try each shard until we find this layer's tensors
+            let prefix = format!("model.layers.{layer_idx}");
+            let mut loaded = false;
+
+            for data in &all_data {
+                let tensors = safetensors::SafeTensors::deserialize(data)
+                    .map_err(|e| format!("Deserialize error: {e}"))?;
+
+                // Check if this shard has this layer
+                let test_name = format!("{prefix}.mlp.gate_proj.weight");
+                if tensors.tensor(&test_name).is_err() {
+                    continue;
+                }
+
+                let layer = super::wgpu_nf4::Nf4LayerWeights::from_safetensors(
+                    &tensors,
+                    layer_idx,
+                    hidden_size,
+                    intermediate_size,
+                    num_heads,
+                    num_kv_heads,
+                    head_dim,
+                    64, // NF4 block size
+                )?;
+
+                let mb = layer.memory_bytes() as f64 / 1024.0 / 1024.0;
+                eprintln!("  Layer {layer_idx}: {mb:.1} MB NF4");
+                layers.push(layer);
+                loaded = true;
+                break;
+            }
+
+            if !loaded {
+                return Err(format!("Layer {layer_idx} not found in any shard"));
+            }
+        }
+
+        // Create LoRA adapters for Q and V
+        let mut lora_q = Vec::with_capacity(num_layers);
+        let mut lora_v = Vec::with_capacity(num_layers);
+        for _ in 0..num_layers {
+            lora_q.push(super::wgpu_nf4::LoraAdapter::new(lora_rank, hidden_size as u32, q_dim as u32));
+            lora_v.push(super::wgpu_nf4::LoraAdapter::new(lora_rank, hidden_size as u32, (num_kv_heads * head_dim) as u32));
+        }
+
+        // LM head: load from last shard
+        let last_data = all_data.last().ok_or("No shards")?;
+        let tensors = safetensors::SafeTensors::deserialize(last_data)
+            .map_err(|e| format!("Deserialize: {e}"))?;
+
+        let lm_head_view = tensors.tensor("lm_head.weight")
+            .or_else(|_| tensors.tensor("model.lm_head.weight"))
+            .map_err(|e| format!("lm_head.weight not found: {e}"))?;
+
+        let lm_head: Vec<f32> = match lm_head_view.dtype() {
+            safetensors::Dtype::F16 => {
+                lm_head_view.data().chunks_exact(2)
+                    .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32())
+                    .collect()
+            }
+            safetensors::Dtype::BF16 => {
+                lm_head_view.data().chunks_exact(2)
+                    .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32())
+                    .collect()
+            }
+            _ => bytemuck::cast_slice(lm_head_view.data()).to_vec(),
+        };
+
+        let lm_head_len = lm_head.len();
+        let total_nf4_mb: f64 = layers.iter().map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
+        let total_lora_params: usize = lora_q.iter().chain(lora_v.iter()).map(|l| l.num_params()).sum();
+
+        eprintln!("Model loaded:");
+        eprintln!("  NF4 weights: {total_nf4_mb:.0} MB ({num_layers} layers)");
+        eprintln!("  LoRA params: {total_lora_params} (rank={lora_rank}, Q+V)");
+        eprintln!("  LM head: {} elements ({:.1} MB)", lm_head_len, lm_head_len as f64 * 4.0 / 1024.0 / 1024.0);
+
+        Ok(Self {
+            layers,
+            lora_q,
+            lora_v,
+            lm_head,
+            lm_head_m: vec![0.0f32; lm_head_len],
+            lm_head_v: vec![0.0f32; lm_head_len],
+            hidden_size,
+            num_layers,
+            vocab_size,
+            num_heads,
+            num_kv_heads,
+            head_dim,
+            intermediate_size,
+        })
+    }
+
+    /// Total trainable parameters
+    pub fn trainable_params(&self) -> usize {
+        let lora: usize = self.lora_q.iter().chain(self.lora_v.iter())
+            .map(|l| l.num_params()).sum();
+        lora + self.lm_head.len()
+    }
 }
 
 #[cfg(feature = "gpu")]
@@ -75,6 +264,7 @@ impl WgpuTransformerTrainer {
             eps: 1e-8,
             weight_decay: 0.01,
             lora_rank: 0,
+            lora_alpha: 0.0,
         })
     }
 
@@ -692,5 +882,36 @@ mod tests {
         assert!(grad_x.iter().all(|g| g.is_finite()), "grad_x must be finite");
 
         eprintln!("LoRA backward: |grad_A|={norm_a:.4}, |grad_B|={norm_b:.4}, |grad_x|={norm_x:.4}");
+    }
+
+    /// Load full Qwen3-4B model and verify memory fits in 16GB
+    #[test]
+    fn test_load_qwen3_4b_full_model() {
+        let model_dir = std::path::Path::new("/home/noah/src/models/qwen3-4b");
+        if !model_dir.exists() {
+            eprintln!("Skipping: Qwen3-4B model not found");
+            return;
+        }
+
+        let model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0)
+            .expect("load_qwen3_4b");
+
+        assert_eq!(model.num_layers, 36);
+        assert_eq!(model.hidden_size, 2560);
+        assert_eq!(model.layers.len(), 36);
+        assert_eq!(model.lora_q.len(), 36);
+        assert_eq!(model.lora_v.len(), 36);
+
+        let total_nf4_mb: f64 = model.layers.iter()
+            .map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
+        let trainable = model.trainable_params();
+
+        eprintln!("Qwen3-4B loaded: {total_nf4_mb:.0} MB NF4, {trainable} trainable params");
+
+        // NF4 weights should be < 2GB total (36 layers * ~48MB each)
+        assert!(total_nf4_mb < 2048.0, "NF4 total should be < 2GB, got {total_nf4_mb:.0} MB");
+
+        // LoRA params: 36 layers * 2 adapters * (rank*in + out*rank) = 36 * 2 * (16*2560 + 4096*16) ≈ 5.9M
+        assert!(trainable > 1_000_000, "Should have >1M trainable params, got {trainable}");
     }
 }
