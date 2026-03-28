@@ -1083,11 +1083,28 @@ impl CudaTransformerTrainer {
             self.profiler.begin(StepProfiler::EMBED_BWD);
             self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a);
 
-            // entrenar#314: Tied weight gradient accumulation moved to
-            // optimizer_step() — runs once per optimizer step, not per micro-batch.
-            // The LM head gradient accumulates on GPU via gpu_grad_accum, then
-            // downloads once at step time. This avoids 128MB synchronous D2H
-            // per micro-batch (was causing 44% throughput drop).
+            // entrenar#314: Tied weight gradient accumulation.
+            // With tie_word_embeddings=True, PyTorch accumulates BOTH the LM head
+            // gradient and the embedding gradient to the same parameter. Entrenar
+            // splits them into separate GPU/CPU optimizer paths. Fix: download the
+            // LM head gradient to CPU and add it to the embedding gradient so the
+            // CPU optimizer sees the combined signal.
+            if self.model.lm_head.is_none() {
+                // Tied weights — lm_head IS embed_tokens
+                let stream = self.cuda_trainer.stream();
+                stream.synchronize().ok();
+                let mut lm_grad_host = vec![0.0f32; self.lm_head_grad_gpu.len()];
+                if self.lm_head_grad_gpu.copy_to_host(&mut lm_grad_host).is_ok() {
+                    let embed_weight = &mut self.model.embed_tokens.weight;
+                    let grad_cell = embed_weight.grad_cell();
+                    let mut grad_ref = grad_cell.borrow_mut();
+                    if let Some(grad) = grad_ref.as_mut() {
+                        for (g, &lg) in grad.iter_mut().zip(lm_grad_host.iter()) {
+                            *g += lg;
+                        }
+                    }
+                }
+            }
             self.profiler.end(StepProfiler::EMBED_BWD);
         }
 
@@ -2212,38 +2229,9 @@ impl CudaTransformerTrainer {
         // risk. Skip unscaling; just update scaler as successful.
         self.grad_scaler.update(true);
 
-        // entrenar#314: Download accumulated LM head gradient and add to embedding
-        // gradient BEFORE the CPU optimizer step. Runs once per optimizer step
-        // (not per micro-batch) to avoid throughput penalty.
-        if self.model.lm_head.is_none() {
-            // For GPU-resident accumulation: the accumulated LM head gradient
-            // is available via gpu_grad_accum. For non-accumulating path: the
-            // gradient is already in lm_head_grad_gpu from the last micro-batch.
-            let stream = self.cuda_trainer.stream();
-            stream.synchronize().ok();
-            let mut lm_grad_host = vec![0.0f32; self.lm_head_grad_gpu.len()];
-            // Use the direct grad buffer (last micro-batch gradient).
-            // For tied weights, the GPU LM head optimizer is skipped, so
-            // lm_head_grad_gpu still has the raw gradient from the last backward.
-            // With GA, this is one micro-batch's gradient — the embedding
-            // backward already accumulates across all micro-batches, so the
-            // combined gradient will be approximately correct.
-            let src = &self.lm_head_grad_gpu;
-            if src.copy_to_host(&mut lm_grad_host).is_ok() {
-                let embed_weight = &mut self.model.embed_tokens.weight;
-                let grad_cell = embed_weight.grad_cell();
-                let mut grad_ref = grad_cell.borrow_mut();
-                if let Some(grad) = grad_ref.as_mut() {
-                    for (g, &lg) in grad.iter_mut().zip(lm_grad_host.iter()) {
-                        *g += lg;
-                    }
-                }
-            }
-        }
-
         // ALB-079: Sync CPU embedding optimizer lr with cosine schedule
         self.embed_optimizer.set_lr(self.current_lr());
-        // CPU optimizer step for embedding weight (with combined gradient)
+        // CPU optimizer step for embedding weight
         let mut embed_params = vec![&mut self.model.embed_tokens.weight];
         self.embed_optimizer.step_refs(&mut embed_params);
 
