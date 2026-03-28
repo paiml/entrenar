@@ -64,6 +64,9 @@ pub struct WgpuModelState {
     pub num_kv_heads: usize,
     pub head_dim: usize,
     pub intermediate_size: usize,
+    /// Cached dequanted FFN weights per layer: (gate, up, down) fp32
+    /// Populated on first access, reused on subsequent steps (base weights are frozen).
+    ffn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>>,
 }
 
 #[cfg(feature = "gpu")]
@@ -238,7 +241,28 @@ impl WgpuModelState {
             num_kv_heads,
             head_dim,
             intermediate_size,
+            ffn_cache: vec![None; num_layers],
         })
+    }
+
+    /// Ensure all FFN weight caches are populated (dequant once, reuse forever)
+    ///
+    /// Base weights are frozen (NF4) — only LoRA adapters change during training.
+    /// Caching eliminates 108 GPU dequant ops per step (36 layers × 3 projections).
+    pub fn populate_ffn_cache(&mut self, device: &trueno::backends::gpu::GpuDevice) -> Result<(), String> {
+        for layer_idx in 0..self.num_layers {
+            if self.ffn_cache[layer_idx].is_none() {
+                let layer = &self.layers[layer_idx];
+                let gate = layer.dequant_gate(device)?;
+                let up = layer.dequant_up(device)?;
+                let down = layer.dequant_down(device)?;
+                if layer_idx % 6 == 0 || layer_idx == self.num_layers - 1 {
+                    eprintln!("  Cached layer {layer_idx} FFN weights");
+                }
+                self.ffn_cache[layer_idx] = Some((gate, up, down));
+            }
+        }
+        Ok(())
     }
 
     /// Total trainable parameters
@@ -306,16 +330,7 @@ impl WgpuTransformerTrainer {
         self.step
     }
 
-    /// Single-layer training step: LoRA Q/V forward + FFN forward/backward + AdamW
-    ///
-    /// This is the per-layer building block for the full 36-layer training loop.
-    /// Attention is skipped (CPU fallback for Phase 4). This exercises:
-    /// - NF4 dequant on GPU
-    /// - LoRA forward (Q projection)
-    /// - FFN forward (gate/up/down with SiLU)
-    /// - FFN backward (GEMM backward + SiLU backward)
-    /// - AdamW step on LoRA adapters
-    ///
+    /// Single-layer training step: NF4 dequant → FFN forward/backward → AdamW
     /// # Contract (C-WGPU-TRAIN-001)
     pub fn layer_train_step(
         &mut self,
@@ -440,12 +455,7 @@ impl WgpuTransformerTrainer {
         Ok((output, grad_norm))
     }
 
-    /// Full 36-layer forward pass + lm_head loss + backward
-    ///
-    /// Processes all layers sequentially, dequanting NF4 per-layer to keep VRAM < 16GB.
-    /// Returns (loss, total_grad_norm).
-    ///
-    /// # Contract (C-WGPU-TRAIN-001)
+    /// Full 36-layer forward + lm_head + loss + backward. Contract (C-WGPU-TRAIN-001)
     pub fn full_train_step(
         &mut self,
         token_hidden: &[f32],      // [seq_len, hidden_size] — embedding output
@@ -458,13 +468,14 @@ impl WgpuTransformerTrainer {
         let v = model.vocab_size as u32;
         let n_layers = model.num_layers;
 
+        // --- Populate FFN weight cache (dequant once, reuse on subsequent steps) ---
+        model.populate_ffn_cache(&self.device)?;
+
         // --- Forward through all layers ---
         let mut hidden = token_hidden.to_vec();
 
         for layer_idx in 0..n_layers {
-            let layer = &model.layers[layer_idx];
-
-            // RMSNorm before FFN (prevents hidden state explosion across 36 layers)
+            // RMSNorm before FFN
             let eps = 1e-5f32;
             for si in 0..s as usize {
                 let row = &hidden[si * h as usize..(si + 1) * h as usize];
@@ -475,18 +486,17 @@ impl WgpuTransformerTrainer {
                 }
             }
 
-            // Dequant FFN weights on GPU
-            let gate_fp32 = layer.dequant_gate(&self.device)?;
-            let up_fp32 = layer.dequant_up(&self.device)?;
-            let down_fp32 = layer.dequant_down(&self.device)?;
+            // Cached FFN weights (already dequanted)
+            let (gate_fp32, up_fp32, down_fp32) = model.ffn_cache[layer_idx].as_ref()
+                .map(|(g, u, d)| (g.as_slice(), u.as_slice(), d.as_slice()))
+                .expect("cache populated above");
 
             // FFN forward on GPU: gate_out = hidden @ gate^T, up_out = hidden @ up^T
-            // gemm_backward_a computes: output = A @ B^T (perfect for hidden @ weight^T)
             let mut gate_out = vec![0.0f32; (s * i) as usize];
-            self.device.gemm_backward_a(&hidden, &gate_fp32, &mut gate_out, s, i, h)?;
+            self.device.gemm_backward_a(&hidden, gate_fp32, &mut gate_out, s, i, h)?;
 
             let mut up_out = vec![0.0f32; (s * i) as usize];
-            self.device.gemm_backward_a(&hidden, &up_fp32, &mut up_out, s, i, h)?;
+            self.device.gemm_backward_a(&hidden, up_fp32, &mut up_out, s, i, h)?;
 
             // SiLU(gate) * up (element-wise, CPU — small compared to GEMM)
             let swiglu: Vec<f32> = gate_out.iter().zip(up_out.iter()).map(|(&g, &u)| {
@@ -566,12 +576,7 @@ impl WgpuTransformerTrainer {
         Ok((loss, grad_norm))
     }
 
-    /// LoRA forward: output = x @ W^T + (alpha/rank) * x @ B^T @ A^T
-    ///
-    /// x: [seq_len, in_dim], W: [out_dim, in_dim] (NF4, dequanted to fp32)
-    /// A: [rank, in_dim], B: [out_dim, rank]
-    ///
-    /// # Contract (C-WGPU-TRAIN-001)
+    /// LoRA forward: y = x@W^T + (alpha/rank)*x@B^T@A^T. Contract (C-WGPU-TRAIN-001)
     pub fn lora_forward(
         &self,
         x: &[f32],
@@ -634,14 +639,7 @@ impl WgpuTransformerTrainer {
         Ok(y)
     }
 
-    /// LoRA backward: compute gradients for A and B adapters
-    ///
-    /// Given grad_output [seq_len, out_dim], computes:
-    /// - grad_A = scaling * (x^T @ grad_output @ B)^T  (simplified)
-    /// - grad_B = scaling * (h^T @ grad_output)^T
-    /// - grad_x = grad_output @ W + scaling * grad_output @ B @ A (passed to layer below)
-    ///
-    /// Uses GPU GEMM backward for the heavy matmuls.
+    /// LoRA backward: grad_A, grad_B, grad_x via GPU GEMM
     pub fn lora_backward(
         &self,
         grad_output: &[f32],   // [seq_len, out_dim]
