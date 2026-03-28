@@ -1083,28 +1083,6 @@ impl CudaTransformerTrainer {
             self.profiler.begin(StepProfiler::EMBED_BWD);
             self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a);
 
-            // entrenar#314: Tied weight gradient accumulation.
-            // With tie_word_embeddings=True, PyTorch accumulates BOTH the LM head
-            // gradient and the embedding gradient to the same parameter. Entrenar
-            // splits them into separate GPU/CPU optimizer paths. Fix: download the
-            // LM head gradient to CPU and add it to the embedding gradient so the
-            // CPU optimizer sees the combined signal.
-            if self.model.lm_head.is_none() {
-                // Tied weights — lm_head IS embed_tokens
-                let stream = self.cuda_trainer.stream();
-                stream.synchronize().ok();
-                let mut lm_grad_host = vec![0.0f32; self.lm_head_grad_gpu.len()];
-                if self.lm_head_grad_gpu.copy_to_host(&mut lm_grad_host).is_ok() {
-                    let embed_weight = &mut self.model.embed_tokens.weight;
-                    let grad_cell = embed_weight.grad_cell();
-                    let mut grad_ref = grad_cell.borrow_mut();
-                    if let Some(grad) = grad_ref.as_mut() {
-                        for (g, &lg) in grad.iter_mut().zip(lm_grad_host.iter()) {
-                            *g += lg;
-                        }
-                    }
-                }
-            }
             self.profiler.end(StepProfiler::EMBED_BWD);
         }
 
@@ -1481,14 +1459,9 @@ impl CudaTransformerTrainer {
                 )?;
             }
         } else {
-            // entrenar#314: Skip GPU LM head optimizer for tied weights.
-            // CPU handles the combined (LM head + embedding) gradient and
-            // re-uploads the weight. Running GPU AdamW here would waste work
-            // AND desync lm_head_m/lm_head_v from the actual weight.
-            let tied = self.model.lm_head.is_none();
             Self::run_nonblock_optimizer_step(
                 &mut self.gpu_training,
-                if tied { None } else { Some(&mut self.lm_head_weight_gpu) },
+                Some(&mut self.lm_head_weight_gpu),
                 &self.lm_head_grad_gpu,
                 &mut self.lm_head_m,
                 &mut self.lm_head_v,
@@ -1806,8 +1779,6 @@ impl CudaTransformerTrainer {
         gpu_training.step += 1;
         let step = gpu_training.step;
 
-        // entrenar#314: Skip LM head optimizer for tied weights (None).
-        // CPU handles the combined gradient and re-uploads the weight.
         if let Some(lm_head_weight) = lm_head_weight_gpu {
             let n_lm = lm_head_weight.len() as u32;
             let _ = adamw_step_cuda(
@@ -1926,24 +1897,21 @@ impl CudaTransformerTrainer {
             )
             .ok()?;
 
-        // entrenar#314: Skip LM head GPU optimizer for tied weights.
-        if self.model.lm_head.is_some() {
-            let n_lm = self.lm_head_weight_gpu.len() as u32;
-            let _ = adamw_step_cuda(
-                &mut self.lm_head_weight_gpu,
-                &self.lm_head_grad_gpu,
-                &mut self.lm_head_m,
-                &mut self.lm_head_v,
-                lr,
-                beta1,
-                beta2,
-                1e-8,
-                weight_decay,
-                step,
-                n_lm,
-                stream,
-            );
-        }
+        let n_lm = self.lm_head_weight_gpu.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.lm_head_weight_gpu,
+            &self.lm_head_grad_gpu,
+            &mut self.lm_head_m,
+            &mut self.lm_head_v,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_lm,
+            stream,
+        );
 
         // Final norm optimizer step
         let n_norm = self.gpu_training.final_norm_weight.len() as u32;
@@ -2057,27 +2025,25 @@ impl CudaTransformerTrainer {
 
         // Upload accumulated LM head gradients and run AdamW step
         // entrenar#314: Skip GPU LM head optimizer for tied weights.
-        if self.model.lm_head.is_some() {
-            // SAFETY: async host-to-device copy; host buffer (accum.lm_head_grad) is stable.
-            unsafe {
-                self.lm_head_grad_gpu.copy_from_host_async(&accum.lm_head_grad, stream).ok()?;
-            }
-            let n_lm = self.lm_head_weight_gpu.len() as u32;
-            let _ = adamw_step_cuda(
-                &mut self.lm_head_weight_gpu,
-                &self.lm_head_grad_gpu,
-                &mut self.lm_head_m,
-                &mut self.lm_head_v,
-                lr,
-                beta1,
-                beta2,
-                1e-8,
-                weight_decay,
-                step,
-                n_lm,
-                stream,
-            );
+        // SAFETY: async host-to-device copy; host buffer (accum.lm_head_grad) is stable.
+        unsafe {
+            self.lm_head_grad_gpu.copy_from_host_async(&accum.lm_head_grad, stream).ok()?;
         }
+        let n_lm = self.lm_head_weight_gpu.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.lm_head_weight_gpu,
+            &self.lm_head_grad_gpu,
+            &mut self.lm_head_m,
+            &mut self.lm_head_v,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_lm,
+            stream,
+        );
 
         // Upload accumulated final norm gradients and run AdamW step
         // SAFETY: async host-to-device copy; host buffer (accum.final_norm_grad) is stable.
@@ -2234,15 +2200,6 @@ impl CudaTransformerTrainer {
         // CPU optimizer step for embedding weight
         let mut embed_params = vec![&mut self.model.embed_tokens.weight];
         self.embed_optimizer.step_refs(&mut embed_params);
-
-        // entrenar#314: Sync updated embedding weight back to GPU LM head.
-        // With tied weights, the CPU embedding weight IS the LM head weight.
-        // After the CPU optimizer step, re-upload to keep GPU copy in sync.
-        if self.model.lm_head.is_none() {
-            if let Some(slice) = self.model.embed_tokens.weight.data().as_slice() {
-                let _ = self.lm_head_weight_gpu.copy_from_host(slice);
-            }
-        }
 
         self.step += 1;
         self.metrics.losses.push(self.accumulated_loss);
