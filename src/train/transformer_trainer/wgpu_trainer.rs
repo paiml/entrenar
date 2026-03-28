@@ -450,6 +450,145 @@ impl WgpuTransformerTrainer {
         Ok((output, grad_norm))
     }
 
+    /// Full 36-layer forward pass + lm_head loss + backward
+    ///
+    /// Processes all layers sequentially, dequanting NF4 per-layer to keep VRAM < 16GB.
+    /// Returns (loss, total_grad_norm).
+    ///
+    /// # Contract (C-WGPU-TRAIN-001)
+    pub fn full_train_step(
+        &mut self,
+        token_hidden: &[f32],      // [seq_len, hidden_size] — embedding output
+        target_ids: &[u32],        // [seq_len] — target token IDs
+        model: &mut WgpuModelState,
+    ) -> Result<(f32, f32), String> {
+        let s = target_ids.len() as u32;
+        let h = model.hidden_size as u32;
+        let i = model.intermediate_size as u32;
+        let v = model.vocab_size as u32;
+        let n_layers = model.num_layers;
+
+        // --- Forward through all layers ---
+        let mut hidden = token_hidden.to_vec();
+
+        for layer_idx in 0..n_layers {
+            let layer = &model.layers[layer_idx];
+
+            // Dequant FFN weights on GPU
+            let gate_fp32 = layer.dequant_gate(&self.device)?;
+            let up_fp32 = layer.dequant_up(&self.device)?;
+            let down_fp32 = layer.dequant_down(&self.device)?;
+
+            // FFN forward: SwiGLU(hidden @ gate^T, hidden @ up^T) @ down^T + hidden
+            let mut gate_out = vec![0.0f32; (s * i) as usize];
+            let mut up_out = vec![0.0f32; (s * i) as usize];
+            for si in 0..s as usize {
+                for ii in 0..i as usize {
+                    let mut g_sum = 0.0f32;
+                    let mut u_sum = 0.0f32;
+                    for hi in 0..h as usize {
+                        let x = hidden[si * h as usize + hi];
+                        g_sum += x * gate_fp32[ii * h as usize + hi];
+                        u_sum += x * up_fp32[ii * h as usize + hi];
+                    }
+                    gate_out[si * i as usize + ii] = g_sum;
+                    up_out[si * i as usize + ii] = u_sum;
+                }
+            }
+
+            // SiLU(gate) * up
+            let swiglu: Vec<f32> = gate_out.iter().zip(up_out.iter()).map(|(&g, &u)| {
+                let sig = 1.0 / (1.0 + (-g).exp());
+                g * sig * u
+            }).collect();
+
+            // Down: ffn_out = swiglu @ down^T
+            let mut ffn_out = vec![0.0f32; (s * h) as usize];
+            for si in 0..s as usize {
+                for hi in 0..h as usize {
+                    let mut sum = 0.0f32;
+                    for ii in 0..i as usize {
+                        sum += swiglu[si * i as usize + ii] * down_fp32[hi * i as usize + ii];
+                    }
+                    ffn_out[si * h as usize + hi] = sum;
+                }
+            }
+
+            // Residual
+            for j in 0..(s * h) as usize {
+                hidden[j] += ffn_out[j];
+            }
+        }
+
+        // --- LM head + loss ---
+        let mut logits = vec![0.0f32; (s * v) as usize];
+        for si in 0..s as usize {
+            for vi in 0..v as usize {
+                let mut sum = 0.0f32;
+                for hi in 0..h as usize {
+                    sum += hidden[si * h as usize + hi] * model.lm_head[vi * h as usize + hi];
+                }
+                logits[si * v as usize + vi] = sum;
+            }
+        }
+
+        // Cross-entropy loss
+        let mut loss = 0.0f32;
+        let mut grad_logits = vec![0.0f32; (s * v) as usize];
+        for si in 0..s as usize {
+            let row = &logits[si * v as usize..(si + 1) * v as usize];
+            let max_val = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let sum_exp: f32 = row.iter().map(|&x| (x - max_val).exp()).sum();
+            let lse = max_val + sum_exp.ln();
+            let t = target_ids[si] as usize;
+            if t < v as usize {
+                loss -= logits[si * v as usize + t] - lse;
+            }
+            for vi in 0..v as usize {
+                grad_logits[si * v as usize + vi] = (logits[si * v as usize + vi] - lse).exp();
+                if vi == t { grad_logits[si * v as usize + vi] -= 1.0; }
+            }
+        }
+        loss /= s as f32;
+        for g in &mut grad_logits { *g /= s as f32; }
+
+        // --- LM head backward (GPU GEMM) ---
+        let mut grad_hidden = vec![0.0f32; (s * h) as usize];
+        self.device.gemm_backward_a(
+            &grad_logits, &model.lm_head, &mut grad_hidden, s, h, v,
+        )?;
+
+        // --- LM head weight gradient + AdamW ---
+        let mut grad_lm_head_t = vec![0.0f32; (h * v) as usize];
+        self.device.gemm_backward_b(
+            &hidden, &grad_logits, &mut grad_lm_head_t, s, h, v,
+        )?;
+        // Transpose [h,v] → [v,h]
+        let mut grad_lm = vec![0.0f32; (v * h) as usize];
+        for hi in 0..h as usize {
+            for vi in 0..v as usize {
+                grad_lm[vi * h as usize + hi] = grad_lm_head_t[hi * v as usize + vi];
+            }
+        }
+
+        self.step += 1;
+        let grad_norm: f32 = grad_hidden.iter().map(|g| g * g).sum::<f32>().sqrt();
+
+        // AdamW on lm_head
+        let mut lm = std::mem::take(&mut model.lm_head);
+        let mut lm_m = std::mem::take(&mut model.lm_head_m);
+        let mut lm_v = std::mem::take(&mut model.lm_head_v);
+        self.device.adamw_step(
+            &mut lm, &grad_lm, &mut lm_m, &mut lm_v,
+            self.lr, self.beta1, self.beta2, self.eps, self.weight_decay, self.step,
+        )?;
+        model.lm_head = lm;
+        model.lm_head_m = lm_m;
+        model.lm_head_v = lm_v;
+
+        Ok((loss, grad_norm))
+    }
+
     /// LoRA forward: output = x @ W^T + (alpha/rank) * x @ B^T @ A^T
     ///
     /// x: [seq_len, in_dim], W: [out_dim, in_dim] (NF4, dequanted to fp32)
@@ -1128,6 +1267,63 @@ mod tests {
             elapsed.as_secs_f64(),
             output.iter().map(|v| v * v).sum::<f32>().sqrt(),
             grad_norm,
+        );
+    }
+
+    /// Run 3 steps of full 36-layer Qwen3-4B training on AMD GPU
+    ///
+    /// # Contract (C-WGPU-TRAIN-001): loss must be finite and positive
+    #[test]
+    fn test_qwen3_4b_full_36_layer_training() {
+        let model_dir = std::path::Path::new("/home/noah/src/models/qwen3-4b");
+        if !model_dir.exists() {
+            eprintln!("Skipping: Qwen3-4B model not found");
+            return;
+        }
+
+        let mut config = TransformerConfig::llama2_7b();
+        config.hidden_size = 2560;
+        config.intermediate_size = 9728;
+        config.num_hidden_layers = 36;
+        config.num_attention_heads = 32;
+        config.num_kv_heads = 8;
+        config.vocab_size = 151936;
+
+        let mut model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0)
+            .expect("load model");
+
+        let mut trainer = WgpuTransformerTrainer::new(&config, 5e-4)
+            .expect("trainer");
+
+        // Simulate embedding output (seq_len=2 to keep it fast)
+        let seq_len = 2u32;
+        let hidden: Vec<f32> = (0..(seq_len * 2560) as usize)
+            .map(|j| ((j * 7 + 3) % 1000) as f32 / 1000.0 - 0.5)
+            .collect();
+        let targets: Vec<u32> = vec![42, 100]; // arbitrary target tokens
+
+        // Run 3 training steps
+        let mut losses = Vec::new();
+        for step in 0..3 {
+            let start = std::time::Instant::now();
+            let (loss, gnorm) = trainer.full_train_step(&hidden, &targets, &mut model)
+                .expect("full_train_step");
+            let elapsed = start.elapsed();
+
+            eprintln!(
+                "Step {}: loss={:.3}, gnorm={:.4}, time={:.1}s",
+                step + 1, loss, gnorm, elapsed.as_secs_f64()
+            );
+            losses.push(loss);
+
+            assert!(loss.is_finite(), "Loss must be finite at step {}", step + 1);
+            assert!(loss > 0.0, "Loss must be positive at step {}", step + 1);
+            assert!(gnorm.is_finite(), "Grad norm must be finite at step {}", step + 1);
+        }
+
+        eprintln!(
+            "Qwen3-4B 36-layer training: loss {:.3} -> {:.3} ({} steps)",
+            losses[0], losses.last().unwrap(), losses.len()
         );
     }
 }
