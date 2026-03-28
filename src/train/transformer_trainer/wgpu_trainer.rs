@@ -207,23 +207,33 @@ impl WgpuModelState {
         let tensors = safetensors::SafeTensors::deserialize(last_data)
             .map_err(|e| format!("Deserialize: {e}"))?;
 
-        let lm_head_view = tensors.tensor("lm_head.weight")
-            .or_else(|_| tensors.tensor("model.lm_head.weight"))
-            .map_err(|e| format!("lm_head.weight not found: {e}"))?;
-
-        let lm_head: Vec<f32> = match lm_head_view.dtype() {
-            safetensors::Dtype::F16 => {
-                lm_head_view.data().chunks_exact(2)
-                    .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32())
-                    .collect()
+        // Qwen3 uses tied embeddings: lm_head = embed_tokens
+        let mut lm_head_view = None;
+        for data in &all_data {
+            let t = safetensors::SafeTensors::deserialize(data)
+                .map_err(|e| format!("Deserialize: {e}"))?;
+            for name in ["lm_head.weight", "model.lm_head.weight", "model.embed_tokens.weight"] {
+                if let Ok(v) = t.tensor(name) {
+                    // Need to copy since t borrows data
+                    let fp32: Vec<f32> = match v.dtype() {
+                        safetensors::Dtype::F16 => {
+                            v.data().chunks_exact(2)
+                                .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32()).collect()
+                        }
+                        safetensors::Dtype::BF16 => {
+                            v.data().chunks_exact(2)
+                                .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32()).collect()
+                        }
+                        _ => bytemuck::cast_slice(v.data()).to_vec(),
+                    };
+                    eprintln!("  LM head from {name}: {} elements", fp32.len());
+                    lm_head_view = Some(fp32);
+                    break;
+                }
             }
-            safetensors::Dtype::BF16 => {
-                lm_head_view.data().chunks_exact(2)
-                    .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32())
-                    .collect()
-            }
-            _ => bytemuck::cast_slice(lm_head_view.data()).to_vec(),
-        };
+            if lm_head_view.is_some() { break; }
+        }
+        let lm_head = lm_head_view.ok_or("lm_head/embed_tokens not found in any shard")?;
 
         let lm_head_len = lm_head.len();
         let total_nf4_mb: f64 = layers.iter().map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
