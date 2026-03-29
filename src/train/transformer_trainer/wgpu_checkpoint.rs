@@ -58,8 +58,7 @@ pub fn save_lora_checkpoint(
     rank: u32,
     alpha: f32,
 ) -> Result<std::path::PathBuf, String> {
-    std::fs::create_dir_all(output_dir)
-        .map_err(|e| format!("Cannot create output dir: {e}"))?;
+    std::fs::create_dir_all(output_dir).map_err(|e| format!("Cannot create output dir: {e}"))?;
 
     let checkpoint = LoraCheckpoint {
         step,
@@ -112,26 +111,19 @@ pub fn load_lora_checkpoint(
     hidden_size: usize,
     checkpoint_path: &std::path::Path,
 ) -> Result<(u32, f32), String> {
-    let json = std::fs::read_to_string(checkpoint_path)
-        .map_err(|e| format!("Read checkpoint: {e}"))?;
+    let json =
+        std::fs::read_to_string(checkpoint_path).map_err(|e| format!("Read checkpoint: {e}"))?;
     let ckpt: LoraCheckpoint =
         serde_json::from_str(&json).map_err(|e| format!("Parse checkpoint: {e}"))?;
 
     // Validate dimensions match
     if ckpt.q_a.len() != num_layers {
-        return Err(format!(
-            "Checkpoint has {} layers, model has {}",
-            ckpt.q_a.len(),
-            num_layers
-        ));
+        return Err(format!("Checkpoint has {} layers, model has {}", ckpt.q_a.len(), num_layers));
     }
 
     let expected_in = hidden_size as u32;
     if ckpt.dims.0 != expected_in {
-        return Err(format!(
-            "Checkpoint hidden_size={}, model has {expected_in}",
-            ckpt.dims.0
-        ));
+        return Err(format!("Checkpoint hidden_size={}, model has {expected_in}", ckpt.dims.0));
     }
 
     // Restore LoRA weights
@@ -160,7 +152,9 @@ pub fn load_lora_checkpoint(
 
     eprintln!(
         "  Loaded checkpoint: step={}, loss={:.3}, {} layers",
-        ckpt.step, ckpt.loss, ckpt.q_a.len()
+        ckpt.step,
+        ckpt.loss,
+        ckpt.q_a.len()
     );
 
     Ok((ckpt.step, ckpt.loss))
@@ -180,12 +174,10 @@ mod tests {
         let q_dim = 8usize;
         let kv_dim = 8usize;
 
-        let lora_q: Vec<LoraAdapter> = (0..2)
-            .map(|_| LoraAdapter::new(rank, hidden as u32, q_dim as u32))
-            .collect();
-        let lora_v: Vec<LoraAdapter> = (0..2)
-            .map(|_| LoraAdapter::new(rank, hidden as u32, kv_dim as u32))
-            .collect();
+        let lora_q: Vec<LoraAdapter> =
+            (0..2).map(|_| LoraAdapter::new(rank, hidden as u32, q_dim as u32)).collect();
+        let lora_v: Vec<LoraAdapter> =
+            (0..2).map(|_| LoraAdapter::new(rank, hidden as u32, kv_dim as u32)).collect();
 
         // Save checkpoint
         let tmpdir = std::env::temp_dir().join("entrenar-ckpt-test");
@@ -196,16 +188,13 @@ mod tests {
         assert!(ckpt_path.exists(), "Checkpoint file must exist");
 
         // Load into fresh adapters
-        let mut lora_q2: Vec<LoraAdapter> = (0..2)
-            .map(|_| LoraAdapter::new(rank, hidden as u32, q_dim as u32))
-            .collect();
-        let mut lora_v2: Vec<LoraAdapter> = (0..2)
-            .map(|_| LoraAdapter::new(rank, hidden as u32, kv_dim as u32))
-            .collect();
+        let mut lora_q2: Vec<LoraAdapter> =
+            (0..2).map(|_| LoraAdapter::new(rank, hidden as u32, q_dim as u32)).collect();
+        let mut lora_v2: Vec<LoraAdapter> =
+            (0..2).map(|_| LoraAdapter::new(rank, hidden as u32, kv_dim as u32)).collect();
 
-        let (step, loss) =
-            load_lora_checkpoint(&mut lora_q2, &mut lora_v2, 2, hidden, &ckpt_path)
-                .expect("load_checkpoint");
+        let (step, loss) = load_lora_checkpoint(&mut lora_q2, &mut lora_v2, 2, hidden, &ckpt_path)
+            .expect("load_checkpoint");
         assert_eq!(step, 42);
         assert!((loss - 3.14).abs() < 1e-5);
 
@@ -232,8 +221,8 @@ mod tests {
         let lora_v = vec![LoraAdapter::new(rank, 8, 8)];
 
         let tmpdir = std::env::temp_dir().join("entrenar-ckpt-mismatch");
-        let ckpt_path = save_lora_checkpoint(&lora_q, &lora_v, 8, &tmpdir, 1, 5.0, rank, 8.0)
-            .expect("save");
+        let ckpt_path =
+            save_lora_checkpoint(&lora_q, &lora_v, 8, &tmpdir, 1, 5.0, rank, 8.0).expect("save");
 
         // Try loading into model with different hidden_size
         let mut lora_q2 = vec![LoraAdapter::new(rank, 16, 16), LoraAdapter::new(rank, 16, 16)];

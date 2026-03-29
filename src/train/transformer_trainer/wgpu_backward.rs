@@ -126,7 +126,18 @@ pub fn backward_through_layers(
             let mut a_buf = std::mem::take(&mut model.lora_q[layer_idx].a);
             let mut ma = std::mem::take(&mut model.lora_q[layer_idx].m_a);
             let mut va = std::mem::take(&mut model.lora_q[layer_idx].v_a);
-            device.adamw_step(&mut a_buf, &grad_a, &mut ma, &mut va, lr, beta1, beta2, eps, weight_decay, step)?;
+            device.adamw_step(
+                &mut a_buf,
+                &grad_a,
+                &mut ma,
+                &mut va,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            )?;
             model.lora_q[layer_idx].a = a_buf;
             model.lora_q[layer_idx].m_a = ma;
             model.lora_q[layer_idx].v_a = va;
@@ -134,7 +145,18 @@ pub fn backward_through_layers(
             let mut b_buf = std::mem::take(&mut model.lora_q[layer_idx].b);
             let mut mb = std::mem::take(&mut model.lora_q[layer_idx].m_b);
             let mut vb = std::mem::take(&mut model.lora_q[layer_idx].v_b);
-            device.adamw_step(&mut b_buf, &grad_b, &mut mb, &mut vb, lr, beta1, beta2, eps, weight_decay, step)?;
+            device.adamw_step(
+                &mut b_buf,
+                &grad_b,
+                &mut mb,
+                &mut vb,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            )?;
             model.lora_q[layer_idx].b = b_buf;
             model.lora_q[layer_idx].m_b = mb;
             model.lora_q[layer_idx].v_b = vb;
@@ -152,7 +174,18 @@ pub fn backward_through_layers(
             let mut a_buf = std::mem::take(&mut model.lora_v[layer_idx].a);
             let mut ma = std::mem::take(&mut model.lora_v[layer_idx].m_a);
             let mut va = std::mem::take(&mut model.lora_v[layer_idx].v_a);
-            device.adamw_step(&mut a_buf, &grad_a, &mut ma, &mut va, lr, beta1, beta2, eps, weight_decay, step)?;
+            device.adamw_step(
+                &mut a_buf,
+                &grad_a,
+                &mut ma,
+                &mut va,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            )?;
             model.lora_v[layer_idx].a = a_buf;
             model.lora_v[layer_idx].m_a = ma;
             model.lora_v[layer_idx].v_a = va;
@@ -160,7 +193,18 @@ pub fn backward_through_layers(
             let mut b_buf = std::mem::take(&mut model.lora_v[layer_idx].b);
             let mut mb = std::mem::take(&mut model.lora_v[layer_idx].m_b);
             let mut vb = std::mem::take(&mut model.lora_v[layer_idx].v_b);
-            device.adamw_step(&mut b_buf, &grad_b, &mut mb, &mut vb, lr, beta1, beta2, eps, weight_decay, step)?;
+            device.adamw_step(
+                &mut b_buf,
+                &grad_b,
+                &mut mb,
+                &mut vb,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            )?;
             model.lora_v[layer_idx].b = b_buf;
             model.lora_v[layer_idx].m_b = mb;
             model.lora_v[layer_idx].v_b = vb;
@@ -236,9 +280,16 @@ mod tests {
             &mut grad_hidden,
             &activations,
             &mut model,
-            s, h, i_size,
-            1e-3, 0.9, 0.999, 1e-8, 0.01,
-            1, 32.0,
+            s,
+            h,
+            i_size,
+            1e-3,
+            0.9,
+            0.999,
+            1e-8,
+            0.01,
+            1,
+            32.0,
         )
         .expect("backward");
 

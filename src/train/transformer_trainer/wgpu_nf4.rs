@@ -82,7 +82,13 @@ impl Nf4LayerWeights {
         self.dequant_any(&self.o_packed, &self.o_scales, self.o_n, device)
     }
 
-    fn dequant_any(&self, packed: &[u32], scales: &[f32], n: u32, device: &GpuDevice) -> Result<Vec<f32>, String> {
+    fn dequant_any(
+        &self,
+        packed: &[u32],
+        scales: &[f32],
+        n: u32,
+        device: &GpuDevice,
+    ) -> Result<Vec<f32>, String> {
         let mut output = vec![0.0f32; n as usize];
         device.nf4_dequant(packed, scales, &mut output, n, self.block_size)?;
         Ok(output)

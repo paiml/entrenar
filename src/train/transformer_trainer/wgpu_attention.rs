@@ -19,11 +19,11 @@ use trueno::backends::gpu::GpuDevice;
 #[allow(clippy::too_many_arguments)]
 pub fn attention_forward(
     device: &GpuDevice,
-    hidden: &[f32],       // [seq_len, hidden_size]
-    q_weight: &[f32],     // [q_dim, hidden_size]
-    k_weight: &[f32],     // [kv_dim, hidden_size]
-    v_weight: &[f32],     // [kv_dim, hidden_size]
-    o_weight: &[f32],     // [hidden_size, q_dim]
+    hidden: &[f32],   // [seq_len, hidden_size]
+    q_weight: &[f32], // [q_dim, hidden_size]
+    k_weight: &[f32], // [kv_dim, hidden_size]
+    v_weight: &[f32], // [kv_dim, hidden_size]
+    o_weight: &[f32], // [hidden_size, q_dim]
     lora_q: &super::wgpu_nf4::LoraAdapter,
     lora_v: &super::wgpu_nf4::LoraAdapter,
     lora_alpha: f32,
@@ -160,7 +160,9 @@ pub fn attention_forward(
                     dot += q[qi * q_dim + head * hd + d] * k[ki * kv_dim + kv_head * hd + d];
                 }
                 scores[ki] = dot * scale;
-                if scores[ki] > max_score { max_score = scores[ki]; }
+                if scores[ki] > max_score {
+                    max_score = scores[ki];
+                }
             }
 
             // Softmax
@@ -170,7 +172,9 @@ pub fn attention_forward(
                 sum_exp += scores[ki];
             }
             if sum_exp > 0.0 {
-                for ki in 0..s { scores[ki] /= sum_exp; }
+                for ki in 0..s {
+                    scores[ki] /= sum_exp;
+                }
             }
 
             // Weighted sum of V
@@ -215,25 +219,29 @@ mod tests {
 
         // Without LoRA (B=0 → no contribution)
         let out_base = attention_forward(
-            &device, &hidden, &q_w, &k_w, &v_w, &o_w,
-            &lora_q, &lora_v, 32.0, s, h, nh, nkv, hd,
-        ).expect("attention_forward");
+            &device, &hidden, &q_w, &k_w, &v_w, &o_w, &lora_q, &lora_v, 32.0, s, h, nh, nkv, hd,
+        )
+        .expect("attention_forward");
 
         assert_eq!(out_base.len(), (s * h) as usize);
         assert!(out_base.iter().all(|v| v.is_finite()), "All outputs finite");
 
         // With non-zero LoRA B → output should differ
         let mut lora_q2 = LoraAdapter::new(4, h, q_dim as u32);
-        for b in &mut lora_q2.b { *b = 0.01; }
+        for b in &mut lora_q2.b {
+            *b = 0.01;
+        }
         let out_lora = attention_forward(
-            &device, &hidden, &q_w, &k_w, &v_w, &o_w,
-            &lora_q2, &lora_v, 32.0, s, h, nh, nkv, hd,
-        ).expect("attention_forward lora");
+            &device, &hidden, &q_w, &k_w, &v_w, &o_w, &lora_q2, &lora_v, 32.0, s, h, nh, nkv, hd,
+        )
+        .expect("attention_forward lora");
 
         let diff: f32 = out_base.iter().zip(out_lora.iter()).map(|(a, b)| (a - b).abs()).sum();
         assert!(diff > 1e-6, "LoRA Q should change attention output, diff={diff}");
 
-        eprintln!("Attention forward: output_norm={:.4}, lora_diff={diff:.6}",
-            out_base.iter().map(|v| v * v).sum::<f32>().sqrt());
+        eprintln!(
+            "Attention forward: output_norm={:.4}, lora_diff={diff:.6}",
+            out_base.iter().map(|v| v * v).sum::<f32>().sqrt()
+        );
     }
 }
