@@ -1,0 +1,239 @@
+//! WGPU attention forward pass with LoRA for training
+//!
+//! QKV projection (with LoRA on Q, V) → RoPE → scaled dot-product attention
+//! → output projection. Causal mask for autoregressive training.
+//!
+//! # Contract: C-WGPU-TRAIN-008 (attention forward with LoRA)
+
+#[cfg(feature = "gpu")]
+use trueno::backends::gpu::GpuDevice;
+
+/// Attention forward pass for one layer
+///
+/// Returns output [seq_len, hidden_size] to be added as residual.
+///
+/// # Contract (C-WGPU-TRAIN-008)
+/// - Precondition: hidden is finite, all weight caches populated
+/// - Postcondition: output is finite, LoRA contributes when B≠0
+#[cfg(feature = "gpu")]
+#[allow(clippy::too_many_arguments)]
+pub fn attention_forward(
+    device: &GpuDevice,
+    hidden: &[f32],       // [seq_len, hidden_size]
+    q_weight: &[f32],     // [q_dim, hidden_size]
+    k_weight: &[f32],     // [kv_dim, hidden_size]
+    v_weight: &[f32],     // [kv_dim, hidden_size]
+    o_weight: &[f32],     // [hidden_size, q_dim]
+    lora_q: &super::wgpu_nf4::LoraAdapter,
+    lora_v: &super::wgpu_nf4::LoraAdapter,
+    lora_alpha: f32,
+    seq_len: u32,
+    hidden_size: u32,
+    num_heads: u32,
+    num_kv_heads: u32,
+    head_dim: u32,
+) -> Result<Vec<f32>, String> {
+    let s = seq_len as usize;
+    let h = hidden_size as usize;
+    let q_dim = (num_heads * head_dim) as usize;
+    let kv_dim = (num_kv_heads * head_dim) as usize;
+    let hd = head_dim as usize;
+    let nh = num_heads as usize;
+    let nkv = num_kv_heads as usize;
+
+    // --- QKV projections (GPU GEMM) ---
+    let mut q = vec![0.0f32; s * q_dim];
+    device.gemm_backward_a(hidden, q_weight, &mut q, seq_len, q_dim as u32, hidden_size)?;
+
+    let mut k = vec![0.0f32; s * kv_dim];
+    device.gemm_backward_a(hidden, k_weight, &mut k, seq_len, kv_dim as u32, hidden_size)?;
+
+    let mut v = vec![0.0f32; s * kv_dim];
+    device.gemm_backward_a(hidden, v_weight, &mut v, seq_len, kv_dim as u32, hidden_size)?;
+
+    // --- LoRA contributions (CPU, small rank) ---
+    let rank = lora_q.rank as usize;
+    if rank > 0 {
+        let scaling_q = lora_alpha / lora_q.rank as f32;
+        // LoRA Q: q += scaling * hidden @ A_q^T @ B_q^T
+        let mut h_a = vec![0.0f32; s * rank]; // hidden @ A^T
+        for si in 0..s {
+            for ri in 0..rank {
+                let mut sum = 0.0f32;
+                for hi in 0..h {
+                    sum += hidden[si * h + hi] * lora_q.a[ri * h + hi];
+                }
+                h_a[si * rank + ri] = sum;
+            }
+        }
+        for si in 0..s {
+            for qi in 0..q_dim {
+                let mut sum = 0.0f32;
+                for ri in 0..rank {
+                    sum += h_a[si * rank + ri] * lora_q.b[qi * rank + ri];
+                }
+                q[si * q_dim + qi] += scaling_q * sum;
+            }
+        }
+
+        // LoRA V: v += scaling * hidden @ A_v^T @ B_v^T
+        let v_rank = lora_v.rank as usize;
+        let scaling_v = lora_alpha / lora_v.rank as f32;
+        let mut h_av = vec![0.0f32; s * v_rank];
+        for si in 0..s {
+            for ri in 0..v_rank {
+                let mut sum = 0.0f32;
+                for hi in 0..h {
+                    sum += hidden[si * h + hi] * lora_v.a[ri * h + hi];
+                }
+                h_av[si * v_rank + ri] = sum;
+            }
+        }
+        for si in 0..s {
+            for vi in 0..kv_dim {
+                let mut sum = 0.0f32;
+                for ri in 0..v_rank {
+                    sum += h_av[si * v_rank + ri] * lora_v.b[vi * v_rank + ri];
+                }
+                v[si * kv_dim + vi] += scaling_v * sum;
+            }
+        }
+    }
+
+    // --- RoPE (simplified: sin/cos positional encoding) ---
+    for si in 0..s {
+        for head in 0..nh {
+            for d in (0..hd).step_by(2) {
+                let pos = si as f32;
+                let freq = 1.0 / (10000.0f32).powf(d as f32 / hd as f32);
+                let (sin_val, cos_val) = (pos * freq).sin_cos();
+                let idx0 = si * q_dim + head * hd + d;
+                let idx1 = idx0 + 1;
+                if idx1 < q.len() {
+                    let q0 = q[idx0];
+                    let q1 = q[idx1];
+                    q[idx0] = q0 * cos_val - q1 * sin_val;
+                    q[idx1] = q0 * sin_val + q1 * cos_val;
+                }
+            }
+        }
+        for head in 0..nkv {
+            for d in (0..hd).step_by(2) {
+                let pos = si as f32;
+                let freq = 1.0 / (10000.0f32).powf(d as f32 / hd as f32);
+                let (sin_val, cos_val) = (pos * freq).sin_cos();
+                let idx0 = si * kv_dim + head * hd + d;
+                let idx1 = idx0 + 1;
+                if idx1 < k.len() {
+                    let k0 = k[idx0];
+                    let k1 = k[idx1];
+                    k[idx0] = k0 * cos_val - k1 * sin_val;
+                    k[idx1] = k0 * sin_val + k1 * cos_val;
+                }
+            }
+        }
+    }
+
+    // --- Grouped-Query Attention (GQA) ---
+    // Qwen3-4B: 32 Q heads, 8 KV heads → 4 Q heads per KV head
+    let heads_per_kv = nh / nkv;
+    let mut context = vec![0.0f32; s * q_dim]; // [seq_len, num_heads * head_dim]
+    let scale = 1.0 / (hd as f32).sqrt();
+
+    for head in 0..nh {
+        let kv_head = head / heads_per_kv;
+
+        // Compute attention scores for this head
+        for qi in 0..s {
+            // Softmax numerator accumulation
+            let mut max_score = f32::NEG_INFINITY;
+            let mut scores = vec![0.0f32; s];
+
+            for ki in 0..s {
+                // Causal mask: only attend to positions ≤ qi
+                if ki > qi {
+                    scores[ki] = f32::NEG_INFINITY;
+                    continue;
+                }
+                let mut dot = 0.0f32;
+                for d in 0..hd {
+                    dot += q[qi * q_dim + head * hd + d] * k[ki * kv_dim + kv_head * hd + d];
+                }
+                scores[ki] = dot * scale;
+                if scores[ki] > max_score { max_score = scores[ki]; }
+            }
+
+            // Softmax
+            let mut sum_exp = 0.0f32;
+            for ki in 0..s {
+                scores[ki] = (scores[ki] - max_score).exp();
+                sum_exp += scores[ki];
+            }
+            if sum_exp > 0.0 {
+                for ki in 0..s { scores[ki] /= sum_exp; }
+            }
+
+            // Weighted sum of V
+            for d in 0..hd {
+                let mut val = 0.0f32;
+                for ki in 0..s {
+                    val += scores[ki] * v[ki * kv_dim + kv_head * hd + d];
+                }
+                context[qi * q_dim + head * hd + d] = val;
+            }
+        }
+    }
+
+    // --- Output projection (GPU GEMM): output = context @ O^T ---
+    let mut output = vec![0.0f32; s * h];
+    device.gemm_backward_a(&context, o_weight, &mut output, seq_len, hidden_size, q_dim as u32)?;
+
+    Ok(output)
+}
+
+#[cfg(all(test, feature = "gpu"))]
+mod tests {
+    use super::*;
+    use crate::train::transformer_trainer::wgpu_nf4::LoraAdapter;
+
+    /// FALSIFY: Attention forward produces finite output and LoRA contributes
+    #[test]
+    fn test_attention_forward_basic() {
+        let device = GpuDevice::new().expect("GPU");
+        let (s, h, nh, nkv, hd) = (4u32, 16u32, 4u32, 2u32, 4u32);
+        let q_dim = (nh * hd) as usize;
+        let kv_dim = (nkv * hd) as usize;
+
+        let hidden: Vec<f32> = (0..(s * h) as usize).map(|i| (i as f32 - 32.0) * 0.01).collect();
+        let q_w: Vec<f32> = (0..q_dim * h as usize).map(|i| (i as f32 - 64.0) * 0.005).collect();
+        let k_w: Vec<f32> = (0..kv_dim * h as usize).map(|i| (i as f32 - 32.0) * 0.005).collect();
+        let v_w: Vec<f32> = (0..kv_dim * h as usize).map(|i| (i as f32 - 32.0) * 0.005).collect();
+        let o_w: Vec<f32> = (0..h as usize * q_dim).map(|i| (i as f32 - 64.0) * 0.005).collect();
+
+        let lora_q = LoraAdapter::new(4, h, q_dim as u32);
+        let lora_v = LoraAdapter::new(4, h, kv_dim as u32);
+
+        // Without LoRA (B=0 → no contribution)
+        let out_base = attention_forward(
+            &device, &hidden, &q_w, &k_w, &v_w, &o_w,
+            &lora_q, &lora_v, 32.0, s, h, nh, nkv, hd,
+        ).expect("attention_forward");
+
+        assert_eq!(out_base.len(), (s * h) as usize);
+        assert!(out_base.iter().all(|v| v.is_finite()), "All outputs finite");
+
+        // With non-zero LoRA B → output should differ
+        let mut lora_q2 = LoraAdapter::new(4, h, q_dim as u32);
+        for b in &mut lora_q2.b { *b = 0.01; }
+        let out_lora = attention_forward(
+            &device, &hidden, &q_w, &k_w, &v_w, &o_w,
+            &lora_q2, &lora_v, 32.0, s, h, nh, nkv, hd,
+        ).expect("attention_forward lora");
+
+        let diff: f32 = out_base.iter().zip(out_lora.iter()).map(|(a, b)| (a - b).abs()).sum();
+        assert!(diff > 1e-6, "LoRA Q should change attention output, diff={diff}");
+
+        eprintln!("Attention forward: output_norm={:.4}, lora_diff={diff:.6}",
+            out_base.iter().map(|v| v * v).sum::<f32>().sqrt());
+    }
+}

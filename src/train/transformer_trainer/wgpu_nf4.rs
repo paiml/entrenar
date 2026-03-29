@@ -54,40 +54,37 @@ pub struct Nf4LayerWeights {
 impl Nf4LayerWeights {
     /// Dequantize gate projection to fp32 on GPU
     pub fn dequant_gate(&self, device: &GpuDevice) -> Result<Vec<f32>, String> {
-        let mut output = vec![0.0f32; self.gate_n as usize];
-        device.nf4_dequant(
-            &self.gate_packed,
-            &self.gate_scales,
-            &mut output,
-            self.gate_n,
-            self.block_size,
-        )?;
-        Ok(output)
+        self.dequant_any(&self.gate_packed, &self.gate_scales, self.gate_n, device)
     }
-
     /// Dequantize up projection to fp32 on GPU
     pub fn dequant_up(&self, device: &GpuDevice) -> Result<Vec<f32>, String> {
-        let mut output = vec![0.0f32; self.up_n as usize];
-        device.nf4_dequant(
-            &self.up_packed,
-            &self.up_scales,
-            &mut output,
-            self.up_n,
-            self.block_size,
-        )?;
-        Ok(output)
+        self.dequant_any(&self.up_packed, &self.up_scales, self.up_n, device)
     }
-
     /// Dequantize down projection to fp32 on GPU
     pub fn dequant_down(&self, device: &GpuDevice) -> Result<Vec<f32>, String> {
-        let mut output = vec![0.0f32; self.down_n as usize];
-        device.nf4_dequant(
-            &self.down_packed,
-            &self.down_scales,
-            &mut output,
-            self.down_n,
-            self.block_size,
-        )?;
+        self.dequant_any(&self.down_packed, &self.down_scales, self.down_n, device)
+    }
+
+    /// Dequantize Q projection to fp32 on GPU
+    pub fn dequant_q(&self, device: &GpuDevice) -> Result<Vec<f32>, String> {
+        self.dequant_any(&self.q_packed, &self.q_scales, self.q_n, device)
+    }
+    /// Dequantize K projection to fp32 on GPU
+    pub fn dequant_k(&self, device: &GpuDevice) -> Result<Vec<f32>, String> {
+        self.dequant_any(&self.k_packed, &self.k_scales, self.k_n, device)
+    }
+    /// Dequantize V projection to fp32 on GPU
+    pub fn dequant_v(&self, device: &GpuDevice) -> Result<Vec<f32>, String> {
+        self.dequant_any(&self.v_packed, &self.v_scales, self.v_n, device)
+    }
+    /// Dequantize O projection to fp32 on GPU
+    pub fn dequant_o(&self, device: &GpuDevice) -> Result<Vec<f32>, String> {
+        self.dequant_any(&self.o_packed, &self.o_scales, self.o_n, device)
+    }
+
+    fn dequant_any(&self, packed: &[u32], scales: &[f32], n: u32, device: &GpuDevice) -> Result<Vec<f32>, String> {
+        let mut output = vec![0.0f32; n as usize];
+        device.nf4_dequant(packed, scales, &mut output, n, self.block_size)?;
         Ok(output)
     }
 

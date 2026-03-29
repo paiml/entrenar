@@ -18,6 +18,8 @@ pub mod tensor_parallel;
 mod trainer;
 mod utils;
 #[cfg(feature = "gpu")]
+pub mod wgpu_attention;
+#[cfg(feature = "gpu")]
 pub mod wgpu_backward;
 #[cfg(feature = "gpu")]
 pub mod wgpu_checkpoint;

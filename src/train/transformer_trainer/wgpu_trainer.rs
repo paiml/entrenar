@@ -11,11 +11,7 @@ use crate::transformer::wgpu_block::WgpuForwardPass;
 #[cfg(feature = "gpu")]
 use trueno::backends::gpu::GpuDevice;
 
-/// WGPU-accelerated transformer trainer
-///
-/// Phase 2 of S18.15: end-to-end training on AMD/Intel/Apple GPUs.
-/// Forward pass uses `WgpuForwardPass`, backward uses trueno's WGSL shaders,
-/// attention backward falls back to CPU.
+/// WGPU-accelerated transformer trainer (S18.15)
 #[cfg(feature = "gpu")]
 pub struct WgpuTransformerTrainer {
     /// WGPU forward pass (existing)
@@ -66,6 +62,8 @@ pub struct WgpuModelState {
     pub intermediate_size: usize,
     /// Cached dequanted FFN weights per layer: (gate, up, down) fp32
     pub(crate) ffn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>>,
+    /// Cached dequanted attention weights per layer: (q, k, v, o) fp32
+    pub(crate) attn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)>>,
 }
 
 #[cfg(feature = "gpu")]
@@ -241,24 +239,29 @@ impl WgpuModelState {
             head_dim,
             intermediate_size,
             ffn_cache: vec![None; num_layers],
+            attn_cache: vec![None; num_layers],
         })
     }
 
-    /// Ensure all FFN weight caches are populated (dequant once, reuse forever)
-    ///
-    /// Base weights are frozen (NF4) — only LoRA adapters change during training.
-    /// Caching eliminates 108 GPU dequant ops per step (36 layers × 3 projections).
-    pub fn populate_ffn_cache(&mut self, device: &trueno::backends::gpu::GpuDevice) -> Result<(), String> {
+    /// Populate all weight caches (FFN + attention). Dequant once, reuse forever.
+    pub fn populate_weight_cache(&mut self, device: &trueno::backends::gpu::GpuDevice) -> Result<(), String> {
         for layer_idx in 0..self.num_layers {
+            let layer = &self.layers[layer_idx];
             if self.ffn_cache[layer_idx].is_none() {
-                let layer = &self.layers[layer_idx];
                 let gate = layer.dequant_gate(device)?;
                 let up = layer.dequant_up(device)?;
                 let down = layer.dequant_down(device)?;
-                if layer_idx % 6 == 0 || layer_idx == self.num_layers - 1 {
-                    eprintln!("  Cached layer {layer_idx} FFN weights");
-                }
                 self.ffn_cache[layer_idx] = Some((gate, up, down));
+            }
+            if self.attn_cache[layer_idx].is_none() {
+                let q = layer.dequant_q(device)?;
+                let k = layer.dequant_k(device)?;
+                let v = layer.dequant_v(device)?;
+                let o = layer.dequant_o(device)?;
+                self.attn_cache[layer_idx] = Some((q, k, v, o));
+            }
+            if layer_idx % 6 == 0 || layer_idx == self.num_layers - 1 {
+                eprintln!("  Cached layer {layer_idx} weights");
             }
         }
         Ok(())
@@ -467,24 +470,36 @@ impl WgpuTransformerTrainer {
         let v = model.vocab_size as u32;
         let n_layers = model.num_layers;
 
-        // --- Populate FFN weight cache (dequant once, reuse on subsequent steps) ---
-        model.populate_ffn_cache(&self.device)?;
+        // --- Populate weight cache (dequant once, reuse on subsequent steps) ---
+        model.populate_weight_cache(&self.device)?;
 
         // --- Forward through all layers (cache activations for backward) ---
         let mut hidden = token_hidden.to_vec();
         let mut layer_acts = Vec::with_capacity(n_layers);
 
-        for layer_idx in 0..n_layers {
-            // RMSNorm before FFN
+        // Inline RMSNorm helper
+        let rmsnorm = |buf: &mut [f32], s: usize, h: usize| {
             let eps = 1e-5f32;
-            for si in 0..s as usize {
-                let row = &hidden[si * h as usize..(si + 1) * h as usize];
-                let rms = (row.iter().map(|x| x * x).sum::<f32>() / h as f32 + eps).sqrt();
-                let inv_rms = 1.0 / rms;
-                for hi in 0..h as usize {
-                    hidden[si * h as usize + hi] *= inv_rms;
-                }
+            for si in 0..s {
+                let rms = (buf[si*h..(si+1)*h].iter().map(|x| x*x).sum::<f32>() / h as f32 + eps).sqrt();
+                for hi in 0..h { buf[si*h+hi] /= rms; }
             }
+        };
+
+        for layer_idx in 0..n_layers {
+            rmsnorm(&mut hidden, s as usize, h as usize);
+            // Attention forward (QKV + RoPE + GQA + output projection)
+            let (q_w, k_w, v_w, o_w) = model.attn_cache[layer_idx].as_ref()
+                .map(|(q, k, v, o)| (q.as_slice(), k.as_slice(), v.as_slice(), o.as_slice()))
+                .expect("attn cache");
+            let attn_out = super::wgpu_attention::attention_forward(
+                &self.device, &hidden, q_w, k_w, v_w, o_w,
+                &model.lora_q[layer_idx], &model.lora_v[layer_idx], self.lora_alpha,
+                s, h, model.num_heads as u32, model.num_kv_heads as u32, model.head_dim as u32,
+            )?;
+            for j in 0..(s * h) as usize { hidden[j] += attn_out[j]; }
+            rmsnorm(&mut hidden, s as usize, h as usize); // pre-FFN norm
+
             let hidden_input = hidden.clone(); // cache for backward
 
             let (gate_fp32, up_fp32, down_fp32) = model.ffn_cache[layer_idx].as_ref()
@@ -513,12 +528,9 @@ impl WgpuTransformerTrainer {
             });
         }
 
-        // --- LM head + loss (GPU GEMM) ---
-        // logits = hidden @ lm_head^T (gemm_backward_a computes A @ B^T)
+        // LM head forward + cross-entropy loss
         let mut logits = vec![0.0f32; (s * v) as usize];
         self.device.gemm_backward_a(&hidden, &model.lm_head, &mut logits, s, v, h)?;
-
-        // Cross-entropy loss
         let mut loss = 0.0f32;
         let mut grad_logits = vec![0.0f32; (s * v) as usize];
         for si in 0..s as usize {
@@ -538,18 +550,16 @@ impl WgpuTransformerTrainer {
         loss /= s as f32;
         for g in &mut grad_logits { *g /= s as f32; }
 
-        // --- LM head backward (GPU GEMM) ---
+        // LM head backward
         let mut grad_hidden = vec![0.0f32; (s * h) as usize];
         self.device.gemm_backward_a(
             &grad_logits, &model.lm_head, &mut grad_hidden, s, h, v,
         )?;
 
-        // --- LM head weight gradient + AdamW ---
         let mut grad_lm_head_t = vec![0.0f32; (h * v) as usize];
         self.device.gemm_backward_b(
             &hidden, &grad_logits, &mut grad_lm_head_t, s, h, v,
         )?;
-        // Transpose [h,v] → [v,h]
         let mut grad_lm = vec![0.0f32; (v * h) as usize];
         for hi in 0..h as usize {
             for vi in 0..v as usize {
@@ -560,7 +570,6 @@ impl WgpuTransformerTrainer {
         self.step += 1;
         let lm_gnorm: f32 = grad_hidden.iter().map(|g| g * g).sum::<f32>().sqrt();
 
-        // AdamW on lm_head
         let mut lm = std::mem::take(&mut model.lm_head);
         let mut lm_m = std::mem::take(&mut model.lm_head_m);
         let mut lm_v = std::mem::take(&mut model.lm_head_v);
@@ -572,7 +581,7 @@ impl WgpuTransformerTrainer {
         model.lm_head_m = lm_m;
         model.lm_head_v = lm_v;
 
-        // --- Backward through all FFN layers + LoRA AdamW ---
+        // Backward through all layers + LoRA AdamW
         let lora_gnorm = super::wgpu_backward::backward_through_layers(
             &self.device, &mut grad_hidden, &layer_acts, model,
             s, h, i, self.lr, self.beta1, self.beta2, self.eps,
@@ -833,24 +842,13 @@ impl WgpuTransformerTrainer {
             n,
         )?;
 
-        // Transpose grad_lm_head_t[hidden, vocab] → grad_lm_head[vocab, hidden]
         let mut grad_lm_head = vec![0.0f32; (n * k) as usize];
         for i in 0..k as usize {
-            for j in 0..n as usize {
-                grad_lm_head[j * k as usize + i] = grad_lm_head_t[i * n as usize + j];
-            }
+            for j in 0..n as usize { grad_lm_head[j * k as usize + i] = grad_lm_head_t[i * n as usize + j]; }
         }
-
-        // Gradient norm
         let grad_norm: f32 = grad_lm_head.iter().map(|g| g * g).sum::<f32>().sqrt();
-
-        // --- Optimize: AdamW step on lm_head weights (GPU) ---
         self.device.adamw_step(
-            lm_head_weight,
-            &grad_lm_head,
-            m_state,
-            v_state,
-            self.lr,
+            lm_head_weight, &grad_lm_head, m_state, v_state, self.lr,
             self.beta1,
             self.beta2,
             self.eps,

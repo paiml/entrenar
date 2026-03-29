@@ -202,6 +202,7 @@ mod tests {
             head_dim: 4,
             intermediate_size: i_size as usize,
             ffn_cache: vec![None; n_layers],
+            attn_cache: vec![None; n_layers],
         };
 
         // Create fake cached FFN weights
