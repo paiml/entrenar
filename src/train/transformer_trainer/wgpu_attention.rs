@@ -65,15 +65,13 @@ pub fn attention_forward(
     let nh = num_heads as usize;
     let nkv = num_kv_heads as usize;
 
-    // --- QKV projections (GPU GEMM) ---
+    // --- QKV projections (GPU matmul with pre-transposed weights) ---
     let mut q = vec![0.0f32; s * q_dim];
-    device.gemm_backward_a(hidden, q_weight, &mut q, seq_len, q_dim as u32, hidden_size)?;
-
+    device.matmul(hidden, q_weight, &mut q, s, h, q_dim)?;
     let mut k = vec![0.0f32; s * kv_dim];
-    device.gemm_backward_a(hidden, k_weight, &mut k, seq_len, kv_dim as u32, hidden_size)?;
-
+    device.matmul(hidden, k_weight, &mut k, s, h, kv_dim)?;
     let mut v = vec![0.0f32; s * kv_dim];
-    device.gemm_backward_a(hidden, v_weight, &mut v, seq_len, kv_dim as u32, hidden_size)?;
+    device.matmul(hidden, v_weight, &mut v, s, h, kv_dim)?;
 
     // --- LoRA contributions (CPU, small rank) ---
     let rank = lora_q.rank as usize;
@@ -216,9 +214,9 @@ pub fn attention_forward(
         }
     }
 
-    // --- Output projection (GPU GEMM): output = context @ O^T ---
+    // Output projection: context[s,q_dim] @ O[q_dim,h] → [s,h] (pre-transposed)
     let mut output = vec![0.0f32; s * h];
-    device.gemm_backward_a(&context, o_weight, &mut output, seq_len, hidden_size, q_dim as u32)?;
+    device.matmul(&context, o_weight, &mut output, s, q_dim, h)?;
 
     norm_guard(&mut output, hidden, 2.0);
     Ok(output)

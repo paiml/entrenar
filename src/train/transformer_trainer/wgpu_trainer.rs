@@ -11,6 +11,10 @@ use crate::transformer::wgpu_block::WgpuForwardPass;
 #[cfg(feature = "gpu")]
 use trueno::backends::gpu::GpuDevice;
 
+/// Transpose [rows, cols] → [cols, rows]. One-time cost during cache population.
+#[cfg(feature = "gpu")]
+fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> { let mut o = vec![0.0f32; rows*cols]; for r in 0..rows { for c in 0..cols { o[c*rows+r] = data[r*cols+c]; } } o }
+
 /// WGPU-accelerated transformer trainer (S18.15)
 #[cfg(feature = "gpu")]
 pub struct WgpuTransformerTrainer {
@@ -243,25 +247,27 @@ impl WgpuModelState {
         })
     }
 
-    /// Populate all weight caches (FFN + attention). Dequant once, reuse forever.
+    /// Populate weight caches (pre-transposed for standard matmul).
     pub fn populate_weight_cache(&mut self, device: &trueno::backends::gpu::GpuDevice) -> Result<(), String> {
-        for layer_idx in 0..self.num_layers {
-            let layer = &self.layers[layer_idx];
-            if self.ffn_cache[layer_idx].is_none() {
-                let gate = layer.dequant_gate(device)?;
-                let up = layer.dequant_up(device)?;
-                let down = layer.dequant_down(device)?;
-                self.ffn_cache[layer_idx] = Some((gate, up, down));
+        let (h, i) = (self.hidden_size, self.intermediate_size);
+        let (qd, kvd) = (self.num_heads * self.head_dim, self.num_kv_heads * self.head_dim);
+        for li in 0..self.num_layers {
+            let layer = &self.layers[li];
+            if self.ffn_cache[li].is_none() {
+                self.ffn_cache[li] = Some((
+                    transpose(&layer.dequant_gate(device)?, i, h),
+                    transpose(&layer.dequant_up(device)?, i, h),
+                    transpose(&layer.dequant_down(device)?, h, i),
+                ));
             }
-            if self.attn_cache[layer_idx].is_none() {
-                let q = layer.dequant_q(device)?;
-                let k = layer.dequant_k(device)?;
-                let v = layer.dequant_v(device)?;
-                let o = layer.dequant_o(device)?;
-                self.attn_cache[layer_idx] = Some((q, k, v, o));
-                if layer_idx % 6 == 0 || layer_idx == self.num_layers - 1 {
-                    eprintln!("  Cached layer {layer_idx} weights");
-                }
+            if self.attn_cache[li].is_none() {
+                self.attn_cache[li] = Some((
+                    transpose(&layer.dequant_q(device)?, qd, h),
+                    transpose(&layer.dequant_k(device)?, kvd, h),
+                    transpose(&layer.dequant_v(device)?, kvd, h),
+                    transpose(&layer.dequant_o(device)?, h, qd),
+                ));
+                if li % 12 == 0 || li == self.num_layers - 1 { eprintln!("  Cached layer {li}"); }
             }
         }
         Ok(())
@@ -485,7 +491,6 @@ impl WgpuTransformerTrainer {
 
         for layer_idx in 0..n_layers {
             rmsnorm(&mut hidden, s as usize, h as usize);
-            // Attention forward (QKV + RoPE + GQA + output projection)
             let (q_w, k_w, v_w, o_w) = model.attn_cache[layer_idx].as_ref()
                 .map(|(q, k, v, o)| (q.as_slice(), k.as_slice(), v.as_slice(), o.as_slice()))
                 .expect("attn cache");
@@ -504,19 +509,15 @@ impl WgpuTransformerTrainer {
                 .expect("cache populated above");
 
             let mut gate_out = vec![0.0f32; (s * i) as usize];
-            self.device.gemm_backward_a(&hidden, gate_fp32, &mut gate_out, s, i, h)?;
+            self.device.matmul(&hidden, gate_fp32, &mut gate_out, s as usize, h as usize, i as usize)?;
             let mut up_out = vec![0.0f32; (s * i) as usize];
-            self.device.gemm_backward_a(&hidden, up_fp32, &mut up_out, s, i, h)?;
+            self.device.matmul(&hidden, up_fp32, &mut up_out, s as usize, h as usize, i as usize)?;
 
-            let silu_gate: Vec<f32> = gate_out.iter().map(|&x| {
-                let sig = 1.0 / (1.0 + (-x).exp());
-                x * sig
-            }).collect();
-            let swiglu: Vec<f32> = silu_gate.iter().zip(up_out.iter())
-                .map(|(&sg, &u)| sg * u).collect();
+            let silu_gate: Vec<f32> = gate_out.iter().map(|&x| { let sig = 1.0 / (1.0 + (-x).exp()); x * sig }).collect();
+            let swiglu: Vec<f32> = silu_gate.iter().zip(up_out.iter()).map(|(&sg, &u)| sg * u).collect();
 
             let mut ffn_out = vec![0.0f32; (s * h) as usize];
-            self.device.gemm_backward_a(&swiglu, down_fp32, &mut ffn_out, s, h, i)?;
+            self.device.matmul(&swiglu, down_fp32, &mut ffn_out, s as usize, i as usize, h as usize)?;
 
             for j in 0..(s * h) as usize { hidden[j] += ffn_out[j]; }
 
@@ -525,7 +526,6 @@ impl WgpuTransformerTrainer {
             });
         }
 
-        // LM head forward + cross-entropy loss
         let mut logits = vec![0.0f32; (s * v) as usize];
         self.device.gemm_backward_a(&hidden, &model.lm_head, &mut logits, s, v, h)?;
         let mut loss = 0.0f32;
