@@ -259,9 +259,9 @@ impl WgpuModelState {
                 let v = layer.dequant_v(device)?;
                 let o = layer.dequant_o(device)?;
                 self.attn_cache[layer_idx] = Some((q, k, v, o));
-            }
-            if layer_idx % 6 == 0 || layer_idx == self.num_layers - 1 {
-                eprintln!("  Cached layer {layer_idx} weights");
+                if layer_idx % 6 == 0 || layer_idx == self.num_layers - 1 {
+                    eprintln!("  Cached layer {layer_idx} weights");
+                }
             }
         }
         Ok(())

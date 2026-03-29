@@ -8,6 +8,24 @@
 #[cfg(feature = "gpu")]
 use trueno::backends::gpu::GpuDevice;
 
+/// CPU AdamW step — avoids GPU dispatch overhead for small LoRA tensors
+/// LoRA A: rank×hidden = 16×2560 = 40K params → ~0.1ms on CPU vs ~50ms GPU dispatch
+#[cfg(feature = "gpu")]
+fn cpu_adamw(
+    params: &mut [f32], grad: &[f32], m: &mut [f32], v: &mut [f32],
+    lr: f32, beta1: f32, beta2: f32, eps: f32, wd: f32, step: u32,
+) {
+    let bc1 = 1.0 / (1.0 - beta1.powi(step as i32));
+    let bc2 = 1.0 / (1.0 - beta2.powi(step as i32));
+    for i in 0..params.len() {
+        m[i] = beta1 * m[i] + (1.0 - beta1) * grad[i];
+        v[i] = beta2 * v[i] + (1.0 - beta2) * grad[i] * grad[i];
+        let m_hat = m[i] * bc1;
+        let v_hat = v[i] * bc2;
+        params[i] -= lr * (m_hat / (v_hat.sqrt() + eps) + wd * params[i]);
+    }
+}
+
 /// Per-layer forward activations cached for backward pass
 #[cfg(feature = "gpu")]
 pub struct LayerActivations {
@@ -122,44 +140,10 @@ pub fn backward_through_layers(
 
             total_lora_gnorm += grad_a.iter().map(|g| g * g).sum::<f32>();
 
-            // AdamW on LoRA Q
-            let mut a_buf = std::mem::take(&mut model.lora_q[layer_idx].a);
-            let mut ma = std::mem::take(&mut model.lora_q[layer_idx].m_a);
-            let mut va = std::mem::take(&mut model.lora_q[layer_idx].v_a);
-            device.adamw_step(
-                &mut a_buf,
-                &grad_a,
-                &mut ma,
-                &mut va,
-                lr,
-                beta1,
-                beta2,
-                eps,
-                weight_decay,
-                step,
-            )?;
-            model.lora_q[layer_idx].a = a_buf;
-            model.lora_q[layer_idx].m_a = ma;
-            model.lora_q[layer_idx].v_a = va;
-
-            let mut b_buf = std::mem::take(&mut model.lora_q[layer_idx].b);
-            let mut mb = std::mem::take(&mut model.lora_q[layer_idx].m_b);
-            let mut vb = std::mem::take(&mut model.lora_q[layer_idx].v_b);
-            device.adamw_step(
-                &mut b_buf,
-                &grad_b,
-                &mut mb,
-                &mut vb,
-                lr,
-                beta1,
-                beta2,
-                eps,
-                weight_decay,
-                step,
-            )?;
-            model.lora_q[layer_idx].b = b_buf;
-            model.lora_q[layer_idx].m_b = mb;
-            model.lora_q[layer_idx].v_b = vb;
+            // CPU AdamW on LoRA Q (40K-65K params — CPU faster than GPU dispatch)
+            let lq = &mut model.lora_q[layer_idx];
+            cpu_adamw(&mut lq.a, &grad_a, &mut lq.m_a, &mut lq.v_a, lr, beta1, beta2, eps, weight_decay, step);
+            cpu_adamw(&mut lq.b, &grad_b, &mut lq.m_b, &mut lq.v_b, lr, beta1, beta2, eps, weight_decay, step);
         }
 
         // --- LoRA V backward + AdamW (same pattern) ---
@@ -171,43 +155,10 @@ pub fn backward_through_layers(
             let b_len = (lora_v.out_dim * v_rank) as usize;
             let grad_b = vec![0.001f32; b_len];
 
-            let mut a_buf = std::mem::take(&mut model.lora_v[layer_idx].a);
-            let mut ma = std::mem::take(&mut model.lora_v[layer_idx].m_a);
-            let mut va = std::mem::take(&mut model.lora_v[layer_idx].v_a);
-            device.adamw_step(
-                &mut a_buf,
-                &grad_a,
-                &mut ma,
-                &mut va,
-                lr,
-                beta1,
-                beta2,
-                eps,
-                weight_decay,
-                step,
-            )?;
-            model.lora_v[layer_idx].a = a_buf;
-            model.lora_v[layer_idx].m_a = ma;
-            model.lora_v[layer_idx].v_a = va;
-
-            let mut b_buf = std::mem::take(&mut model.lora_v[layer_idx].b);
-            let mut mb = std::mem::take(&mut model.lora_v[layer_idx].m_b);
-            let mut vb = std::mem::take(&mut model.lora_v[layer_idx].v_b);
-            device.adamw_step(
-                &mut b_buf,
-                &grad_b,
-                &mut mb,
-                &mut vb,
-                lr,
-                beta1,
-                beta2,
-                eps,
-                weight_decay,
-                step,
-            )?;
-            model.lora_v[layer_idx].b = b_buf;
-            model.lora_v[layer_idx].m_b = mb;
-            model.lora_v[layer_idx].v_b = vb;
+            // CPU AdamW on LoRA V
+            let lv = &mut model.lora_v[layer_idx];
+            cpu_adamw(&mut lv.a, &grad_a, &mut lv.m_a, &mut lv.v_a, lr, beta1, beta2, eps, weight_decay, step);
+            cpu_adamw(&mut lv.b, &grad_b, &mut lv.m_b, &mut lv.v_b, lr, beta1, beta2, eps, weight_decay, step);
         }
     }
 

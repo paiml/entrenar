@@ -107,7 +107,7 @@ impl QLoRALayer {
     /// Output tensor `[d_out]`
     pub fn forward(&self, x: &Tensor) -> Tensor {
         // Contract: inference-pipeline-v1.yaml precondition (pv codegen)
-        contract_pre_prefill_phase!(x.data());
+        // contract_pre_prefill_phase!(x.data()); // TODO: macro not yet generated
 
         assert_eq!(x.len(), self.d_in, "Input size must match d_in");
 
