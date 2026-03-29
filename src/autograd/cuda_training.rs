@@ -30,6 +30,8 @@ use std::sync::Arc;
 use trueno_gpu::driver::{cuda_available, CudaContext, CudaStream, GpuBuffer};
 
 use super::cuda_tensor::{CudaTensorError, Result};
+#[cfg(feature = "cuda")]
+use provable_contracts_macros::requires;
 
 #[cfg(feature = "cuda")]
 use super::cuda_backward::{gemm_backward_a, gemm_backward_b, init_kernel_cache};
@@ -136,8 +138,8 @@ impl CudaTrainer {
     /// Given C = A @ B, computes:
     /// - grad_A = grad_C @ B^T
     /// - grad_B = A^T @ grad_C
-    // Contract: backward-pass-v1 / matmul_backward (verified at GPU level, not via proc macro —
-    // preconditions reference CPU slice APIs incompatible with GpuBuffer<f32>)
+    // Contract: backward-pass-v1 / matmul_backward
+    #[requires(m > 0 && k > 0 && n > 0)]
     pub fn matmul_backward(
         &self,
         a: &GpuBuffer<f32>,

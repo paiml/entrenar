@@ -18,13 +18,15 @@ use trueno_gpu::kernels::Kernel;
 use super::super::cuda_tensor::{CudaTensorError, Result};
 #[cfg(feature = "cuda")]
 use super::cache::KERNEL_CACHE;
+#[cfg(feature = "cuda")]
+use provable_contracts_macros::requires;
 
 /// Softmax backward pass on GPU
 ///
 /// Computes: grad_input = softmax_output * (grad_output - sum(grad_output * softmax_output))
 #[cfg(feature = "cuda")]
-// Contract: backward-pass-v1 / softmax_backward (verified at GPU level, not via proc macro —
-// preconditions reference CPU slice APIs incompatible with GpuBuffer<f32>)
+// Contract: backward-pass-v1 / softmax_backward
+#[requires(batch_size > 0 && seq_len > 0)]
 pub fn softmax_backward(
     softmax_output: &GpuBuffer<f32>,
     grad_output: &GpuBuffer<f32>,
