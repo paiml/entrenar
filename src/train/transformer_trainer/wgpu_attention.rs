@@ -8,6 +8,30 @@
 #[cfg(feature = "gpu")]
 use trueno::backends::gpu::GpuDevice;
 
+/// Per-head RMS normalization (QK-norm for Qwen3)
+#[cfg(feature = "gpu")]
+fn head_rms_norm(buf: &mut [f32], seq_len: usize, n_heads: usize, total_dim: usize, head_dim: usize) {
+    let eps = 1e-6f32;
+    for si in 0..seq_len {
+        for head in 0..n_heads {
+            let off = si * total_dim + head * head_dim;
+            let rms = (buf[off..off + head_dim].iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt();
+            for d in 0..head_dim { buf[off + d] /= rms; }
+        }
+    }
+}
+
+/// Scale buffer to match target norm (prevents residual explosion)
+#[cfg(feature = "gpu")]
+fn norm_guard(output: &mut [f32], reference: &[f32], max_ratio: f32) {
+    let out_n = output.iter().map(|v| v * v).sum::<f32>().sqrt();
+    let ref_n = reference.iter().map(|v| v * v).sum::<f32>().sqrt();
+    if out_n > ref_n * max_ratio && ref_n > 1e-6 {
+        let scale = ref_n / out_n;
+        for v in output { *v *= scale; }
+    }
+}
+
 /// Attention forward pass for one layer
 ///
 /// Returns output [seq_len, hidden_size] to be added as residual.
@@ -100,7 +124,11 @@ pub fn attention_forward(
         }
     }
 
-    // --- RoPE (simplified: sin/cos positional encoding) ---
+    // QK-norm: per-head RMS normalization (prevents attention score explosion)
+    head_rms_norm(&mut q, s, nh, q_dim, hd);
+    head_rms_norm(&mut k, s, nkv, kv_dim, hd);
+
+    // --- RoPE (sin/cos positional encoding) ---
     for si in 0..s {
         for head in 0..nh {
             for d in (0..hd).step_by(2) {
@@ -192,6 +220,7 @@ pub fn attention_forward(
     let mut output = vec![0.0f32; s * h];
     device.gemm_backward_a(&context, o_weight, &mut output, seq_len, hidden_size, q_dim as u32)?;
 
+    norm_guard(&mut output, hidden, 2.0);
     Ok(output)
 }
 
