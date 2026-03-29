@@ -29,16 +29,13 @@ fn run() -> Result<(), String> {
 
     let args: Vec<String> = std::env::args().collect();
 
-    let model_dir = get_arg(&args, "--model")
-        .unwrap_or_else(|| "/home/noah/src/models/qwen3-4b".to_string());
+    let model_dir =
+        get_arg(&args, "--model").unwrap_or_else(|| "/home/noah/src/models/qwen3-4b".to_string());
     let data_path = get_arg(&args, "--data")
         .unwrap_or_else(|| "/home/noah/src/bashrs/training/conversations_v4.jsonl".to_string());
-    let steps: usize = get_arg(&args, "--steps")
-        .and_then(|s| s.parse().ok()).unwrap_or(10);
-    let lr: f32 = get_arg(&args, "--lr")
-        .and_then(|s| s.parse().ok()).unwrap_or(5e-4);
-    let seq_len: usize = get_arg(&args, "--seq-len")
-        .and_then(|s| s.parse().ok()).unwrap_or(64);
+    let steps: usize = get_arg(&args, "--steps").and_then(|s| s.parse().ok()).unwrap_or(10);
+    let lr: f32 = get_arg(&args, "--lr").and_then(|s| s.parse().ok()).unwrap_or(1e-4);
+    let seq_len: usize = get_arg(&args, "--seq-len").and_then(|s| s.parse().ok()).unwrap_or(64);
 
     let config = WgpuTrainConfig {
         model_dir: model_dir.into(),

@@ -470,13 +470,10 @@ impl WgpuTransformerTrainer {
         let v = model.vocab_size as u32;
         let n_layers = model.num_layers;
 
-        // --- Populate weight cache (dequant once, reuse on subsequent steps) ---
         model.populate_weight_cache(&self.device)?;
 
-        // --- Forward through all layers (cache activations for backward) ---
         let mut hidden = token_hidden.to_vec();
         let mut layer_acts = Vec::with_capacity(n_layers);
-
         // Inline RMSNorm helper
         let rmsnorm = |buf: &mut [f32], s: usize, h: usize| {
             let eps = 1e-5f32;
@@ -568,7 +565,10 @@ impl WgpuTransformerTrainer {
         }
 
         self.step += 1;
-        let lm_gnorm: f32 = grad_hidden.iter().map(|g| g * g).sum::<f32>().sqrt();
+        // Gradient clipping (max_norm=1.0)
+        let clip = |g: &mut [f32]| { let n: f32 = g.iter().map(|x| x*x).sum::<f32>().sqrt(); if n > 1.0 { let s = 1.0/n; for v in g.iter_mut() { *v *= s; } } n };
+        let lm_gnorm = clip(&mut grad_lm);
+        clip(&mut grad_hidden);
 
         let mut lm = std::mem::take(&mut model.lm_head);
         let mut lm_m = std::mem::take(&mut model.lm_head_m);
