@@ -11,10 +11,8 @@
 macro_rules! contract_pre_absolute_position_add {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract absolute_position_add: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract absolute_position_add: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -26,10 +24,8 @@ macro_rules! contract_pre_absolute_position_add {
 macro_rules! contract_pre_gelu {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gelu: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gelu: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -38,10 +34,8 @@ macro_rules! contract_pre_gelu {
 macro_rules! contract_pre_relu {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract relu: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract relu: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -50,10 +44,8 @@ macro_rules! contract_pre_relu {
 macro_rules! contract_pre_silu {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract silu: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract silu: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -65,10 +57,8 @@ macro_rules! contract_pre_silu {
 macro_rules! contract_pre_entropy_score {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract entropy_score: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract entropy_score: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -77,10 +67,8 @@ macro_rules! contract_pre_entropy_score {
 macro_rules! contract_pre_margin_score {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract margin_score: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract margin_score: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -89,10 +77,8 @@ macro_rules! contract_pre_margin_score {
 macro_rules! contract_pre_qbc_score {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract qbc_score: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract qbc_score: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -101,10 +87,8 @@ macro_rules! contract_pre_qbc_score {
 macro_rules! contract_pre_uncertainty_score {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract uncertainty_score: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract uncertainty_score: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -116,10 +100,8 @@ macro_rules! contract_pre_uncertainty_score {
 macro_rules! contract_pre_adam_moments {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract adam_moments: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract adam_moments: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -128,10 +110,8 @@ macro_rules! contract_pre_adam_moments {
 macro_rules! contract_pre_adam_variance {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract adam_variance: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract adam_variance: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -140,10 +120,8 @@ macro_rules! contract_pre_adam_variance {
 macro_rules! contract_pre_bias_correction {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bias_correction: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bias_correction: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -152,10 +130,8 @@ macro_rules! contract_pre_bias_correction {
 macro_rules! contract_pre_weight_update {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract weight_update: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract weight_update: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -167,10 +143,8 @@ macro_rules! contract_pre_weight_update {
 macro_rules! contract_pre_alibi_bias {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract alibi_bias: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract alibi_bias: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -179,10 +153,21 @@ macro_rules! contract_pre_alibi_bias {
 macro_rules! contract_pre_alibi_slopes {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract alibi_slopes: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract alibi_slopes: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/apr-checkpoint-v1.yaml — DO NOT EDIT
+// Contract: apr-checkpoint-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -194,10 +179,8 @@ macro_rules! contract_pre_alibi_slopes {
 macro_rules! contract_pre_detect_regression {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract detect_regression: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract detect_regression: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -206,10 +189,8 @@ macro_rules! contract_pre_detect_regression {
 macro_rules! contract_pre_format_report {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract format_report: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract format_report: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -218,10 +199,8 @@ macro_rules! contract_pre_format_report {
 macro_rules! contract_pre_parse_playbook {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract parse_playbook: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract parse_playbook: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -230,10 +209,8 @@ macro_rules! contract_pre_parse_playbook {
 macro_rules! contract_pre_serialize_roundtrip {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract serialize_roundtrip: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract serialize_roundtrip: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -242,10 +219,8 @@ macro_rules! contract_pre_serialize_roundtrip {
 macro_rules! contract_pre_validate_schema {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract validate_schema: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract validate_schema: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -257,10 +232,8 @@ macro_rules! contract_pre_validate_schema {
 macro_rules! contract_pre_arch_constraint_lookup {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract arch_constraint_lookup: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract arch_constraint_lookup: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -273,7 +246,7 @@ macro_rules! contract_pre_constraint_matrix_exhaustiveness {
     ($input:expr) => {{
         let _contract_input = &$input;
         debug_assert!(!_contract_input.is_empty(),
-            "Contract constraint_matrix_exhaustiveness: precondition violated — input must not be empty");
+            "Contract constraint_matrix_exhaustiveness: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -282,10 +255,8 @@ macro_rules! contract_pre_constraint_matrix_exhaustiveness {
 macro_rules! contract_pre_role_mapping {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract role_mapping: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract role_mapping: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -294,10 +265,8 @@ macro_rules! contract_pre_role_mapping {
 macro_rules! contract_pre_weight_completeness {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract weight_completeness: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract weight_completeness: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -309,10 +278,8 @@ macro_rules! contract_pre_weight_completeness {
 macro_rules! contract_pre_ar_forecast {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ar_forecast: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ar_forecast: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -321,10 +288,8 @@ macro_rules! contract_pre_ar_forecast {
 macro_rules! contract_pre_differencing {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract differencing: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract differencing: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -333,10 +298,8 @@ macro_rules! contract_pre_differencing {
 macro_rules! contract_pre_forecast_finite {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract forecast_finite: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract forecast_finite: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -345,10 +308,21 @@ macro_rules! contract_pre_forecast_finite {
 macro_rules! contract_pre_ma_filter {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ma_filter: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ma_filter: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/attention-head-extraction-v1.yaml — DO NOT EDIT
+// Contract: attention-head-extraction-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -356,14 +330,12 @@ macro_rules! contract_pre_ma_filter {
 // Contract: attention-kernel-v1
 
 /// Preconditions for equation `attention`.
-/// Call at function entry: `contract_pre_attention!(input_expr)`
+/// Domain-specific. Call: `contract_pre_attention!(slice_expr)`
 macro_rules! contract_pre_attention {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract attention: precondition violated — input must not be empty"
-        );
+        let query = &$input;
+        debug_assert!(query.len() > 0,
+            "Contract attention: precondition violated — query.len() > 0");
     }};
 }
 
@@ -372,10 +344,17 @@ macro_rules! contract_pre_attention {
 macro_rules! contract_post_attention {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(
-            _contract_result.iter().all(|v| v.is_finite()),
-            "Contract attention: postcondition violated — result.iter().all(|v| v.is_finite())"
-        );
+        debug_assert!(_contract_result.iter().all(|v| v.is_finite()), "Contract attention: postcondition violated — result.iter().all(|v| v.is_finite())");
+    }};
+}
+
+/// Combined pre+post contract for equation `attention`.
+macro_rules! contract_attention {
+    ($input:expr, $body:expr) => {{
+        contract_pre_attention!($input);
+        let _contract_result = $body;
+        contract_post_attention!(_contract_result);
+        _contract_result
     }};
 }
 
@@ -387,10 +366,8 @@ macro_rules! contract_post_attention {
 macro_rules! contract_pre_attention_entropy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract attention_entropy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract attention_entropy: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -399,10 +376,8 @@ macro_rules! contract_pre_attention_entropy {
 macro_rules! contract_pre_numerical_stability {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract numerical_stability: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract numerical_stability: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -411,10 +386,8 @@ macro_rules! contract_pre_numerical_stability {
 macro_rules! contract_pre_scaled_dot_product {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract scaled_dot_product: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract scaled_dot_product: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -423,10 +396,8 @@ macro_rules! contract_pre_scaled_dot_product {
 macro_rules! contract_pre_score_bound_with_qknorm {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract score_bound_with_qknorm: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract score_bound_with_qknorm: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -435,10 +406,8 @@ macro_rules! contract_pre_score_bound_with_qknorm {
 macro_rules! contract_pre_softmax_saturation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract softmax_saturation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract softmax_saturation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -447,10 +416,8 @@ macro_rules! contract_pre_softmax_saturation {
 macro_rules! contract_pre_variance_preservation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract variance_preservation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract variance_preservation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -462,10 +429,8 @@ macro_rules! contract_pre_variance_preservation {
 macro_rules! contract_pre_dot_product {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dot_product: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dot_product: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -474,10 +439,8 @@ macro_rules! contract_pre_dot_product {
 macro_rules! contract_pre_fma_accumulation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract fma_accumulation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract fma_accumulation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -489,10 +452,8 @@ macro_rules! contract_pre_fma_accumulation {
 macro_rules! contract_pre_garbage_oracle {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract garbage_oracle: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract garbage_oracle: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -501,10 +462,8 @@ macro_rules! contract_pre_garbage_oracle {
 macro_rules! contract_pre_gpu_threshold {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gpu_threshold: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gpu_threshold: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -513,10 +472,8 @@ macro_rules! contract_pre_gpu_threshold {
 macro_rules! contract_pre_qk_norm_score_bound {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract qk_norm_score_bound: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract qk_norm_score_bound: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -525,10 +482,41 @@ macro_rules! contract_pre_qk_norm_score_bound {
 macro_rules! contract_pre_simd_only_threshold {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract simd_only_threshold: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract simd_only_threshold: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/batch-training-v1.yaml — DO NOT EDIT
+// Contract: batch-training-v1
+
+/// Preconditions for equation `batch_loss`.
+/// Call at function entry: `contract_pre_batch_loss!(input_expr)`
+macro_rules! contract_pre_batch_loss {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract batch_loss: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `gradient_accumulation`.
+/// Call at function entry: `contract_pre_gradient_accumulation!(input_expr)`
+macro_rules! contract_pre_gradient_accumulation {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gradient_accumulation: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `gradient_clipping`.
+/// Call at function entry: `contract_pre_gradient_clipping!(input_expr)`
+macro_rules! contract_pre_gradient_clipping {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gradient_clipping: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -540,10 +528,8 @@ macro_rules! contract_pre_simd_only_threshold {
 macro_rules! contract_pre_batched_beam_projection {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract batched_beam_projection: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract batched_beam_projection: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -552,10 +538,8 @@ macro_rules! contract_pre_batched_beam_projection {
 macro_rules! contract_pre_beam_selection {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract beam_selection: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract beam_selection: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -564,10 +548,8 @@ macro_rules! contract_pre_beam_selection {
 macro_rules! contract_pre_sequential_beam_projection {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract sequential_beam_projection: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract sequential_beam_projection: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -576,10 +558,8 @@ macro_rules! contract_pre_sequential_beam_projection {
 macro_rules! contract_pre_termination {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract termination: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract termination: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -591,10 +571,8 @@ macro_rules! contract_pre_termination {
 macro_rules! contract_pre_batchnorm_eval {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract batchnorm_eval: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract batchnorm_eval: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -603,10 +581,8 @@ macro_rules! contract_pre_batchnorm_eval {
 macro_rules! contract_pre_batchnorm_train {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract batchnorm_train: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract batchnorm_train: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -615,10 +591,8 @@ macro_rules! contract_pre_batchnorm_train {
 macro_rules! contract_pre_running_stats {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract running_stats: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract running_stats: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -630,10 +604,8 @@ macro_rules! contract_pre_running_stats {
 macro_rules! contract_pre_blr_predict {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract blr_predict: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract blr_predict: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -642,10 +614,8 @@ macro_rules! contract_pre_blr_predict {
 macro_rules! contract_pre_conjugate_update {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract conjugate_update: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract conjugate_update: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -654,10 +624,8 @@ macro_rules! contract_pre_conjugate_update {
 macro_rules! contract_pre_posterior_predictive {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract posterior_predictive: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract posterior_predictive: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -666,10 +634,8 @@ macro_rules! contract_pre_posterior_predictive {
 macro_rules! contract_pre_posterior_valid {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract posterior_valid: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract posterior_valid: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -681,10 +647,8 @@ macro_rules! contract_pre_posterior_valid {
 macro_rules! contract_pre_bias_add {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bias_add: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bias_add: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -696,10 +660,41 @@ macro_rules! contract_pre_bias_add {
 macro_rules! contract_pre_bidirectional_attention {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bidirectional_attention: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bidirectional_attention: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/blake3-state-v1.yaml — DO NOT EDIT
+// Contract: blake3-state-v1
+
+/// Preconditions for equation `composite_hash`.
+/// Call at function entry: `contract_pre_composite_hash!(input_expr)`
+macro_rules! contract_pre_composite_hash {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract composite_hash: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `hash_file`.
+/// Call at function entry: `contract_pre_hash_file!(input_expr)`
+macro_rules! contract_pre_hash_file {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hash_file: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `hash_string`.
+/// Call at function entry: `contract_pre_hash_string!(input_expr)`
+macro_rules! contract_pre_hash_string {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hash_string: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -711,10 +706,8 @@ macro_rules! contract_pre_bidirectional_attention {
 macro_rules! contract_pre_decode {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract decode: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract decode: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -723,10 +716,8 @@ macro_rules! contract_pre_decode {
 macro_rules! contract_pre_encode {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract encode: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract encode: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -735,10 +726,8 @@ macro_rules! contract_pre_encode {
 macro_rules! contract_pre_merge_rule {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract merge_rule: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract merge_rule: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -750,10 +739,8 @@ macro_rules! contract_pre_merge_rule {
 macro_rules! contract_pre_builder_pattern {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract builder_pattern: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract builder_pattern: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -765,10 +752,8 @@ macro_rules! contract_pre_builder_pattern {
 macro_rules! contract_pre_expected_calibration_error {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract expected_calibration_error: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract expected_calibration_error: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -777,10 +762,8 @@ macro_rules! contract_pre_expected_calibration_error {
 macro_rules! contract_pre_isotonic_regression {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract isotonic_regression: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract isotonic_regression: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -789,10 +772,8 @@ macro_rules! contract_pre_isotonic_regression {
 macro_rules! contract_pre_maximum_calibration_error {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract maximum_calibration_error: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract maximum_calibration_error: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -801,10 +782,8 @@ macro_rules! contract_pre_maximum_calibration_error {
 macro_rules! contract_pre_platt_scaling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract platt_scaling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract platt_scaling: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -813,10 +792,8 @@ macro_rules! contract_pre_platt_scaling {
 macro_rules! contract_pre_reliability_diagram {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract reliability_diagram: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract reliability_diagram: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -828,10 +805,8 @@ macro_rules! contract_pre_reliability_diagram {
 macro_rules! contract_pre_classifier_weight_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract classifier_weight_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract classifier_weight_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -840,10 +815,8 @@ macro_rules! contract_pre_classifier_weight_shape {
 macro_rules! contract_pre_label_bounds {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract label_bounds: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract label_bounds: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -852,10 +825,8 @@ macro_rules! contract_pre_label_bounds {
 macro_rules! contract_pre_logit_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract logit_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract logit_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -864,10 +835,8 @@ macro_rules! contract_pre_logit_shape {
 macro_rules! contract_pre_softmax_sum {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract softmax_sum: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract softmax_sum: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -879,10 +848,8 @@ macro_rules! contract_pre_softmax_sum {
 macro_rules! contract_pre_embedding_extraction {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract embedding_extraction: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract embedding_extraction: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -891,10 +858,8 @@ macro_rules! contract_pre_embedding_extraction {
 macro_rules! contract_pre_evaluation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract evaluation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract evaluation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -903,10 +868,8 @@ macro_rules! contract_pre_evaluation {
 macro_rules! contract_pre_linear_probe {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_probe: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_probe: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -918,10 +881,8 @@ macro_rules! contract_pre_linear_probe {
 macro_rules! contract_pre_covariance_update {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract covariance_update: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract covariance_update: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -930,10 +891,8 @@ macro_rules! contract_pre_covariance_update {
 macro_rules! contract_pre_mean_update {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mean_update: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mean_update: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -942,10 +901,8 @@ macro_rules! contract_pre_mean_update {
 macro_rules! contract_pre_sample {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract sample: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract sample: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -957,10 +914,64 @@ macro_rules! contract_pre_sample {
 macro_rules! contract_pre_tokenizer_adequacy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract tokenizer_adequacy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract tokenizer_adequacy: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/codegen-dispatch-v1.yaml — DO NOT EDIT
+// Contract: codegen-dispatch-v1
+
+/// Preconditions for equation `apply_script`.
+/// Call at function entry: `contract_pre_apply_script!(input_expr)`
+macro_rules! contract_pre_apply_script {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract apply_script: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `check_script`.
+/// Call at function entry: `contract_pre_check_script!(input_expr)`
+macro_rules! contract_pre_check_script {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract check_script: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `state_query_script`.
+/// Call at function entry: `contract_pre_state_query_script!(input_expr)`
+macro_rules! contract_pre_state_query_script {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract state_query_script: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/comply-check-v1.yaml — DO NOT EDIT
+// Contract: comply-check-v1
+
+/// Preconditions for equation `aggregate_score`.
+/// Call at function entry: `contract_pre_aggregate_score!(input_expr)`
+macro_rules! contract_pre_aggregate_score {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract aggregate_score: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `run_checks`.
+/// Call at function entry: `contract_pre_run_checks!(input_expr)`
+macro_rules! contract_pre_run_checks {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract run_checks: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -972,10 +983,31 @@ macro_rules! contract_pre_tokenizer_adequacy {
 macro_rules! contract_pre_configuration {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract configuration: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract configuration: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/context-generation-v1.yaml — DO NOT EDIT
+// Contract: context-generation-v1
+
+/// Preconditions for equation `generate_context`.
+/// Call at function entry: `contract_pre_generate_context!(input_expr)`
+macro_rules! contract_pre_generate_context {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract generate_context: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `index_persistence`.
+/// Call at function entry: `contract_pre_index_persistence!(input_expr)`
+macro_rules! contract_pre_index_persistence {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract index_persistence: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -987,10 +1019,8 @@ macro_rules! contract_pre_configuration {
 macro_rules! contract_pre_chunked_prefill {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract chunked_prefill: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract chunked_prefill: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -999,10 +1029,8 @@ macro_rules! contract_pre_chunked_prefill {
 macro_rules! contract_pre_correctness_under_batching {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract correctness_under_batching: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract correctness_under_batching: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1011,10 +1039,8 @@ macro_rules! contract_pre_correctness_under_batching {
 macro_rules! contract_pre_decode_degradation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract decode_degradation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract decode_degradation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1023,10 +1049,8 @@ macro_rules! contract_pre_decode_degradation {
 macro_rules! contract_pre_request_state {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract request_state: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract request_state: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1035,10 +1059,8 @@ macro_rules! contract_pre_request_state {
 macro_rules! contract_pre_scheduling_fairness {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract scheduling_fairness: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract scheduling_fairness: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1047,10 +1069,8 @@ macro_rules! contract_pre_scheduling_fairness {
 macro_rules! contract_pre_throughput_scaling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract throughput_scaling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract throughput_scaling: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1059,10 +1079,8 @@ macro_rules! contract_pre_throughput_scaling {
 macro_rules! contract_pre_token_budget {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract token_budget: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract token_budget: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1074,10 +1092,8 @@ macro_rules! contract_pre_token_budget {
 macro_rules! contract_pre_conv1d {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract conv1d: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract conv1d: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1089,10 +1105,8 @@ macro_rules! contract_pre_conv1d {
 macro_rules! contract_pre_chatml_format {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract chatml_format: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract chatml_format: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1101,10 +1115,8 @@ macro_rules! contract_pre_chatml_format {
 macro_rules! contract_pre_conversation_types {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract conversation_types: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract conversation_types: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1113,10 +1125,8 @@ macro_rules! contract_pre_conversation_types {
 macro_rules! contract_pre_quality_gate {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract quality_gate: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract quality_gate: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1128,10 +1138,8 @@ macro_rules! contract_pre_quality_gate {
 macro_rules! contract_pre_current_path {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract current_path: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract current_path: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1140,10 +1148,8 @@ macro_rules! contract_pre_current_path {
 macro_rules! contract_pre_speedup_bound {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract speedup_bound: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract speedup_bound: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1152,10 +1158,8 @@ macro_rules! contract_pre_speedup_bound {
 macro_rules! contract_pre_target_path {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract target_path: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract target_path: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1167,10 +1171,8 @@ macro_rules! contract_pre_target_path {
 macro_rules! contract_pre_l1_tiling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract l1_tiling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract l1_tiling: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1179,10 +1181,8 @@ macro_rules! contract_pre_l1_tiling {
 macro_rules! contract_pre_rayon_overhead {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rayon_overhead: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract rayon_overhead: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1190,14 +1190,14 @@ macro_rules! contract_pre_rayon_overhead {
 // Contract: cross-entropy-kernel-v1
 
 /// Preconditions for equation `cross_entropy`.
-/// Call at function entry: `contract_pre_cross_entropy!(input_expr)`
+/// Domain-specific. Call: `contract_pre_cross_entropy!(slice_expr)`
 macro_rules! contract_pre_cross_entropy {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract cross_entropy: precondition violated — input must not be empty"
-        );
+        let logits = &$input;
+        debug_assert!(logits.len() > 0,
+            "Contract cross_entropy: precondition violated — logits.len() > 0");
+        debug_assert!(logits.iter().all(|v| v.is_finite()),
+            "Contract cross_entropy: precondition violated — logits.iter().all(|v| v.is_finite())");
     }};
 }
 
@@ -1206,14 +1206,18 @@ macro_rules! contract_pre_cross_entropy {
 macro_rules! contract_post_cross_entropy {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(
-            _contract_result.is_finite(),
-            "Contract cross_entropy: postcondition violated — result.is_finite()"
-        );
-        debug_assert!(
-            _contract_result >= 0.0,
-            "Contract cross_entropy: postcondition violated — result >= 0.0"
-        );
+        debug_assert!(_contract_result.is_finite(), "Contract cross_entropy: postcondition violated — result.is_finite()");
+        debug_assert!(_contract_result >= 0.0, "Contract cross_entropy: postcondition violated — result >= 0.0");
+    }};
+}
+
+/// Combined pre+post contract for equation `cross_entropy`.
+macro_rules! contract_cross_entropy {
+    ($input:expr, $body:expr) => {{
+        contract_pre_cross_entropy!($input);
+        let _contract_result = $body;
+        contract_post_cross_entropy!(_contract_result);
+        _contract_result
     }};
 }
 
@@ -1222,10 +1226,64 @@ macro_rules! contract_post_cross_entropy {
 macro_rules! contract_pre_log_softmax {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract log_softmax: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract log_softmax: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/cuda-classify-training-v1.yaml — DO NOT EDIT
+// Contract: cuda-classify-training-v1
+
+/// Preconditions for equation `device_dispatch`.
+/// Call at function entry: `contract_pre_device_dispatch!(input_expr)`
+macro_rules! contract_pre_device_dispatch {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract device_dispatch: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `gpu_forward`.
+/// Call at function entry: `contract_pre_gpu_forward!(input_expr)`
+macro_rules! contract_pre_gpu_forward {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gpu_forward: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `weight_roundtrip`.
+/// Call at function entry: `contract_pre_weight_roundtrip!(input_expr)`
+macro_rules! contract_pre_weight_roundtrip {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract weight_roundtrip: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/dag-ordering-v1.yaml — DO NOT EDIT
+// Contract: dag-ordering-v1
+
+/// Preconditions for equation `kahn_sort`.
+/// Call at function entry: `contract_pre_kahn_sort!(input_expr)`
+macro_rules! contract_pre_kahn_sort {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract kahn_sort: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `topological_sort`.
+/// Call at function entry: `contract_pre_topological_sort!(input_expr)`
+macro_rules! contract_pre_topological_sort {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract topological_sort: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1237,10 +1295,8 @@ macro_rules! contract_pre_log_softmax {
 macro_rules! contract_pre_gini_impurity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gini_impurity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gini_impurity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1249,10 +1305,8 @@ macro_rules! contract_pre_gini_impurity {
 macro_rules! contract_pre_gini_split {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gini_split: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gini_split: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1261,10 +1315,8 @@ macro_rules! contract_pre_gini_split {
 macro_rules! contract_pre_mse_split {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mse_split: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mse_split: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1273,10 +1325,8 @@ macro_rules! contract_pre_mse_split {
 macro_rules! contract_pre_prediction {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract prediction: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract prediction: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1288,10 +1338,61 @@ macro_rules! contract_pre_prediction {
 macro_rules! contract_pre_display_format {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract display_format: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract display_format: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/distributed-training-v1.yaml — DO NOT EDIT
+// Contract: distributed-training-v1
+
+/// Preconditions for equation `gradient_allreduce`.
+/// Call at function entry: `contract_pre_gradient_allreduce!(input_expr)`
+macro_rules! contract_pre_gradient_allreduce {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gradient_allreduce: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `lora_gradient_size`.
+/// Call at function entry: `contract_pre_lora_gradient_size!(input_expr)`
+macro_rules! contract_pre_lora_gradient_size {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract lora_gradient_size: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `sharding`.
+/// Call at function entry: `contract_pre_sharding!(input_expr)`
+macro_rules! contract_pre_sharding {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract sharding: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `swiglu_ffn`.
+/// Call at function entry: `contract_pre_swiglu_ffn!(input_expr)`
+macro_rules! contract_pre_swiglu_ffn {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract swiglu_ffn: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `weighted_loss`.
+/// Call at function entry: `contract_pre_weighted_loss!(input_expr)`
+macro_rules! contract_pre_weighted_loss {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract weighted_loss: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1303,10 +1404,8 @@ macro_rules! contract_pre_display_format {
 macro_rules! contract_pre_dpo_loss {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dpo_loss: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dpo_loss: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1315,10 +1414,8 @@ macro_rules! contract_pre_dpo_loss {
 macro_rules! contract_pre_implicit_reward {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract implicit_reward: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract implicit_reward: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1327,10 +1424,8 @@ macro_rules! contract_pre_implicit_reward {
 macro_rules! contract_pre_log_ratio {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract log_ratio: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract log_ratio: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1342,10 +1437,8 @@ macro_rules! contract_pre_log_ratio {
 macro_rules! contract_pre_classify_drift {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract classify_drift: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract classify_drift: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1354,10 +1447,8 @@ macro_rules! contract_pre_classify_drift {
 macro_rules! contract_pre_min_samples_guard {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract min_samples_guard: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract min_samples_guard: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1366,10 +1457,8 @@ macro_rules! contract_pre_min_samples_guard {
 macro_rules! contract_pre_performance_drift {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract performance_drift: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract performance_drift: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1378,10 +1467,8 @@ macro_rules! contract_pre_performance_drift {
 macro_rules! contract_pre_univariate_drift {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract univariate_drift: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract univariate_drift: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1393,10 +1480,8 @@ macro_rules! contract_pre_univariate_drift {
 macro_rules! contract_pre_dropout_eval {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dropout_eval: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dropout_eval: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1405,10 +1490,8 @@ macro_rules! contract_pre_dropout_eval {
 macro_rules! contract_pre_dropout_train {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dropout_train: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dropout_train: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1420,10 +1503,8 @@ macro_rules! contract_pre_dropout_train {
 macro_rules! contract_pre_embedding_lookup {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract embedding_lookup: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract embedding_lookup: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1432,10 +1513,8 @@ macro_rules! contract_pre_embedding_lookup {
 macro_rules! contract_pre_embedding_norm {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract embedding_norm: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract embedding_norm: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1444,10 +1523,8 @@ macro_rules! contract_pre_embedding_norm {
 macro_rules! contract_pre_logit_temperature {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract logit_temperature: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract logit_temperature: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1456,10 +1533,8 @@ macro_rules! contract_pre_logit_temperature {
 macro_rules! contract_pre_tied_weights {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract tied_weights: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract tied_weights: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1468,10 +1543,8 @@ macro_rules! contract_pre_tied_weights {
 macro_rules! contract_pre_unembedding_projection {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract unembedding_projection: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract unembedding_projection: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1480,10 +1553,8 @@ macro_rules! contract_pre_unembedding_projection {
 macro_rules! contract_pre_vocabulary_bounds {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract vocabulary_bounds: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract vocabulary_bounds: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1491,14 +1562,10 @@ macro_rules! contract_pre_vocabulary_bounds {
 // Contract: embedding-lookup-v1
 
 /// Preconditions for equation `embedding_lookup`.
-/// Call at function entry: `contract_pre_embedding_lookup!(input_expr)`
+/// Domain-specific. Call: `contract_pre_embedding_lookup!(slice_expr)`
 macro_rules! contract_pre_embedding_lookup {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract embedding_lookup: precondition violated — input must not be empty"
-        );
+        let token_ids = &$input;
     }};
 }
 
@@ -1512,6 +1579,16 @@ macro_rules! contract_post_embedding_lookup {
     }};
 }
 
+/// Combined pre+post contract for equation `embedding_lookup`.
+macro_rules! contract_embedding_lookup {
+    ($input:expr, $body:expr) => {{
+        contract_pre_embedding_lookup!($input);
+        let _contract_result = $body;
+        contract_post_embedding_lookup!(_contract_result);
+        _contract_result
+    }};
+}
+
 // Auto-generated from contracts/encoder-forward-v1.yaml — DO NOT EDIT
 // Contract: encoder-forward-v1
 
@@ -1520,10 +1597,8 @@ macro_rules! contract_post_embedding_lookup {
 macro_rules! contract_pre_cls_pooling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract cls_pooling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract cls_pooling: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1532,10 +1607,41 @@ macro_rules! contract_pre_cls_pooling {
 macro_rules! contract_pre_encoder_layer {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract encoder_layer: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract encoder_layer: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/encoder-roundtrip-v1.yaml — DO NOT EDIT
+// Contract: encoder-roundtrip-v1
+
+/// Preconditions for equation `emit_posix`.
+/// Call at function entry: `contract_pre_emit_posix!(input_expr)`
+macro_rules! contract_pre_emit_posix {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract emit_posix: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `emit_purified`.
+/// Call at function entry: `contract_pre_emit_purified!(input_expr)`
+macro_rules! contract_pre_emit_purified {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract emit_purified: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `roundtrip`.
+/// Call at function entry: `contract_pre_roundtrip!(input_expr)`
+macro_rules! contract_pre_roundtrip {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract roundtrip: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1547,10 +1653,31 @@ macro_rules! contract_pre_encoder_layer {
 macro_rules! contract_pre_error_handling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract error_handling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract error_handling: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/execution-safety-v1.yaml — DO NOT EDIT
+// Contract: execution-safety-v1
+
+/// Preconditions for equation `atomic_write`.
+/// Call at function entry: `contract_pre_atomic_write!(input_expr)`
+macro_rules! contract_pre_atomic_write {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract atomic_write: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `jidoka_stop`.
+/// Call at function entry: `contract_pre_jidoka_stop!(input_expr)`
+macro_rules! contract_pre_jidoka_stop {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract jidoka_stop: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1562,10 +1689,8 @@ macro_rules! contract_pre_error_handling {
 macro_rules! contract_pre_f16_to_f32_bias {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract f16_to_f32_bias: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract f16_to_f32_bias: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1574,10 +1699,8 @@ macro_rules! contract_pre_f16_to_f32_bias {
 macro_rules! contract_pre_roundtrip {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract roundtrip: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract roundtrip: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1589,10 +1712,8 @@ macro_rules! contract_pre_roundtrip {
 macro_rules! contract_pre_flash_attention {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract flash_attention: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract flash_attention: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1604,10 +1725,8 @@ macro_rules! contract_pre_flash_attention {
 macro_rules! contract_pre_element_count {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract element_count: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract element_count: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1616,10 +1735,8 @@ macro_rules! contract_pre_element_count {
 macro_rules! contract_pre_identity_1d {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract identity_1d: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity_1d: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1628,10 +1745,8 @@ macro_rules! contract_pre_identity_1d {
 macro_rules! contract_pre_name_bijection {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract name_bijection: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract name_bijection: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1640,10 +1755,8 @@ macro_rules! contract_pre_name_bijection {
 macro_rules! contract_pre_transpose_involution {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract transpose_involution: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract transpose_involution: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1655,10 +1768,8 @@ macro_rules! contract_pre_transpose_involution {
 macro_rules! contract_pre_e4m3_encode {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract e4m3_encode: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract e4m3_encode: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1667,10 +1778,8 @@ macro_rules! contract_pre_e4m3_encode {
 macro_rules! contract_pre_e5m2_encode {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract e5m2_encode: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract e5m2_encode: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1679,10 +1788,8 @@ macro_rules! contract_pre_e5m2_encode {
 macro_rules! contract_pre_roundtrip {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract roundtrip: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract roundtrip: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1694,10 +1801,8 @@ macro_rules! contract_pre_roundtrip {
 macro_rules! contract_pre_fused_qkv {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract fused_qkv: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract fused_qkv: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1706,10 +1811,8 @@ macro_rules! contract_pre_fused_qkv {
 macro_rules! contract_pre_separate_qkv {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract separate_qkv: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract separate_qkv: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1718,10 +1821,8 @@ macro_rules! contract_pre_separate_qkv {
 macro_rules! contract_pre_shared_q8_qkv {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract shared_q8_qkv: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract shared_q8_qkv: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1733,10 +1834,8 @@ macro_rules! contract_pre_shared_q8_qkv {
 macro_rules! contract_pre_decay {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract decay: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract decay: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1745,10 +1844,8 @@ macro_rules! contract_pre_decay {
 macro_rules! contract_pre_delta {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract delta: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract delta: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1757,10 +1854,8 @@ macro_rules! contract_pre_delta {
 macro_rules! contract_pre_output {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract output: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract output: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1769,10 +1864,8 @@ macro_rules! contract_pre_output {
 macro_rules! contract_pre_read {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract read: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract read: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1781,10 +1874,8 @@ macro_rules! contract_pre_read {
 macro_rules! contract_pre_write {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract write: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract write: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1796,10 +1887,8 @@ macro_rules! contract_pre_write {
 macro_rules! contract_pre_gradient_boost {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gradient_boost: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gradient_boost: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1808,10 +1897,8 @@ macro_rules! contract_pre_gradient_boost {
 macro_rules! contract_pre_negative_gradient {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract negative_gradient: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract negative_gradient: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1820,10 +1907,8 @@ macro_rules! contract_pre_negative_gradient {
 macro_rules! contract_pre_predict {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract predict: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract predict: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1832,10 +1917,8 @@ macro_rules! contract_pre_predict {
 macro_rules! contract_pre_training_loss {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract training_loss: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract training_loss: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1847,10 +1930,8 @@ macro_rules! contract_pre_training_loss {
 macro_rules! contract_pre_gelu {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gelu: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gelu: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1859,10 +1940,61 @@ macro_rules! contract_pre_gelu {
 macro_rules! contract_pre_gelu_tanh_approx {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gelu_tanh_approx: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gelu_tanh_approx: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/gemm-backward-tiled-v1.yaml — DO NOT EDIT
+// Contract: gemm-backward-tiled-v1
+
+/// Preconditions for equation `backward_a_gemm`.
+/// Call at function entry: `contract_pre_backward_a_gemm!(input_expr)`
+macro_rules! contract_pre_backward_a_gemm {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract backward_a_gemm: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `backward_b_gemm`.
+/// Call at function entry: `contract_pre_backward_b_gemm!(input_expr)`
+macro_rules! contract_pre_backward_b_gemm {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract backward_b_gemm: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `shared_memory_per_tile`.
+/// Call at function entry: `contract_pre_shared_memory_per_tile!(input_expr)`
+macro_rules! contract_pre_shared_memory_per_tile {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract shared_memory_per_tile: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `tiled_gemm_arithmetic_intensity`.
+/// Call at function entry: `contract_pre_tiled_gemm_arithmetic_intensity!(input_expr)`
+macro_rules! contract_pre_tiled_gemm_arithmetic_intensity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract tiled_gemm_arithmetic_intensity: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `unrolled_instruction_ratio`.
+/// Call at function entry: `contract_pre_unrolled_instruction_ratio!(input_expr)`
+macro_rules! contract_pre_unrolled_instruction_ratio {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract unrolled_instruction_ratio: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1874,10 +2006,8 @@ macro_rules! contract_pre_gelu_tanh_approx {
 macro_rules! contract_pre_autoregressive_generation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract autoregressive_generation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract autoregressive_generation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1889,10 +2019,8 @@ macro_rules! contract_pre_autoregressive_generation {
 macro_rules! contract_pre_binomial_link {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract binomial_link: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract binomial_link: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1901,10 +2029,8 @@ macro_rules! contract_pre_binomial_link {
 macro_rules! contract_pre_gamma_link {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gamma_link: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gamma_link: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1913,10 +2039,8 @@ macro_rules! contract_pre_gamma_link {
 macro_rules! contract_pre_irls_fit {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract irls_fit: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract irls_fit: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1925,10 +2049,8 @@ macro_rules! contract_pre_irls_fit {
 macro_rules! contract_pre_poisson_link {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract poisson_link: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract poisson_link: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1940,10 +2062,8 @@ macro_rules! contract_pre_poisson_link {
 macro_rules! contract_pre_gcn_aggregate {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gcn_aggregate: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gcn_aggregate: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1952,10 +2072,8 @@ macro_rules! contract_pre_gcn_aggregate {
 macro_rules! contract_pre_global_max_pool {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract global_max_pool: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract global_max_pool: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1964,10 +2082,8 @@ macro_rules! contract_pre_global_max_pool {
 macro_rules! contract_pre_global_mean_pool {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract global_mean_pool: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract global_mean_pool: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1976,10 +2092,8 @@ macro_rules! contract_pre_global_mean_pool {
 macro_rules! contract_pre_message_passing {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract message_passing: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract message_passing: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -1991,10 +2105,8 @@ macro_rules! contract_pre_message_passing {
 macro_rules! contract_pre_context_health {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract context_health: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract context_health: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2003,10 +2115,8 @@ macro_rules! contract_pre_context_health {
 macro_rules! contract_pre_cuda_graph_guard {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract cuda_graph_guard: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract cuda_graph_guard: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2015,10 +2125,8 @@ macro_rules! contract_pre_cuda_graph_guard {
 macro_rules! contract_pre_culink_skip {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract culink_skip: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract culink_skip: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2027,10 +2135,8 @@ macro_rules! contract_pre_culink_skip {
 macro_rules! contract_pre_fp8_architecture_guard {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract fp8_architecture_guard: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract fp8_architecture_guard: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2042,10 +2148,8 @@ macro_rules! contract_pre_fp8_architecture_guard {
 macro_rules! contract_pre_brick_ordering {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract brick_ordering: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract brick_ordering: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2054,10 +2158,8 @@ macro_rules! contract_pre_brick_ordering {
 macro_rules! contract_pre_graph_disable {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract graph_disable: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract graph_disable: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2066,10 +2168,8 @@ macro_rules! contract_pre_graph_disable {
 macro_rules! contract_pre_report_completeness {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract report_completeness: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract report_completeness: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2078,10 +2178,8 @@ macro_rules! contract_pre_report_completeness {
 macro_rules! contract_pre_report_denominator {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract report_denominator: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract report_denominator: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2090,10 +2188,8 @@ macro_rules! contract_pre_report_denominator {
 macro_rules! contract_pre_report_fidelity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract report_fidelity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract report_fidelity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2102,10 +2198,8 @@ macro_rules! contract_pre_report_fidelity {
 macro_rules! contract_pre_report_metadata {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract report_metadata: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract report_metadata: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2114,10 +2208,8 @@ macro_rules! contract_pre_report_metadata {
 macro_rules! contract_pre_sync_verification {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract sync_verification: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract sync_verification: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2126,10 +2218,8 @@ macro_rules! contract_pre_sync_verification {
 macro_rules! contract_pre_token_accounting {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract token_accounting: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract token_accounting: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2138,10 +2228,8 @@ macro_rules! contract_pre_token_accounting {
 macro_rules! contract_pre_wall_coverage {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract wall_coverage: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract wall_coverage: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2153,10 +2241,8 @@ macro_rules! contract_pre_wall_coverage {
 macro_rules! contract_pre_backend_priority {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract backend_priority: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract backend_priority: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2165,10 +2251,8 @@ macro_rules! contract_pre_backend_priority {
 macro_rules! contract_pre_bandwidth_bound_theorem {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bandwidth_bound_theorem: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bandwidth_bound_theorem: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2178,7 +2262,7 @@ macro_rules! contract_pre_jit_compilation_correctness {
     ($input:expr) => {{
         let _contract_input = &$input;
         debug_assert!(!_contract_input.is_empty(),
-            "Contract jit_compilation_correctness: precondition violated — input must not be empty");
+            "Contract jit_compilation_correctness: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2187,10 +2271,8 @@ macro_rules! contract_pre_jit_compilation_correctness {
 macro_rules! contract_pre_multi_backend_parity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract multi_backend_parity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract multi_backend_parity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2202,10 +2284,8 @@ macro_rules! contract_pre_multi_backend_parity {
 macro_rules! contract_pre_pcie_overhead {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract pcie_overhead: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract pcie_overhead: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2214,10 +2294,8 @@ macro_rules! contract_pre_pcie_overhead {
 macro_rules! contract_pre_throughput_target {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract throughput_target: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract throughput_target: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2229,10 +2307,8 @@ macro_rules! contract_pre_throughput_target {
 macro_rules! contract_pre_gqa {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gqa: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gqa: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2244,10 +2320,8 @@ macro_rules! contract_pre_gqa {
 macro_rules! contract_pre_betweenness {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract betweenness: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract betweenness: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2256,10 +2330,8 @@ macro_rules! contract_pre_betweenness {
 macro_rules! contract_pre_closeness {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract closeness: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract closeness: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2268,10 +2340,8 @@ macro_rules! contract_pre_closeness {
 macro_rules! contract_pre_degree {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract degree: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract degree: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2280,10 +2350,8 @@ macro_rules! contract_pre_degree {
 macro_rules! contract_pre_eigenvector {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract eigenvector: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract eigenvector: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2292,10 +2360,8 @@ macro_rules! contract_pre_eigenvector {
 macro_rules! contract_pre_harmonic {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract harmonic: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract harmonic: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2304,10 +2370,8 @@ macro_rules! contract_pre_harmonic {
 macro_rules! contract_pre_katz {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract katz: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract katz: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2319,10 +2383,8 @@ macro_rules! contract_pre_katz {
 macro_rules! contract_pre_conv1d_causal {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract conv1d_causal: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract conv1d_causal: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2331,10 +2393,8 @@ macro_rules! contract_pre_conv1d_causal {
 macro_rules! contract_pre_head_grouping {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract head_grouping: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract head_grouping: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2343,10 +2403,8 @@ macro_rules! contract_pre_head_grouping {
 macro_rules! contract_pre_hybrid_dispatch {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract hybrid_dispatch: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hybrid_dispatch: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2355,10 +2413,8 @@ macro_rules! contract_pre_hybrid_dispatch {
 macro_rules! contract_pre_linear_associativity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_associativity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_associativity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2367,10 +2423,8 @@ macro_rules! contract_pre_linear_associativity {
 macro_rules! contract_pre_linear_no_softmax {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_no_softmax: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_no_softmax: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2379,10 +2433,8 @@ macro_rules! contract_pre_linear_no_softmax {
 macro_rules! contract_pre_linear_shapes {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_shapes: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_shapes: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2394,10 +2446,8 @@ macro_rules! contract_pre_linear_shapes {
 macro_rules! contract_pre_fastica {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract fastica: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract fastica: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2406,10 +2456,8 @@ macro_rules! contract_pre_fastica {
 macro_rules! contract_pre_mixing {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mixing: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mixing: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2418,10 +2466,8 @@ macro_rules! contract_pre_mixing {
 macro_rules! contract_pre_unmixing {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract unmixing: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract unmixing: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2433,10 +2479,8 @@ macro_rules! contract_pre_unmixing {
 macro_rules! contract_pre_decode_step {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract decode_step: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract decode_step: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2445,10 +2489,8 @@ macro_rules! contract_pre_decode_step {
 macro_rules! contract_pre_hybrid_layer_schedule {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract hybrid_layer_schedule: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hybrid_layer_schedule: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2457,10 +2499,8 @@ macro_rules! contract_pre_hybrid_layer_schedule {
 macro_rules! contract_pre_kv_cache_growth {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract kv_cache_growth: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract kv_cache_growth: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2469,10 +2509,8 @@ macro_rules! contract_pre_kv_cache_growth {
 macro_rules! contract_pre_layer_composition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract layer_composition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract layer_composition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2481,10 +2519,8 @@ macro_rules! contract_pre_layer_composition {
 macro_rules! contract_pre_prefill_phase {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract prefill_phase: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract prefill_phase: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2493,10 +2529,8 @@ macro_rules! contract_pre_prefill_phase {
 macro_rules! contract_pre_residual_stream {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract residual_stream: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract residual_stream: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2508,10 +2542,8 @@ macro_rules! contract_pre_residual_stream {
 macro_rules! contract_pre_dequant_dot {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dequant_dot: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dequant_dot: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2520,10 +2552,8 @@ macro_rules! contract_pre_dequant_dot {
 macro_rules! contract_pre_per_row_scale {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract per_row_scale: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract per_row_scale: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2532,10 +2562,8 @@ macro_rules! contract_pre_per_row_scale {
 macro_rules! contract_pre_quantize {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract quantize: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract quantize: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2547,10 +2575,21 @@ macro_rules! contract_pre_quantize {
 macro_rules! contract_pre_iterator {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract iterator: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract iterator: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/kernel-fusion-v1.yaml — DO NOT EDIT
+// Contract: kernel-fusion-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2562,10 +2601,8 @@ macro_rules! contract_pre_iterator {
 macro_rules! contract_pre_bsum_budget {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bsum_budget: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bsum_budget: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2574,10 +2611,8 @@ macro_rules! contract_pre_bsum_budget {
 macro_rules! contract_pre_per_layer_decomposition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract per_layer_decomposition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract per_layer_decomposition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2586,10 +2621,8 @@ macro_rules! contract_pre_per_layer_decomposition {
 macro_rules! contract_pre_per_token_launches {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract per_token_launches: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract per_token_launches: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2601,10 +2634,8 @@ macro_rules! contract_pre_per_token_launches {
 macro_rules! contract_pre_assignment {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract assignment: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract assignment: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2613,10 +2644,8 @@ macro_rules! contract_pre_assignment {
 macro_rules! contract_pre_objective {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract objective: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract objective: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2625,10 +2654,8 @@ macro_rules! contract_pre_objective {
 macro_rules! contract_pre_update {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract update: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract update: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2640,10 +2667,8 @@ macro_rules! contract_pre_update {
 macro_rules! contract_pre_batched_serial_equivalence {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract batched_serial_equivalence: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract batched_serial_equivalence: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2652,10 +2677,8 @@ macro_rules! contract_pre_batched_serial_equivalence {
 macro_rules! contract_pre_fused_kernel {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract fused_kernel: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract fused_kernel: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2664,10 +2687,8 @@ macro_rules! contract_pre_fused_kernel {
 macro_rules! contract_pre_page_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract page_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract page_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2676,10 +2697,8 @@ macro_rules! contract_pre_page_shape {
 macro_rules! contract_pre_prefill_incremental {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract prefill_incremental: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract prefill_incremental: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2691,10 +2710,8 @@ macro_rules! contract_pre_prefill_incremental {
 macro_rules! contract_pre_bias_absence {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bias_absence: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bias_absence: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2703,10 +2720,8 @@ macro_rules! contract_pre_bias_absence {
 macro_rules! contract_pre_hybrid_accounting {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract hybrid_accounting: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hybrid_accounting: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2715,10 +2730,8 @@ macro_rules! contract_pre_hybrid_accounting {
 macro_rules! contract_pre_per_token_per_layer {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract per_token_per_layer: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract per_token_per_layer: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2727,10 +2740,8 @@ macro_rules! contract_pre_per_token_per_layer {
 macro_rules! contract_pre_total_kv_memory {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract total_kv_memory: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract total_kv_memory: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2739,10 +2750,21 @@ macro_rules! contract_pre_total_kv_memory {
 macro_rules! contract_pre_zero_input_identity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract zero_input_identity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract zero_input_identity: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/layer-parity-v1.yaml — DO NOT EDIT
+// Contract: layer-parity-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2750,14 +2772,14 @@ macro_rules! contract_pre_zero_input_identity {
 // Contract: layernorm-kernel-v1
 
 /// Preconditions for equation `layernorm`.
-/// Call at function entry: `contract_pre_layernorm!(input_expr)`
+/// Domain-specific. Call: `contract_pre_layernorm!(slice_expr)`
 macro_rules! contract_pre_layernorm {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract layernorm: precondition violated — input must not be empty"
-        );
+        let x = &$input;
+        debug_assert!(x.len() > 0,
+            "Contract layernorm: precondition violated — x.len() > 0");
+        debug_assert!(x.iter().all(|v| v.is_finite()),
+            "Contract layernorm: precondition violated — x.iter().all(|v| v.is_finite())");
     }};
 }
 
@@ -2766,14 +2788,18 @@ macro_rules! contract_pre_layernorm {
 macro_rules! contract_post_layernorm {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(
-            _contract_result.len() == x.len(),
-            "Contract layernorm: postcondition violated — result.len() == x.len()"
-        );
-        debug_assert!(
-            _contract_result.iter().all(|v| v.is_finite()),
-            "Contract layernorm: postcondition violated — result.iter().all(|v| v.is_finite())"
-        );
+        debug_assert!(_contract_result.len() == x.len(), "Contract layernorm: postcondition violated — result.len() == x.len()");
+        debug_assert!(_contract_result.iter().all(|v| v.is_finite()), "Contract layernorm: postcondition violated — result.iter().all(|v| v.is_finite())");
+    }};
+}
+
+/// Combined pre+post contract for equation `layernorm`.
+macro_rules! contract_layernorm {
+    ($input:expr, $body:expr) => {{
+        contract_pre_layernorm!($input);
+        let _contract_result = $body;
+        contract_post_layernorm!(_contract_result);
+        _contract_result
     }};
 }
 
@@ -2782,10 +2808,8 @@ macro_rules! contract_post_layernorm {
 macro_rules! contract_pre_statistics {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract statistics: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract statistics: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2797,10 +2821,8 @@ macro_rules! contract_pre_statistics {
 macro_rules! contract_pre_line_search {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract line_search: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract line_search: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2809,10 +2831,8 @@ macro_rules! contract_pre_line_search {
 macro_rules! contract_pre_secant_condition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract secant_condition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract secant_condition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2821,10 +2841,8 @@ macro_rules! contract_pre_secant_condition {
 macro_rules! contract_pre_two_loop_recursion {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract two_loop_recursion: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract two_loop_recursion: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2836,10 +2854,8 @@ macro_rules! contract_pre_two_loop_recursion {
 macro_rules! contract_pre_position_embedding {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract position_embedding: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract position_embedding: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2851,10 +2867,8 @@ macro_rules! contract_pre_position_embedding {
 macro_rules! contract_pre_logistic_predict_proba {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract logistic_predict_proba: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract logistic_predict_proba: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2863,10 +2877,8 @@ macro_rules! contract_pre_logistic_predict_proba {
 macro_rules! contract_pre_ols_fit {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ols_fit: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ols_fit: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2875,10 +2887,8 @@ macro_rules! contract_pre_ols_fit {
 macro_rules! contract_pre_ols_predict {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ols_predict: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ols_predict: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2887,10 +2897,8 @@ macro_rules! contract_pre_ols_predict {
 macro_rules! contract_pre_r_squared_training {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract r_squared_training: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract r_squared_training: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2902,10 +2910,8 @@ macro_rules! contract_pre_r_squared_training {
 macro_rules! contract_pre_linear_probe {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_probe: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_probe: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2917,10 +2923,8 @@ macro_rules! contract_pre_linear_probe {
 macro_rules! contract_pre_linear_forward {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_forward: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_forward: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2929,10 +2933,8 @@ macro_rules! contract_pre_linear_forward {
 macro_rules! contract_pre_linear_no_bias {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_no_bias: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_no_bias: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2944,10 +2946,8 @@ macro_rules! contract_pre_linear_no_bias {
 macro_rules! contract_pre_dare_unbiased {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dare_unbiased: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dare_unbiased: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2956,10 +2956,8 @@ macro_rules! contract_pre_dare_unbiased {
 macro_rules! contract_pre_eckart_young {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract eckart_young: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract eckart_young: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2968,10 +2966,8 @@ macro_rules! contract_pre_eckart_young {
 macro_rules! contract_pre_lora_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract lora_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract lora_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2980,10 +2976,8 @@ macro_rules! contract_pre_lora_shape {
 macro_rules! contract_pre_shape_preservation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract shape_preservation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract shape_preservation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -2992,10 +2986,21 @@ macro_rules! contract_pre_shape_preservation {
 macro_rules! contract_pre_task_vector {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract task_vector: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract task_vector: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/lora-gradient-flow-v1.yaml — DO NOT EDIT
+// Contract: lora-gradient-flow-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3007,10 +3012,8 @@ macro_rules! contract_pre_task_vector {
 macro_rules! contract_pre_bce {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bce: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bce: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3019,10 +3022,8 @@ macro_rules! contract_pre_bce {
 macro_rules! contract_pre_huber {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract huber: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract huber: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3031,10 +3032,8 @@ macro_rules! contract_pre_huber {
 macro_rules! contract_pre_l1_loss {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract l1_loss: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract l1_loss: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3043,10 +3042,8 @@ macro_rules! contract_pre_l1_loss {
 macro_rules! contract_pre_mse_loss {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mse_loss: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mse_loss: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3055,10 +3052,8 @@ macro_rules! contract_pre_mse_loss {
 macro_rules! contract_pre_nll {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract nll: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract nll: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3067,10 +3062,8 @@ macro_rules! contract_pre_nll {
 macro_rules! contract_pre_smooth_l1 {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract smooth_l1: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract smooth_l1: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3078,14 +3071,10 @@ macro_rules! contract_pre_smooth_l1 {
 // Contract: matmul-kernel-v1
 
 /// Preconditions for equation `matmul`.
-/// Call at function entry: `contract_pre_matmul!(input_expr)`
+/// Domain-specific. Call: `contract_pre_matmul!(slice_expr)`
 macro_rules! contract_pre_matmul {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract matmul: precondition violated — input must not be empty"
-        );
+        let a = &$input;
     }};
 }
 
@@ -3094,14 +3083,18 @@ macro_rules! contract_pre_matmul {
 macro_rules! contract_post_matmul {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(
-            _contract_result.len() == m * n,
-            "Contract matmul: postcondition violated — result.len() == m * n"
-        );
-        debug_assert!(
-            _contract_result.iter().all(|v| v.is_finite()),
-            "Contract matmul: postcondition violated — result.iter().all(|v| v.is_finite())"
-        );
+        debug_assert!(_contract_result.len() == m * n, "Contract matmul: postcondition violated — result.len() == m * n");
+        debug_assert!(_contract_result.iter().all(|v| v.is_finite()), "Contract matmul: postcondition violated — result.iter().all(|v| v.is_finite())");
+    }};
+}
+
+/// Combined pre+post contract for equation `matmul`.
+macro_rules! contract_matmul {
+    ($input:expr, $body:expr) => {{
+        contract_pre_matmul!($input);
+        let _contract_result = $body;
+        contract_post_matmul!(_contract_result);
+        _contract_result
     }};
 }
 
@@ -3110,10 +3103,71 @@ macro_rules! contract_post_matmul {
 macro_rules! contract_pre_quantized_dot {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract quantized_dot: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract quantized_dot: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/memory-safety-v1.yaml — DO NOT EDIT
+// Contract: memory-safety-v1
+
+/// Preconditions for equation `bounds_safety`.
+/// Call at function entry: `contract_pre_bounds_safety!(input_expr)`
+macro_rules! contract_pre_bounds_safety {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bounds_safety: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `drop_safety`.
+/// Call at function entry: `contract_pre_drop_safety!(input_expr)`
+macro_rules! contract_pre_drop_safety {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract drop_safety: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `escape_analysis`.
+/// Call at function entry: `contract_pre_escape_analysis!(input_expr)`
+macro_rules! contract_pre_escape_analysis {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract escape_analysis: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `lifetime_safety`.
+/// Call at function entry: `contract_pre_lifetime_safety!(input_expr)`
+macro_rules! contract_pre_lifetime_safety {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract lifetime_safety: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `ownership_invariant`.
+/// Call at function entry: `contract_pre_ownership_invariant!(input_expr)`
+macro_rules! contract_pre_ownership_invariant {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ownership_invariant: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `use_after_move`.
+/// Call at function entry: `contract_pre_use_after_move!(input_expr)`
+macro_rules! contract_pre_use_after_move {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract use_after_move: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3125,10 +3179,8 @@ macro_rules! contract_pre_quantized_dot {
 macro_rules! contract_pre_best_monotone {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract best_monotone: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract best_monotone: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3137,10 +3189,8 @@ macro_rules! contract_pre_best_monotone {
 macro_rules! contract_pre_ga_crossover {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ga_crossover: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ga_crossover: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3149,10 +3199,8 @@ macro_rules! contract_pre_ga_crossover {
 macro_rules! contract_pre_pso_velocity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract pso_velocity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract pso_velocity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3161,10 +3209,8 @@ macro_rules! contract_pre_pso_velocity {
 macro_rules! contract_pre_sa_acceptance {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract sa_acceptance: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract sa_acceptance: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3176,10 +3222,8 @@ macro_rules! contract_pre_sa_acceptance {
 macro_rules! contract_pre_accuracy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract accuracy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract accuracy: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3188,10 +3232,8 @@ macro_rules! contract_pre_accuracy {
 macro_rules! contract_pre_confusion_matrix {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract confusion_matrix: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract confusion_matrix: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3200,10 +3242,8 @@ macro_rules! contract_pre_confusion_matrix {
 macro_rules! contract_pre_f1_score {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract f1_score: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract f1_score: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3212,10 +3252,8 @@ macro_rules! contract_pre_f1_score {
 macro_rules! contract_pre_precision {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract precision: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract precision: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3224,10 +3262,8 @@ macro_rules! contract_pre_precision {
 macro_rules! contract_pre_recall {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract recall: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract recall: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3239,10 +3275,8 @@ macro_rules! contract_pre_recall {
 macro_rules! contract_pre_inertia {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract inertia: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract inertia: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3251,10 +3285,8 @@ macro_rules! contract_pre_inertia {
 macro_rules! contract_pre_silhouette_coefficient {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract silhouette_coefficient: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract silhouette_coefficient: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3263,10 +3295,8 @@ macro_rules! contract_pre_silhouette_coefficient {
 macro_rules! contract_pre_silhouette_score {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract silhouette_score: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract silhouette_score: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3278,10 +3308,8 @@ macro_rules! contract_pre_silhouette_score {
 macro_rules! contract_pre_hit_at_k {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract hit_at_k: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hit_at_k: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3290,10 +3318,8 @@ macro_rules! contract_pre_hit_at_k {
 macro_rules! contract_pre_mrr {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mrr: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mrr: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3302,10 +3328,8 @@ macro_rules! contract_pre_mrr {
 macro_rules! contract_pre_ndcg_at_k {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ndcg_at_k: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ndcg_at_k: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3314,10 +3338,8 @@ macro_rules! contract_pre_ndcg_at_k {
 macro_rules! contract_pre_reciprocal_rank {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract reciprocal_rank: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract reciprocal_rank: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3329,10 +3351,8 @@ macro_rules! contract_pre_reciprocal_rank {
 macro_rules! contract_pre_mae {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mae: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mae: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3341,10 +3361,8 @@ macro_rules! contract_pre_mae {
 macro_rules! contract_pre_mse {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mse: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mse: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3353,10 +3371,8 @@ macro_rules! contract_pre_mse {
 macro_rules! contract_pre_r_squared {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract r_squared: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract r_squared: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3365,10 +3381,8 @@ macro_rules! contract_pre_r_squared {
 macro_rules! contract_pre_rmse {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rmse: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract rmse: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3380,10 +3394,8 @@ macro_rules! contract_pre_rmse {
 macro_rules! contract_pre_bounds {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bounds: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bounds: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3392,10 +3404,8 @@ macro_rules! contract_pre_bounds {
 macro_rules! contract_pre_cross_constraint {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract cross_constraint: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract cross_constraint: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3404,10 +3414,8 @@ macro_rules! contract_pre_cross_constraint {
 macro_rules! contract_pre_divisibility {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract divisibility: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract divisibility: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3416,10 +3424,8 @@ macro_rules! contract_pre_divisibility {
 macro_rules! contract_pre_non_degeneracy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract non_degeneracy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract non_degeneracy: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3428,10 +3434,8 @@ macro_rules! contract_pre_non_degeneracy {
 macro_rules! contract_pre_ordering {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ordering: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ordering: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3443,10 +3447,8 @@ macro_rules! contract_pre_ordering {
 macro_rules! contract_pre_config_bounds_check {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract config_bounds_check: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract config_bounds_check: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3458,10 +3460,8 @@ macro_rules! contract_pre_config_bounds_check {
 macro_rules! contract_pre_mqs_composite {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mqs_composite: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mqs_composite: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3470,10 +3470,8 @@ macro_rules! contract_pre_mqs_composite {
 macro_rules! contract_pre_mqs_deterministic {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mqs_deterministic: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mqs_deterministic: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3482,10 +3480,8 @@ macro_rules! contract_pre_mqs_deterministic {
 macro_rules! contract_pre_mqs_grade {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mqs_grade: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mqs_grade: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3494,10 +3490,8 @@ macro_rules! contract_pre_mqs_grade {
 macro_rules! contract_pre_mqs_pass_rate {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract mqs_pass_rate: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract mqs_pass_rate: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3509,10 +3503,8 @@ macro_rules! contract_pre_mqs_pass_rate {
 macro_rules! contract_pre_class_prior {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract class_prior: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract class_prior: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3521,10 +3513,8 @@ macro_rules! contract_pre_class_prior {
 macro_rules! contract_pre_gaussian_likelihood {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gaussian_likelihood: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gaussian_likelihood: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3533,10 +3523,8 @@ macro_rules! contract_pre_gaussian_likelihood {
 macro_rules! contract_pre_log_posterior {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract log_posterior: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract log_posterior: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3548,10 +3536,8 @@ macro_rules! contract_pre_log_posterior {
 macro_rules! contract_pre_online_normalizer {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract online_normalizer: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract online_normalizer: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3560,10 +3546,8 @@ macro_rules! contract_pre_online_normalizer {
 macro_rules! contract_pre_standard_softmax {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract standard_softmax: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract standard_softmax: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3575,10 +3559,8 @@ macro_rules! contract_pre_standard_softmax {
 macro_rules! contract_pre_cg_minimize {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract cg_minimize: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract cg_minimize: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3587,10 +3569,8 @@ macro_rules! contract_pre_cg_minimize {
 macro_rules! contract_pre_convergence {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract convergence: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract convergence: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3599,10 +3579,8 @@ macro_rules! contract_pre_convergence {
 macro_rules! contract_pre_line_search {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract line_search: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract line_search: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3614,10 +3592,8 @@ macro_rules! contract_pre_line_search {
 macro_rules! contract_pre_block_allocation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract block_allocation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract block_allocation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3626,10 +3602,8 @@ macro_rules! contract_pre_block_allocation {
 macro_rules! contract_pre_block_table_lookup {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract block_table_lookup: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract block_table_lookup: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3638,10 +3612,8 @@ macro_rules! contract_pre_block_table_lookup {
 macro_rules! contract_pre_copy_on_write {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract copy_on_write: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract copy_on_write: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3653,10 +3625,8 @@ macro_rules! contract_pre_copy_on_write {
 macro_rules! contract_pre_block_allocation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract block_allocation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract block_allocation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3665,10 +3635,8 @@ macro_rules! contract_pre_block_allocation {
 macro_rules! contract_pre_block_table_invariant {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract block_table_invariant: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract block_table_invariant: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3677,10 +3645,8 @@ macro_rules! contract_pre_block_table_invariant {
 macro_rules! contract_pre_fragmentation_free {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract fragmentation_free: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract fragmentation_free: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3689,10 +3655,8 @@ macro_rules! contract_pre_fragmentation_free {
 macro_rules! contract_pre_graph_compatibility {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract graph_compatibility: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract graph_compatibility: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3702,7 +3666,7 @@ macro_rules! contract_pre_paged_contiguous_equivalence {
     ($input:expr) => {{
         let _contract_input = &$input;
         debug_assert!(!_contract_input.is_empty(),
-            "Contract paged_contiguous_equivalence: precondition violated — input must not be empty");
+            "Contract paged_contiguous_equivalence: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3711,10 +3675,8 @@ macro_rules! contract_pre_paged_contiguous_equivalence {
 macro_rules! contract_pre_slot_mapping {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract slot_mapping: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract slot_mapping: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3726,10 +3688,8 @@ macro_rules! contract_pre_slot_mapping {
 macro_rules! contract_pre_pagerank {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract pagerank: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract pagerank: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3738,10 +3698,41 @@ macro_rules! contract_pre_pagerank {
 macro_rules! contract_pre_power_iteration {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract power_iteration: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract power_iteration: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/parser-soundness-v1.yaml — DO NOT EDIT
+// Contract: parser-soundness-v1
+
+/// Preconditions for equation `lex`.
+/// Call at function entry: `contract_pre_lex!(input_expr)`
+macro_rules! contract_pre_lex {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract lex: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `parse`.
+/// Call at function entry: `contract_pre_parse!(input_expr)`
+macro_rules! contract_pre_parse {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract parse: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `semantic_analyze`.
+/// Call at function entry: `contract_pre_semantic_analyze!(input_expr)`
+macro_rules! contract_pre_semantic_analyze {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract semantic_analyze: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3753,10 +3744,8 @@ macro_rules! contract_pre_power_iteration {
 macro_rules! contract_pre_explained_variance {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract explained_variance: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract explained_variance: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3765,10 +3754,8 @@ macro_rules! contract_pre_explained_variance {
 macro_rules! contract_pre_pca_transform {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract pca_transform: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract pca_transform: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3777,10 +3764,8 @@ macro_rules! contract_pre_pca_transform {
 macro_rules! contract_pre_reconstruction {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract reconstruction: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract reconstruction: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3792,10 +3777,8 @@ macro_rules! contract_pre_reconstruction {
 macro_rules! contract_pre_concrete_instance {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract concrete_instance: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract concrete_instance: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3804,10 +3787,8 @@ macro_rules! contract_pre_concrete_instance {
 macro_rules! contract_pre_efficiency_grade {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract efficiency_grade: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract efficiency_grade: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3816,10 +3797,8 @@ macro_rules! contract_pre_efficiency_grade {
 macro_rules! contract_pre_llamacpp_parity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract llamacpp_parity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract llamacpp_parity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3828,10 +3807,8 @@ macro_rules! contract_pre_llamacpp_parity {
 macro_rules! contract_pre_ollama_parity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ollama_parity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ollama_parity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3840,10 +3817,21 @@ macro_rules! contract_pre_ollama_parity {
 macro_rules! contract_pre_vllm_parity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract vllm_parity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract vllm_parity: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/pipeline-cache-v1.yaml — DO NOT EDIT
+// Contract: pipeline-cache-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3855,10 +3843,8 @@ macro_rules! contract_pre_vllm_parity {
 macro_rules! contract_pre_minmax_scaler {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract minmax_scaler: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract minmax_scaler: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3867,10 +3853,8 @@ macro_rules! contract_pre_minmax_scaler {
 macro_rules! contract_pre_robust_scaler {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract robust_scaler: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract robust_scaler: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3879,10 +3863,8 @@ macro_rules! contract_pre_robust_scaler {
 macro_rules! contract_pre_standard_scaler {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract standard_scaler: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract standard_scaler: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3894,10 +3876,8 @@ macro_rules! contract_pre_standard_scaler {
 macro_rules! contract_pre_jit_compilation_success {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract jit_compilation_success: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract jit_compilation_success: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3906,10 +3886,8 @@ macro_rules! contract_pre_jit_compilation_success {
 macro_rules! contract_pre_no_hardcoded_targets {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract no_hardcoded_targets: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract no_hardcoded_targets: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3918,10 +3896,8 @@ macro_rules! contract_pre_no_hardcoded_targets {
 macro_rules! contract_pre_target_parity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract target_parity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract target_parity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3933,10 +3909,8 @@ macro_rules! contract_pre_target_parity {
 macro_rules! contract_pre_bsum {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bsum: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bsum: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3945,10 +3919,8 @@ macro_rules! contract_pre_bsum {
 macro_rules! contract_pre_dequantization {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dequantization: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dequantization: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3957,10 +3929,8 @@ macro_rules! contract_pre_dequantization {
 macro_rules! contract_pre_q4k_superblock {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract q4k_superblock: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract q4k_superblock: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3969,10 +3939,8 @@ macro_rules! contract_pre_q4k_superblock {
 macro_rules! contract_pre_q6k_superblock {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract q6k_superblock: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract q6k_superblock: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3981,10 +3949,8 @@ macro_rules! contract_pre_q6k_superblock {
 macro_rules! contract_pre_total_bytes {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract total_bytes: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract total_bytes: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -3996,10 +3962,8 @@ macro_rules! contract_pre_total_bytes {
 macro_rules! contract_pre_qk_norm_load {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract qk_norm_load: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract qk_norm_load: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4011,10 +3975,81 @@ macro_rules! contract_pre_qk_norm_load {
 macro_rules! contract_pre_qk_rmsnorm {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract qk_rmsnorm: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract qk_rmsnorm: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/qlora-hyperparameters-v1.yaml — DO NOT EDIT
+// Contract: qlora-hyperparameters-v1
+
+/// Preconditions for equation `effective_batch_size`.
+/// Call at function entry: `contract_pre_effective_batch_size!(input_expr)`
+macro_rules! contract_pre_effective_batch_size {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract effective_batch_size: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `epoch_count_imbalanced`.
+/// Call at function entry: `contract_pre_epoch_count_imbalanced!(input_expr)`
+macro_rules! contract_pre_epoch_count_imbalanced {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract epoch_count_imbalanced: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `gradient_clip_bound`.
+/// Call at function entry: `contract_pre_gradient_clip_bound!(input_expr)`
+macro_rules! contract_pre_gradient_clip_bound {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gradient_clip_bound: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `learning_rate_scaling`.
+/// Call at function entry: `contract_pre_learning_rate_scaling!(input_expr)`
+macro_rules! contract_pre_learning_rate_scaling {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract learning_rate_scaling: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `lora_alpha_ratio`.
+/// Call at function entry: `contract_pre_lora_alpha_ratio!(input_expr)`
+macro_rules! contract_pre_lora_alpha_ratio {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract lora_alpha_ratio: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `seq_len_from_data`.
+/// Call at function entry: `contract_pre_seq_len_from_data!(input_expr)`
+macro_rules! contract_pre_seq_len_from_data {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract seq_len_from_data: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `warmup_fraction`.
+/// Call at function entry: `contract_pre_warmup_fraction!(input_expr)`
+macro_rules! contract_pre_warmup_fraction {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract warmup_fraction: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4026,10 +4061,8 @@ macro_rules! contract_pre_qk_rmsnorm {
 macro_rules! contract_pre_alpha_scaling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract alpha_scaling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract alpha_scaling: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4038,10 +4071,8 @@ macro_rules! contract_pre_alpha_scaling {
 macro_rules! contract_pre_bytes_per_param {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bytes_per_param: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bytes_per_param: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4050,10 +4081,8 @@ macro_rules! contract_pre_bytes_per_param {
 macro_rules! contract_pre_dropout_expectation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract dropout_expectation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract dropout_expectation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4062,10 +4091,21 @@ macro_rules! contract_pre_dropout_expectation {
 macro_rules! contract_pre_size_ordering {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract size_ordering: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract size_ordering: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/quantized-dot-product-v1.yaml — DO NOT EDIT
+// Contract: quantized-dot-product-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4077,10 +4117,8 @@ macro_rules! contract_pre_size_ordering {
 macro_rules! contract_pre_contract_composition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract contract_composition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract contract_composition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4089,10 +4127,8 @@ macro_rules! contract_pre_contract_composition {
 macro_rules! contract_pre_flops_per_token {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract flops_per_token: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract flops_per_token: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4101,10 +4137,8 @@ macro_rules! contract_pre_flops_per_token {
 macro_rules! contract_pre_memory_breakdown {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract memory_breakdown: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract memory_breakdown: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4113,10 +4147,8 @@ macro_rules! contract_pre_memory_breakdown {
 macro_rules! contract_pre_model_parameter_count {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract model_parameter_count: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract model_parameter_count: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4125,10 +4157,8 @@ macro_rules! contract_pre_model_parameter_count {
 macro_rules! contract_pre_throughput_model {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract throughput_model: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract throughput_model: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4137,10 +4167,8 @@ macro_rules! contract_pre_throughput_model {
 macro_rules! contract_pre_verification_ladder {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract verification_ladder: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract verification_ladder: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4152,10 +4180,8 @@ macro_rules! contract_pre_verification_ladder {
 macro_rules! contract_pre_head_dim_consistency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract head_dim_consistency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract head_dim_consistency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4164,10 +4190,8 @@ macro_rules! contract_pre_head_dim_consistency {
 macro_rules! contract_pre_kv_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract kv_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract kv_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4176,10 +4200,8 @@ macro_rules! contract_pre_kv_projection_shape {
 macro_rules! contract_pre_o_projection_transpose {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract o_projection_transpose: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract o_projection_transpose: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4188,10 +4210,8 @@ macro_rules! contract_pre_o_projection_transpose {
 macro_rules! contract_pre_q_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract q_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract q_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4200,10 +4220,8 @@ macro_rules! contract_pre_q_projection_shape {
 macro_rules! contract_pre_rope_frequency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rope_frequency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract rope_frequency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4212,10 +4230,51 @@ macro_rules! contract_pre_rope_frequency {
 macro_rules! contract_pre_swiglu_ratio {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract swiglu_ratio: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract swiglu_ratio: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/qwen2-weight-loading-v1.yaml — DO NOT EDIT
+// Contract: qwen2-weight-loading-v1
+
+/// Preconditions for equation `kv_projection`.
+/// Call at function entry: `contract_pre_kv_projection!(input_expr)`
+macro_rules! contract_pre_kv_projection {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract kv_projection: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `q_projection`.
+/// Call at function entry: `contract_pre_q_projection!(input_expr)`
+macro_rules! contract_pre_q_projection {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract q_projection: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `swiglu_expansion`.
+/// Call at function entry: `contract_pre_swiglu_expansion!(input_expr)`
+macro_rules! contract_pre_swiglu_expansion {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract swiglu_expansion: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `total_parameters`.
+/// Call at function entry: `contract_pre_total_parameters!(input_expr)`
+macro_rules! contract_pre_total_parameters {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract total_parameters: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4227,10 +4286,8 @@ macro_rules! contract_pre_swiglu_ratio {
 macro_rules! contract_pre_contract_composition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract contract_composition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract contract_composition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4239,10 +4296,8 @@ macro_rules! contract_pre_contract_composition {
 macro_rules! contract_pre_flops_per_token {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract flops_per_token: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract flops_per_token: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4251,10 +4306,8 @@ macro_rules! contract_pre_flops_per_token {
 macro_rules! contract_pre_memory_breakdown {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract memory_breakdown: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract memory_breakdown: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4263,10 +4316,8 @@ macro_rules! contract_pre_memory_breakdown {
 macro_rules! contract_pre_model_parameter_count {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract model_parameter_count: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract model_parameter_count: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4275,10 +4326,8 @@ macro_rules! contract_pre_model_parameter_count {
 macro_rules! contract_pre_throughput_model {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract throughput_model: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract throughput_model: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4287,10 +4336,8 @@ macro_rules! contract_pre_throughput_model {
 macro_rules! contract_pre_verification_ladder {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract verification_ladder: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract verification_ladder: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4302,10 +4349,8 @@ macro_rules! contract_pre_verification_ladder {
 macro_rules! contract_pre_head_dim_consistency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract head_dim_consistency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract head_dim_consistency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4314,10 +4359,8 @@ macro_rules! contract_pre_head_dim_consistency {
 macro_rules! contract_pre_kv_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract kv_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract kv_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4326,10 +4369,8 @@ macro_rules! contract_pre_kv_projection_shape {
 macro_rules! contract_pre_o_projection_transpose {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract o_projection_transpose: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract o_projection_transpose: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4338,10 +4379,8 @@ macro_rules! contract_pre_o_projection_transpose {
 macro_rules! contract_pre_q_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract q_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract q_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4350,10 +4389,8 @@ macro_rules! contract_pre_q_projection_shape {
 macro_rules! contract_pre_rope_frequency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rope_frequency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract rope_frequency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4362,10 +4399,8 @@ macro_rules! contract_pre_rope_frequency {
 macro_rules! contract_pre_swiglu_ratio {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract swiglu_ratio: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract swiglu_ratio: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4377,10 +4412,8 @@ macro_rules! contract_pre_swiglu_ratio {
 macro_rules! contract_pre_contract_composition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract contract_composition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract contract_composition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4389,10 +4422,8 @@ macro_rules! contract_pre_contract_composition {
 macro_rules! contract_pre_flops_per_token {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract flops_per_token: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract flops_per_token: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4401,10 +4432,8 @@ macro_rules! contract_pre_flops_per_token {
 macro_rules! contract_pre_memory_breakdown {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract memory_breakdown: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract memory_breakdown: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4413,10 +4442,8 @@ macro_rules! contract_pre_memory_breakdown {
 macro_rules! contract_pre_model_parameter_count {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract model_parameter_count: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract model_parameter_count: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4425,10 +4452,8 @@ macro_rules! contract_pre_model_parameter_count {
 macro_rules! contract_pre_throughput_model {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract throughput_model: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract throughput_model: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4437,10 +4462,8 @@ macro_rules! contract_pre_throughput_model {
 macro_rules! contract_pre_verification_ladder {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract verification_ladder: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract verification_ladder: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4452,10 +4475,8 @@ macro_rules! contract_pre_verification_ladder {
 macro_rules! contract_pre_activation_magnitude {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract activation_magnitude: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract activation_magnitude: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4464,10 +4485,8 @@ macro_rules! contract_pre_activation_magnitude {
 macro_rules! contract_pre_attention_sublayer {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract attention_sublayer: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract attention_sublayer: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4476,10 +4495,8 @@ macro_rules! contract_pre_attention_sublayer {
 macro_rules! contract_pre_ffn_sublayer {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ffn_sublayer: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ffn_sublayer: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4488,10 +4505,8 @@ macro_rules! contract_pre_ffn_sublayer {
 macro_rules! contract_pre_gdn_sublayer {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gdn_sublayer: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gdn_sublayer: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4500,10 +4515,8 @@ macro_rules! contract_pre_gdn_sublayer {
 macro_rules! contract_pre_gradient_flow {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gradient_flow: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gradient_flow: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4512,10 +4525,8 @@ macro_rules! contract_pre_gradient_flow {
 macro_rules! contract_pre_hybrid_block {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract hybrid_block: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hybrid_block: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4527,10 +4538,8 @@ macro_rules! contract_pre_hybrid_block {
 macro_rules! contract_pre_kv_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract kv_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract kv_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4539,10 +4548,8 @@ macro_rules! contract_pre_kv_projection_shape {
 macro_rules! contract_pre_o_projection_transpose {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract o_projection_transpose: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract o_projection_transpose: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4551,10 +4558,8 @@ macro_rules! contract_pre_o_projection_transpose {
 macro_rules! contract_pre_q_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract q_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract q_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4563,10 +4568,8 @@ macro_rules! contract_pre_q_projection_shape {
 macro_rules! contract_pre_rope_frequency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rope_frequency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract rope_frequency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4575,10 +4578,8 @@ macro_rules! contract_pre_rope_frequency {
 macro_rules! contract_pre_swiglu_ratio {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract swiglu_ratio: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract swiglu_ratio: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4590,10 +4591,8 @@ macro_rules! contract_pre_swiglu_ratio {
 macro_rules! contract_pre_active_parameter_count {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract active_parameter_count: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract active_parameter_count: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4602,10 +4601,8 @@ macro_rules! contract_pre_active_parameter_count {
 macro_rules! contract_pre_contract_composition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract contract_composition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract contract_composition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4614,10 +4611,8 @@ macro_rules! contract_pre_contract_composition {
 macro_rules! contract_pre_flops_per_token {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract flops_per_token: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract flops_per_token: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4626,10 +4621,8 @@ macro_rules! contract_pre_flops_per_token {
 macro_rules! contract_pre_memory_breakdown {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract memory_breakdown: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract memory_breakdown: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4638,10 +4631,8 @@ macro_rules! contract_pre_memory_breakdown {
 macro_rules! contract_pre_model_parameter_count {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract model_parameter_count: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract model_parameter_count: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4650,10 +4641,8 @@ macro_rules! contract_pre_model_parameter_count {
 macro_rules! contract_pre_throughput_model {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract throughput_model: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract throughput_model: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4662,10 +4651,8 @@ macro_rules! contract_pre_throughput_model {
 macro_rules! contract_pre_verification_ladder {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract verification_ladder: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract verification_ladder: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4677,10 +4664,8 @@ macro_rules! contract_pre_verification_ladder {
 macro_rules! contract_pre_kv_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract kv_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract kv_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4689,10 +4674,8 @@ macro_rules! contract_pre_kv_projection_shape {
 macro_rules! contract_pre_moe_expert_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract moe_expert_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract moe_expert_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4701,10 +4684,8 @@ macro_rules! contract_pre_moe_expert_shape {
 macro_rules! contract_pre_moe_router_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract moe_router_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract moe_router_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4713,10 +4694,8 @@ macro_rules! contract_pre_moe_router_shape {
 macro_rules! contract_pre_o_projection_transpose {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract o_projection_transpose: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract o_projection_transpose: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4725,10 +4704,8 @@ macro_rules! contract_pre_o_projection_transpose {
 macro_rules! contract_pre_q_projection_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract q_projection_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract q_projection_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4737,10 +4714,8 @@ macro_rules! contract_pre_q_projection_shape {
 macro_rules! contract_pre_rope_frequency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rope_frequency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract rope_frequency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4749,10 +4724,8 @@ macro_rules! contract_pre_rope_frequency {
 macro_rules! contract_pre_swiglu_ratio {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract swiglu_ratio: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract swiglu_ratio: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4764,10 +4737,8 @@ macro_rules! contract_pre_swiglu_ratio {
 macro_rules! contract_pre_bootstrap_sample {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bootstrap_sample: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bootstrap_sample: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4776,10 +4747,8 @@ macro_rules! contract_pre_bootstrap_sample {
 macro_rules! contract_pre_ensemble_size {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ensemble_size: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ensemble_size: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4788,10 +4757,8 @@ macro_rules! contract_pre_ensemble_size {
 macro_rules! contract_pre_majority_vote {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract majority_vote: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract majority_vote: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4800,10 +4767,41 @@ macro_rules! contract_pre_majority_vote {
 macro_rules! contract_pre_predict {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract predict: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract predict: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/recipe-determinism-v1.yaml — DO NOT EDIT
+// Contract: recipe-determinism-v1
+
+/// Preconditions for equation `expand_recipe`.
+/// Call at function entry: `contract_pre_expand_recipe!(input_expr)`
+macro_rules! contract_pre_expand_recipe {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract expand_recipe: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `validate_input_type`.
+/// Call at function entry: `contract_pre_validate_input_type!(input_expr)`
+macro_rules! contract_pre_validate_input_type {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract validate_input_type: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `validate_inputs`.
+/// Call at function entry: `contract_pre_validate_inputs!(input_expr)`
+macro_rules! contract_pre_validate_inputs {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract validate_inputs: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4811,14 +4809,14 @@ macro_rules! contract_pre_predict {
 // Contract: rmsnorm-kernel-v1
 
 /// Preconditions for equation `rmsnorm`.
-/// Call at function entry: `contract_pre_rmsnorm!(input_expr)`
+/// Domain-specific. Call: `contract_pre_rmsnorm!(slice_expr)`
 macro_rules! contract_pre_rmsnorm {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rmsnorm: precondition violated — input must not be empty"
-        );
+        let x = &$input;
+        debug_assert!(x.len() > 0,
+            "Contract rmsnorm: precondition violated — x.len() > 0");
+        debug_assert!(x.iter().all(|v| v.is_finite()),
+            "Contract rmsnorm: precondition violated — x.iter().all(|v| v.is_finite())");
     }};
 }
 
@@ -4827,14 +4825,18 @@ macro_rules! contract_pre_rmsnorm {
 macro_rules! contract_post_rmsnorm {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(
-            _contract_result.len() == x.len(),
-            "Contract rmsnorm: postcondition violated — result.len() == x.len()"
-        );
-        debug_assert!(
-            _contract_result.iter().all(|v| v.is_finite()),
-            "Contract rmsnorm: postcondition violated — result.iter().all(|v| v.is_finite())"
-        );
+        debug_assert!(_contract_result.len() == x.len(), "Contract rmsnorm: postcondition violated — result.len() == x.len()");
+        debug_assert!(_contract_result.iter().all(|v| v.is_finite()), "Contract rmsnorm: postcondition violated — result.iter().all(|v| v.is_finite())");
+    }};
+}
+
+/// Combined pre+post contract for equation `rmsnorm`.
+macro_rules! contract_rmsnorm {
+    ($input:expr, $body:expr) => {{
+        contract_pre_rmsnorm!($input);
+        let _contract_result = $body;
+        contract_post_rmsnorm!(_contract_result);
+        _contract_result
     }};
 }
 
@@ -4846,10 +4848,8 @@ macro_rules! contract_post_rmsnorm {
 macro_rules! contract_pre_bandwidth_ceiling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract bandwidth_ceiling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract bandwidth_ceiling: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4858,10 +4858,8 @@ macro_rules! contract_pre_bandwidth_ceiling {
 macro_rules! contract_pre_compute_ceiling {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract compute_ceiling: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract compute_ceiling: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4870,10 +4868,8 @@ macro_rules! contract_pre_compute_ceiling {
 macro_rules! contract_pre_model_bytes {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract model_bytes: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract model_bytes: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4882,10 +4878,8 @@ macro_rules! contract_pre_model_bytes {
 macro_rules! contract_pre_throughput_bound {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract throughput_bound: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract throughput_bound: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4897,10 +4891,8 @@ macro_rules! contract_pre_throughput_bound {
 macro_rules! contract_pre_base_frequency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract base_frequency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract base_frequency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4909,10 +4901,8 @@ macro_rules! contract_pre_base_frequency {
 macro_rules! contract_pre_linear_interpolation {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract linear_interpolation: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract linear_interpolation: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4921,10 +4911,8 @@ macro_rules! contract_pre_linear_interpolation {
 macro_rules! contract_pre_ntk_scaled_base {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ntk_scaled_base: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ntk_scaled_base: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4933,10 +4921,8 @@ macro_rules! contract_pre_ntk_scaled_base {
 macro_rules! contract_pre_rotation_matrix {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rotation_matrix: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract rotation_matrix: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4945,10 +4931,8 @@ macro_rules! contract_pre_rotation_matrix {
 macro_rules! contract_pre_yarn_mixed_frequency {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract yarn_mixed_frequency: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract yarn_mixed_frequency: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4957,10 +4941,8 @@ macro_rules! contract_pre_yarn_mixed_frequency {
 macro_rules! contract_pre_yarn_ramp {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract yarn_ramp: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract yarn_ramp: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -4968,14 +4950,14 @@ macro_rules! contract_pre_yarn_ramp {
 // Contract: rope-kernel-v1
 
 /// Preconditions for equation `rope`.
-/// Call at function entry: `contract_pre_rope!(input_expr)`
+/// Domain-specific. Call: `contract_pre_rope!(slice_expr)`
 macro_rules! contract_pre_rope {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract rope: precondition violated — input must not be empty"
-        );
+        let x = &$input;
+        debug_assert!(x.len() > 0,
+            "Contract rope: precondition violated — x.len() > 0");
+        debug_assert!(x.len() % 2 == 0,
+            "Contract rope: precondition violated — x.len() % 2 == 0");
     }};
 }
 
@@ -4984,14 +4966,18 @@ macro_rules! contract_pre_rope {
 macro_rules! contract_post_rope {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(
-            _contract_result.len() == x.len(),
-            "Contract rope: postcondition violated — result.len() == x.len()"
-        );
-        debug_assert!(
-            _contract_result.iter().all(|v| v.is_finite()),
-            "Contract rope: postcondition violated — result.iter().all(|v| v.is_finite())"
-        );
+        debug_assert!(_contract_result.len() == x.len(), "Contract rope: postcondition violated — result.len() == x.len()");
+        debug_assert!(_contract_result.iter().all(|v| v.is_finite()), "Contract rope: postcondition violated — result.iter().all(|v| v.is_finite())");
+    }};
+}
+
+/// Combined pre+post contract for equation `rope`.
+macro_rules! contract_rope {
+    ($input:expr, $body:expr) => {{
+        contract_pre_rope!($input);
+        let _contract_result = $body;
+        contract_post_rope!(_contract_result);
+        _contract_result
     }};
 }
 
@@ -5003,10 +4989,51 @@ macro_rules! contract_post_rope {
 macro_rules! contract_pre_format_parity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract format_parity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract format_parity: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/safety-classifier-v1.yaml — DO NOT EDIT
+// Contract: safety-classifier-v1
+
+/// Preconditions for equation `classify_filesystem`.
+/// Call at function entry: `contract_pre_classify_filesystem!(input_expr)`
+macro_rules! contract_pre_classify_filesystem {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract classify_filesystem: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `classify_injection`.
+/// Call at function entry: `contract_pre_classify_injection!(input_expr)`
+macro_rules! contract_pre_classify_injection {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract classify_injection: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `classify_secrets`.
+/// Call at function entry: `contract_pre_classify_secrets!(input_expr)`
+macro_rules! contract_pre_classify_secrets {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract classify_secrets: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `lint_shell`.
+/// Call at function entry: `contract_pre_lint_shell!(input_expr)`
+macro_rules! contract_pre_lint_shell {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract lint_shell: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5018,10 +5045,8 @@ macro_rules! contract_pre_format_parity {
 macro_rules! contract_pre_greedy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract greedy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract greedy: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5030,10 +5055,8 @@ macro_rules! contract_pre_greedy {
 macro_rules! contract_pre_temperature {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract temperature: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract temperature: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5042,10 +5065,8 @@ macro_rules! contract_pre_temperature {
 macro_rules! contract_pre_top_k {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract top_k: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract top_k: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5054,10 +5075,84 @@ macro_rules! contract_pre_top_k {
 macro_rules! contract_pre_top_p {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract top_p: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract top_p: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/score-composite-v1.yaml — DO NOT EDIT
+// Contract: score-composite-v1
+
+/// Preconditions for equation `geometric_mean`.
+/// Call at function entry: `contract_pre_geometric_mean!(input_expr)`
+macro_rules! contract_pre_geometric_mean {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract geometric_mean: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `grade_from_score`.
+/// Call at function entry: `contract_pre_grade_from_score!(input_expr)`
+macro_rules! contract_pre_grade_from_score {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract grade_from_score: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/semantic-equivalence-v1.yaml — DO NOT EDIT
+// Contract: semantic-equivalence-v1
+
+/// Preconditions for equation `comprehension_equivalence`.
+/// Call at function entry: `contract_pre_comprehension_equivalence!(input_expr)`
+macro_rules! contract_pre_comprehension_equivalence {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract comprehension_equivalence: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `control_flow_equivalence`.
+/// Call at function entry: `contract_pre_control_flow_equivalence!(input_expr)`
+macro_rules! contract_pre_control_flow_equivalence {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract control_flow_equivalence: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `expression_equivalence`.
+/// Call at function entry: `contract_pre_expression_equivalence!(input_expr)`
+macro_rules! contract_pre_expression_equivalence {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract expression_equivalence: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `observational_equivalence`.
+/// Call at function entry: `contract_pre_observational_equivalence!(input_expr)`
+macro_rules! contract_pre_observational_equivalence {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract observational_equivalence: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `statement_equivalence`.
+/// Call at function entry: `contract_pre_statement_equivalence!(input_expr)`
+macro_rules! contract_pre_statement_equivalence {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract statement_equivalence: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5069,10 +5164,8 @@ macro_rules! contract_pre_top_p {
 macro_rules! contract_pre_serialization {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract serialization: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract serialization: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5084,10 +5177,8 @@ macro_rules! contract_pre_serialization {
 macro_rules! contract_pre_entropy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract entropy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract entropy: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5096,10 +5187,8 @@ macro_rules! contract_pre_entropy {
 macro_rules! contract_pre_uniform_entropy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract uniform_entropy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract uniform_entropy: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5111,10 +5200,8 @@ macro_rules! contract_pre_uniform_entropy {
 macro_rules! contract_pre_sigmoid {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract sigmoid: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract sigmoid: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5123,10 +5210,8 @@ macro_rules! contract_pre_sigmoid {
 macro_rules! contract_pre_silu {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract silu: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract silu: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5138,10 +5223,8 @@ macro_rules! contract_pre_silu {
 macro_rules! contract_pre_attention_sparsity {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract attention_sparsity: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract attention_sparsity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5150,10 +5233,8 @@ macro_rules! contract_pre_attention_sparsity {
 macro_rules! contract_pre_causal_window_mask {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract causal_window_mask: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract causal_window_mask: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5162,10 +5243,8 @@ macro_rules! contract_pre_causal_window_mask {
 macro_rules! contract_pre_effective_context {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract effective_context: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract effective_context: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5175,7 +5254,7 @@ macro_rules! contract_pre_multi_layer_receptive_field {
     ($input:expr) => {{
         let _contract_input = &$input;
         debug_assert!(!_contract_input.is_empty(),
-            "Contract multi_layer_receptive_field: precondition violated — input must not be empty");
+            "Contract multi_layer_receptive_field: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5184,10 +5263,8 @@ macro_rules! contract_pre_multi_layer_receptive_field {
 macro_rules! contract_pre_window_mask {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract window_mask: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract window_mask: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5195,14 +5272,14 @@ macro_rules! contract_pre_window_mask {
 // Contract: softmax-kernel-v1
 
 /// Preconditions for equation `softmax`.
-/// Call at function entry: `contract_pre_softmax!(input_expr)`
+/// Domain-specific. Call: `contract_pre_softmax!(slice_expr)`
 macro_rules! contract_pre_softmax {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract softmax: precondition violated — input must not be empty"
-        );
+        let x = &$input;
+        debug_assert!(x.len() > 0,
+            "Contract softmax: precondition violated — x.len() > 0");
+        debug_assert!(x.iter().all(|v| v.is_finite()),
+            "Contract softmax: precondition violated — x.iter().all(|v| v.is_finite())");
     }};
 }
 
@@ -5217,6 +5294,16 @@ macro_rules! contract_post_softmax {
     }};
 }
 
+/// Combined pre+post contract for equation `softmax`.
+macro_rules! contract_softmax {
+    ($input:expr, $body:expr) => {{
+        contract_pre_softmax!($input);
+        let _contract_result = $body;
+        contract_post_softmax!(_contract_result);
+        _contract_result
+    }};
+}
+
 // Auto-generated from contracts/special-tokens-registry-v1.yaml — DO NOT EDIT
 // Contract: special-tokens-registry-v1
 
@@ -5225,10 +5312,8 @@ macro_rules! contract_post_softmax {
 macro_rules! contract_pre_token_bounds {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract token_bounds: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract token_bounds: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5240,10 +5325,8 @@ macro_rules! contract_pre_token_bounds {
 macro_rules! contract_pre_acceptance_probability {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract acceptance_probability: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract acceptance_probability: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5252,10 +5335,8 @@ macro_rules! contract_pre_acceptance_probability {
 macro_rules! contract_pre_output_equivalence {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract output_equivalence: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract output_equivalence: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5264,10 +5345,8 @@ macro_rules! contract_pre_output_equivalence {
 macro_rules! contract_pre_token_acceptance {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract token_acceptance: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract token_acceptance: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5279,10 +5358,8 @@ macro_rules! contract_pre_token_acceptance {
 macro_rules! contract_pre_selective_gate {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract selective_gate: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract selective_gate: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5291,10 +5368,8 @@ macro_rules! contract_pre_selective_gate {
 macro_rules! contract_pre_ssm_discretize {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ssm_discretize: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ssm_discretize: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5303,10 +5378,8 @@ macro_rules! contract_pre_ssm_discretize {
 macro_rules! contract_pre_ssm_scan {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract ssm_scan: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ssm_scan: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5318,10 +5391,8 @@ macro_rules! contract_pre_ssm_scan {
 macro_rules! contract_pre_tpot_definition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract tpot_definition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract tpot_definition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5333,10 +5404,8 @@ macro_rules! contract_pre_tpot_definition {
 macro_rules! contract_pre_decision_function {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract decision_function: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract decision_function: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5345,10 +5414,8 @@ macro_rules! contract_pre_decision_function {
 macro_rules! contract_pre_hinge_loss {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract hinge_loss: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract hinge_loss: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5357,10 +5424,8 @@ macro_rules! contract_pre_hinge_loss {
 macro_rules! contract_pre_margin {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract margin: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract margin: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5369,10 +5434,8 @@ macro_rules! contract_pre_margin {
 macro_rules! contract_pre_svm_predict {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract svm_predict: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract svm_predict: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5384,22 +5447,20 @@ macro_rules! contract_pre_svm_predict {
 macro_rules! contract_pre_silu {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract silu: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract silu: precondition violated — !input.is_empty()");
     }};
 }
 
 /// Preconditions for equation `swiglu`.
-/// Call at function entry: `contract_pre_swiglu!(input_expr)`
+/// Domain-specific. Call: `contract_pre_swiglu!(slice_expr)`
 macro_rules! contract_pre_swiglu {
     ($input:expr) => {{
-        let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract swiglu: precondition violated — input must not be empty"
-        );
+        let x = &$input;
+        debug_assert!(x.len() > 0,
+            "Contract swiglu: precondition violated — x.len() > 0");
+        debug_assert!(x.iter().all(|v| v.is_finite()),
+            "Contract swiglu: precondition violated — x.iter().all(|v| v.is_finite())");
     }};
 }
 
@@ -5408,14 +5469,41 @@ macro_rules! contract_pre_swiglu {
 macro_rules! contract_post_swiglu {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(
-            _contract_result.len() == x.len(),
-            "Contract swiglu: postcondition violated — result.len() == x.len()"
-        );
-        debug_assert!(
-            _contract_result.iter().all(|v| v.is_finite()),
-            "Contract swiglu: postcondition violated — result.iter().all(|v| v.is_finite())"
-        );
+        debug_assert!(_contract_result.len() == x.len(), "Contract swiglu: postcondition violated — result.len() == x.len()");
+        debug_assert!(_contract_result.iter().all(|v| v.is_finite()), "Contract swiglu: postcondition violated — result.iter().all(|v| v.is_finite())");
+    }};
+}
+
+/// Combined pre+post contract for equation `swiglu`.
+macro_rules! contract_swiglu {
+    ($input:expr, $body:expr) => {{
+        contract_pre_swiglu!($input);
+        let _contract_result = $body;
+        contract_post_swiglu!(_contract_result);
+        _contract_result
+    }};
+}
+
+// Auto-generated from contracts/tdg-scoring-v1.yaml — DO NOT EDIT
+// Contract: tdg-scoring-v1
+
+/// Preconditions for equation `calculate_tdg`.
+/// Call at function entry: `contract_pre_calculate_tdg!(input_expr)`
+macro_rules! contract_pre_calculate_tdg {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract calculate_tdg: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `letter_grade`.
+/// Call at function entry: `contract_pre_letter_grade!(input_expr)`
+macro_rules! contract_pre_letter_grade {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract letter_grade: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5427,10 +5515,8 @@ macro_rules! contract_post_swiglu {
 macro_rules! contract_pre_architecture_delta {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract architecture_delta: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract architecture_delta: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5439,10 +5525,8 @@ macro_rules! contract_pre_architecture_delta {
 macro_rules! contract_pre_parameter_decomposition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract parameter_decomposition: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract parameter_decomposition: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5451,10 +5535,8 @@ macro_rules! contract_pre_parameter_decomposition {
 macro_rules! contract_pre_quantization_bytes {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract quantization_bytes: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract quantization_bytes: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5463,10 +5545,8 @@ macro_rules! contract_pre_quantization_bytes {
 macro_rules! contract_pre_tensor_count {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract tensor_count: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract tensor_count: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5475,10 +5555,21 @@ macro_rules! contract_pre_tensor_count {
 macro_rules! contract_pre_tied_embeddings {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract tied_embeddings: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract tied_embeddings: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/tensor-layout-v1.yaml — DO NOT EDIT
+// Contract: tensor-layout-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5490,10 +5581,8 @@ macro_rules! contract_pre_tied_embeddings {
 macro_rules! contract_pre_architecture_normalization {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract architecture_normalization: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract architecture_normalization: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5502,10 +5591,21 @@ macro_rules! contract_pre_architecture_normalization {
 macro_rules! contract_pre_name_resolution {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract name_resolution: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract name_resolution: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/tensor-rc-data-v1.yaml — DO NOT EDIT
+// Contract: tensor-rc-data-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5517,10 +5617,8 @@ macro_rules! contract_pre_name_resolution {
 macro_rules! contract_pre_gqa_grouping {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract gqa_grouping: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract gqa_grouping: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5529,10 +5627,8 @@ macro_rules! contract_pre_gqa_grouping {
 macro_rules! contract_pre_lm_head {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract lm_head: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract lm_head: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5541,10 +5637,8 @@ macro_rules! contract_pre_lm_head {
 macro_rules! contract_pre_qkv_projection {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract qkv_projection: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract qkv_projection: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5553,10 +5647,8 @@ macro_rules! contract_pre_qkv_projection {
 macro_rules! contract_pre_residual {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract residual: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract residual: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5565,10 +5657,8 @@ macro_rules! contract_pre_residual {
 macro_rules! contract_pre_swiglu_shape {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract swiglu_shape: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract swiglu_shape: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5580,10 +5670,67 @@ macro_rules! contract_pre_swiglu_shape {
 macro_rules! contract_pre_tied_lm_head {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract tied_lm_head: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract tied_lm_head: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/tiled-matmul-shader-v1.yaml — DO NOT EDIT
+// Contract: tiled-matmul-shader-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/tokenizer-loading-v1.yaml — DO NOT EDIT
+// Contract: tokenizer-loading-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/training-loop-v1.yaml — DO NOT EDIT
+// Contract: training-loop-v1
+
+/// Preconditions for equation `ema_loss`.
+/// Call at function entry: `contract_pre_ema_loss!(input_expr)`
+macro_rules! contract_pre_ema_loss {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract ema_loss: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `val_split`.
+/// Call at function entry: `contract_pre_val_split!(input_expr)`
+macro_rules! contract_pre_val_split {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract val_split: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `warmup_lr`.
+/// Call at function entry: `contract_pre_warmup_lr!(input_expr)`
+macro_rules! contract_pre_warmup_lr {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract warmup_lr: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5595,10 +5742,61 @@ macro_rules! contract_pre_tied_lm_head {
 macro_rules! contract_pre_transpose {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract transpose: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract transpose: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Auto-generated from contracts/type-preservation-v1.yaml — DO NOT EDIT
+// Contract: type-preservation-v1
+
+/// Preconditions for equation `container_preservation`.
+/// Call at function entry: `contract_pre_container_preservation!(input_expr)`
+macro_rules! contract_pre_container_preservation {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract container_preservation: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `copy_semantics`.
+/// Call at function entry: `contract_pre_copy_semantics!(input_expr)`
+macro_rules! contract_pre_copy_semantics {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract copy_semantics: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `numeric_semantics`.
+/// Call at function entry: `contract_pre_numeric_semantics!(input_expr)`
+macro_rules! contract_pre_numeric_semantics {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract numeric_semantics: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `type_inference`.
+/// Call at function entry: `contract_pre_type_inference!(input_expr)`
+macro_rules! contract_pre_type_inference {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract type_inference: precondition violated — !input.is_empty()");
+    }};
+}
+
+/// Preconditions for equation `type_map`.
+/// Call at function entry: `contract_pre_type_map!(input_expr)`
+macro_rules! contract_pre_type_map {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract type_map: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5610,10 +5808,8 @@ macro_rules! contract_pre_transpose {
 macro_rules! contract_pre_density_gate {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract density_gate: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract density_gate: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5622,10 +5818,8 @@ macro_rules! contract_pre_density_gate {
 macro_rules! contract_pre_l2_norm_nondegeneracy {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract l2_norm_nondegeneracy: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract l2_norm_nondegeneracy: precondition violated — !input.is_empty()");
     }};
 }
 
@@ -5634,11 +5828,22 @@ macro_rules! contract_pre_l2_norm_nondegeneracy {
 macro_rules! contract_pre_nan_inf_rejection {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(
-            !_contract_input.is_empty(),
-            "Contract nan_inf_rejection: precondition violated — input must not be empty"
-        );
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract nan_inf_rejection: precondition violated — !input.is_empty()");
     }};
 }
 
-// Total: 441 preconditions, 18 postconditions from 131 contracts
+// Auto-generated from contracts/wgpu-resident-weights-v1.yaml — DO NOT EDIT
+// Contract: wgpu-resident-weights-v1
+
+/// Preconditions for equation `identity`.
+/// Call at function entry: `contract_pre_identity!(input_expr)`
+macro_rules! contract_pre_identity {
+    ($input:expr) => {{
+        let _contract_input = &$input;
+        debug_assert!(!_contract_input.is_empty(),
+            "Contract identity: precondition violated — !input.is_empty()");
+    }};
+}
+
+// Total: 520 preconditions, 18 postconditions from 165 contracts
