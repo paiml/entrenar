@@ -65,8 +65,7 @@ pub struct WgpuModelState {
     pub head_dim: usize,
     pub intermediate_size: usize,
     /// Cached dequanted FFN weights per layer: (gate, up, down) fp32
-    /// Populated on first access, reused on subsequent steps (base weights are frozen).
-    ffn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>>,
+    pub(crate) ffn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>>,
 }
 
 #[cfg(feature = "gpu")]
@@ -471,8 +470,9 @@ impl WgpuTransformerTrainer {
         // --- Populate FFN weight cache (dequant once, reuse on subsequent steps) ---
         model.populate_ffn_cache(&self.device)?;
 
-        // --- Forward through all layers ---
+        // --- Forward through all layers (cache activations for backward) ---
         let mut hidden = token_hidden.to_vec();
+        let mut layer_acts = Vec::with_capacity(n_layers);
 
         for layer_idx in 0..n_layers {
             // RMSNorm before FFN
@@ -485,33 +485,32 @@ impl WgpuTransformerTrainer {
                     hidden[si * h as usize + hi] *= inv_rms;
                 }
             }
+            let hidden_input = hidden.clone(); // cache for backward
 
-            // Cached FFN weights (already dequanted)
             let (gate_fp32, up_fp32, down_fp32) = model.ffn_cache[layer_idx].as_ref()
                 .map(|(g, u, d)| (g.as_slice(), u.as_slice(), d.as_slice()))
                 .expect("cache populated above");
 
-            // FFN forward on GPU: gate_out = hidden @ gate^T, up_out = hidden @ up^T
             let mut gate_out = vec![0.0f32; (s * i) as usize];
             self.device.gemm_backward_a(&hidden, gate_fp32, &mut gate_out, s, i, h)?;
-
             let mut up_out = vec![0.0f32; (s * i) as usize];
             self.device.gemm_backward_a(&hidden, up_fp32, &mut up_out, s, i, h)?;
 
-            // SiLU(gate) * up (element-wise, CPU — small compared to GEMM)
-            let swiglu: Vec<f32> = gate_out.iter().zip(up_out.iter()).map(|(&g, &u)| {
-                let sig = 1.0 / (1.0 + (-g).exp());
-                g * sig * u
+            let silu_gate: Vec<f32> = gate_out.iter().map(|&x| {
+                let sig = 1.0 / (1.0 + (-x).exp());
+                x * sig
             }).collect();
+            let swiglu: Vec<f32> = silu_gate.iter().zip(up_out.iter())
+                .map(|(&sg, &u)| sg * u).collect();
 
-            // Down: ffn_out = swiglu @ down^T (GPU GEMM)
             let mut ffn_out = vec![0.0f32; (s * h) as usize];
-            self.device.gemm_backward_a(&swiglu, &down_fp32, &mut ffn_out, s, h, i)?;
+            self.device.gemm_backward_a(&swiglu, down_fp32, &mut ffn_out, s, h, i)?;
 
-            // Residual
-            for j in 0..(s * h) as usize {
-                hidden[j] += ffn_out[j];
-            }
+            for j in 0..(s * h) as usize { hidden[j] += ffn_out[j]; }
+
+            layer_acts.push(super::wgpu_backward::LayerActivations {
+                hidden_input, gate_output: gate_out, up_output: up_out, silu_gate,
+            });
         }
 
         // --- LM head + loss (GPU GEMM) ---
@@ -559,7 +558,7 @@ impl WgpuTransformerTrainer {
         }
 
         self.step += 1;
-        let grad_norm: f32 = grad_hidden.iter().map(|g| g * g).sum::<f32>().sqrt();
+        let lm_gnorm: f32 = grad_hidden.iter().map(|g| g * g).sum::<f32>().sqrt();
 
         // AdamW on lm_head
         let mut lm = std::mem::take(&mut model.lm_head);
@@ -573,6 +572,14 @@ impl WgpuTransformerTrainer {
         model.lm_head_m = lm_m;
         model.lm_head_v = lm_v;
 
+        // --- Backward through all FFN layers + LoRA AdamW ---
+        let lora_gnorm = super::wgpu_backward::backward_through_layers(
+            &self.device, &mut grad_hidden, &layer_acts, model,
+            s, h, i, self.lr, self.beta1, self.beta2, self.eps,
+            self.weight_decay, self.step, self.lora_alpha,
+        )?;
+
+        let grad_norm = (lm_gnorm * lm_gnorm + lora_gnorm * lora_gnorm).sqrt();
         Ok((loss, grad_norm))
     }
 
@@ -735,20 +742,9 @@ impl WgpuTransformerTrainer {
         Ok((grad_a, grad_b, grad_x))
     }
 
-    /// Execute one training step: forward → loss → backward → AdamW optimize
-    ///
-    /// Returns (loss, grad_norm) for the step.
-    ///
-    /// Updates `lm_head_weight` in-place via AdamW. The `m_state` and `v_state`
-    /// buffers hold optimizer momentum (must be same size as lm_head_weight).
-    ///
-    /// # Phase 3: LM head training loop
-    ///
-    /// 1. Forward: hidden @ lm_head^T → logits (CPU matmul)
-    /// 2. Loss: cross-entropy (CPU)
-    /// 3. Backward A: grad_hidden = grad_logits @ lm_head (GPU GEMM)
-    /// 4. Backward B: grad_lm_head = hidden^T @ grad_logits (GPU GEMM)
-    /// 5. Optimize: AdamW step on lm_head weights (GPU)
+    /// LM-head-only training step (forward → loss → backward → AdamW).
+    /// 1. Forward: hidden @ lm_head^T → logits (CPU matmul), 2. Loss: CE
+    /// 3. Backward A/B (GPU GEMM), 5. AdamW (GPU)
     pub fn train_step(
         &mut self,
         _input_ids: &[u32],
