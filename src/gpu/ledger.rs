@@ -418,7 +418,7 @@ pub fn detect_gpu_uuid() -> String {
 
 /// Detect total GPU memory in MB via `nvidia-smi`.
 pub fn detect_total_memory_mb() -> usize {
-    std::process::Command::new("nvidia-smi")
+    let gpu_mb = std::process::Command::new("nvidia-smi")
         .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
         .output()
         .ok()
@@ -426,6 +426,37 @@ pub fn detect_total_memory_mb() -> usize {
             let stdout = String::from_utf8_lossy(&out.stdout);
             stdout.trim().lines().next()?.trim().parse::<usize>().ok()
         })
+        .unwrap_or(0);
+
+    if gpu_mb > 0 {
+        return gpu_mb;
+    }
+
+    // GB10 / DIGITS unified memory: nvidia-smi reports [N/A] for memory.total.
+    // Use system RAM as VRAM (unified memory architecture).
+    if detect_memory_type() == MemoryType::Unified {
+        let sys_mb = sys_total_memory_mb();
+        if sys_mb > 0 {
+            eprintln!("[GPU-SHARE] Unified memory: using system RAM ({sys_mb} MB) as VRAM");
+            return sys_mb;
+        }
+    }
+
+    0
+}
+
+/// Read total system memory from /proc/meminfo (Linux).
+fn sys_total_memory_mb() -> usize {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("MemTotal:"))
+                .and_then(|l| {
+                    l.split_whitespace().nth(1)?.parse::<usize>().ok()
+                })
+        })
+        .map(|kb| kb / 1024)
         .unwrap_or(0)
 }
 
@@ -437,7 +468,10 @@ pub fn detect_memory_type() -> MemoryType {
         .ok()
         .map_or(MemoryType::Discrete, |out| {
             let name = String::from_utf8_lossy(&out.stdout).to_lowercase();
-            if name.contains("jetson") || name.contains("orin") || name.contains("tegra") {
+            // Unified memory: Jetson/Orin/Tegra + Project DIGITS GB10
+            if name.contains("jetson") || name.contains("orin") || name.contains("tegra")
+                || name.contains("gb10") || name.contains("digits")
+            {
                 MemoryType::Unified
             } else {
                 MemoryType::Discrete
