@@ -356,6 +356,8 @@ impl WgpuTrainer {
         k: u32,
         n: u32,
     ) {
+        // Contract: matmul_backward (backward-pass-v1)
+        debug_assert!(m > 0 && k > 0 && n > 0, "Contract matmul_backward: dimensions must be positive");
         // grad_a[M,K] = grad_c[M,N] @ B^T[N,K]
         // This is a GEMM with (M, N, K) → output is M×K
         // We need B transposed. Since B is stored as [K,N] row-major,
@@ -539,6 +541,16 @@ impl WgpuTrainer {
     /// Reset step counter
     pub fn reset_step(&mut self) {
         self.step = 0;
+    }
+
+    /// Get a reference to the wgpu queue (for buffer writes)
+    pub fn queue_ref(&self) -> &wgpu::Queue {
+        &self.queue
+    }
+
+    /// Get a reference to the wgpu device (for buffer creation)
+    pub fn device_ref(&self) -> &wgpu::Device {
+        &self.device
     }
 
     // --- Internal helpers ---

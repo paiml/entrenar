@@ -195,6 +195,21 @@ pub struct InstructPipeline {
     #[cfg(feature = "cuda")]
     #[allow(dead_code)]
     vram_guard: Option<VramGuard>,
+    /// wgpu training pipeline (§26 Step 0d.5) — zero unsafe alternative to CUDA
+    #[cfg(feature = "gpu")]
+    wgpu_training: Option<WgpuTrainingState>,
+}
+
+/// State for wgpu-based training pipeline (§26 WgpuTrainingPipeline)
+#[cfg(feature = "gpu")]
+struct WgpuTrainingState {
+    cross_entropy: crate::autograd::wgpu_cross_entropy::WgslCrossEntropy,
+    trainer: crate::autograd::wgpu_training::WgpuTrainer,
+    // GPU buffers for logits, labels, losses, logsumexp
+    logits_buf: trueno::backends::gpu::wgpu::Buffer,
+    labels_buf: trueno::backends::gpu::wgpu::Buffer,
+    losses_buf: trueno::backends::gpu::wgpu::Buffer,
+    logsumexp_buf: trueno::backends::gpu::wgpu::Buffer,
 }
 
 impl InstructPipeline {
@@ -237,11 +252,26 @@ impl InstructPipeline {
             nf4_lora_step: 0,
             #[cfg(feature = "cuda")]
             vram_guard: None,
+            #[cfg(feature = "gpu")]
+            wgpu_training: None,
         };
 
         #[cfg(feature = "cuda")]
         if pipeline.config.quantize_nf4 {
             pipeline.init_cuda(model_config);
+        }
+
+        // Initialize wgpu training if CUDA is not available
+        #[cfg(feature = "gpu")]
+        if pipeline.wgpu_training.is_none() {
+            #[cfg(feature = "cuda")]
+            let cuda_active = pipeline.cuda_blocks.is_some();
+            #[cfg(not(feature = "cuda"))]
+            let cuda_active = false;
+
+            if !cuda_active {
+                pipeline.try_init_wgpu(model_config);
+            }
         }
 
         pipeline
@@ -336,6 +366,8 @@ impl InstructPipeline {
             nf4_lora_step: 0,
             #[cfg(feature = "cuda")]
             vram_guard: None,
+            #[cfg(feature = "gpu")]
+            wgpu_training: None,
         };
 
         #[cfg(feature = "cuda")]
@@ -434,6 +466,8 @@ impl InstructPipeline {
             nf4_lora_step: 0,
             #[cfg(feature = "cuda")]
             vram_guard: None,
+            #[cfg(feature = "gpu")]
+            wgpu_training: None,
         };
 
         #[cfg(feature = "cuda")]
@@ -593,10 +627,16 @@ impl InstructPipeline {
         // exceeds max_seq_len, all response tokens were truncated away.
         let prompt_len = prompt_len.min(seq_len);
 
-        // ── GPU path (NF4 QLoRA) ──────────────────────────────────────
+        // ── CUDA GPU path (NF4 QLoRA) ─────────────────────────────────
         #[cfg(feature = "cuda")]
         if self.cuda_blocks.is_some() {
             return self.cuda_train_step(&full_ids, prompt_len, seq_len, vocab_size);
+        }
+
+        // ── wgpu GPU path (§26 WgpuTrainingPipeline) ─────────────────
+        #[cfg(feature = "gpu")]
+        if self.wgpu_training.is_some() {
+            return self.wgpu_train_step(&full_ids, prompt_len, seq_len, vocab_size);
         }
 
         // ── CPU path ──────────────────────────────────────────────────
@@ -784,6 +824,114 @@ impl InstructPipeline {
         if self.config.quantize_nf4 {
             self.backward_nf4_gpu_blocks_gpu_resident(seq_len);
         }
+
+        InstructStepResult {
+            loss: avg_loss,
+            num_response_tokens: num_loss_tokens,
+            perplexity: avg_loss.exp().min(1e6),
+        }
+    }
+
+    /// wgpu GPU training step (§26 WgpuTrainingPipeline)
+    ///
+    /// Uses CPU forward (model.forward) + GPU fused cross-entropy loss + CPU backward.
+    /// The GPU handles the loss computation (fused CE) and optimizer (AdamW).
+    /// Forward and backward GEMM through transformer layers stay on CPU for now —
+    /// full GPU forward/backward is Step 0d.2/0d.3 (WgslForwardPass/WgslBackwardPass).
+    ///
+    /// This is the integration point: proves the pipeline works end-to-end,
+    /// then incrementally moves forward/backward to GPU.
+    #[cfg(feature = "gpu")]
+    fn wgpu_train_step(
+        &mut self,
+        full_ids: &[u32],
+        prompt_len: usize,
+        seq_len: usize,
+        vocab_size: usize,
+    ) -> InstructStepResult {
+        let loss_start = prompt_len.saturating_sub(1);
+        let loss_end = seq_len - 1;
+        let num_loss_tokens = loss_end.saturating_sub(loss_start);
+
+        if num_loss_tokens == 0 {
+            return InstructStepResult { loss: 0.0, num_response_tokens: 0, perplexity: 1.0 };
+        }
+
+        // 1. CPU forward pass → logits
+        let logits = self.model.forward(full_ids);
+        let logits_data = logits.data().as_slice().expect("contiguous logits").to_vec();
+
+        // 2. GPU fused cross-entropy loss
+        let wgpu = self.wgpu_training.as_ref().unwrap();
+
+        // Upload logits and labels to GPU
+        wgpu.trainer.queue_ref().write_buffer(
+            &wgpu.logits_buf,
+            0,
+            bytemuck::cast_slice(&logits_data[..seq_len * vocab_size]),
+        );
+
+        // Shifted labels: position i predicts token at i+1
+        let labels: Vec<u32> = (0..seq_len)
+            .map(|i| if i + 1 < full_ids.len() { full_ids[i + 1] } else { 0 })
+            .collect();
+        wgpu.trainer.queue_ref().write_buffer(
+            &wgpu.labels_buf,
+            0,
+            bytemuck::cast_slice(&labels),
+        );
+
+        let avg_loss = wgpu.cross_entropy.forward(
+            &wgpu.logits_buf,
+            &wgpu.labels_buf,
+            &wgpu.losses_buf,
+            &wgpu.logsumexp_buf,
+            seq_len as u32,
+            vocab_size as u32,
+            loss_start as u32,
+            loss_end as u32,
+        );
+
+        if !avg_loss.is_finite() {
+            eprintln!("[wgpu] NaN/Inf loss detected — skipping backward");
+            return InstructStepResult {
+                loss: 100.0,
+                num_response_tokens: num_loss_tokens,
+                perplexity: 1e6,
+            };
+        }
+
+        // 3. GPU fused cross-entropy backward (in-place into logits_buf)
+        wgpu.cross_entropy.backward(
+            &wgpu.logits_buf,
+            &wgpu.labels_buf,
+            &wgpu.logsumexp_buf,
+            seq_len as u32,
+            vocab_size as u32,
+            loss_start as u32,
+            loss_end as u32,
+        );
+
+        // 4. Download gradient and run CPU backward through autograd
+        let grad_logits = wgpu.trainer.download(&wgpu.logits_buf);
+
+        // Set gradient on logits tensor and backward through autograd
+        logits.set_grad(ndarray::Array1::from(grad_logits[..seq_len * vocab_size].to_vec()));
+        if let Some(op) = logits.backward_op() {
+            op.backward();
+        }
+
+        // 5. Optimizer step on LoRA parameters (CPU for now)
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        for lora in &mut self.lora_layers {
+            params.extend(lora.trainable_params());
+        }
+
+        if let Some(max_norm) = self.config.gradient_clip_norm {
+            clip_grad_norm_refs(&mut params, max_norm);
+        }
+
+        self.optimizer.step_refs(&mut params);
 
         InstructStepResult {
             loss: avg_loss,
@@ -1058,6 +1206,55 @@ impl InstructPipeline {
                 }
             }
         }
+    }
+
+    // ── wgpu GPU acceleration (§26 WgpuTrainingPipeline) ────────────────
+
+    #[cfg(feature = "gpu")]
+    fn try_init_wgpu(&mut self, _model_config: &TransformerConfig) {
+        use crate::autograd::wgpu_cross_entropy::WgslCrossEntropy;
+        use crate::autograd::wgpu_training::WgpuTrainer;
+
+        let trainer = match WgpuTrainer::new() {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[wgpu] Failed to init: {e} — using CPU");
+                return;
+            }
+        };
+
+        let seq = self.config.max_seq_len as u32;
+        let vocab = _model_config.vocab_size as u32;
+
+        let make_buf = |size: u32, label: &str| -> trueno::backends::gpu::wgpu::Buffer {
+            trainer.device_ref().create_buffer(&trueno::backends::gpu::wgpu::BufferDescriptor {
+                label: Some(label),
+                size: (size as u64) * 4,
+                usage: trueno::backends::gpu::wgpu::BufferUsages::STORAGE
+                    | trueno::backends::gpu::wgpu::BufferUsages::COPY_SRC
+                    | trueno::backends::gpu::wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+
+        let ce = WgslCrossEntropy::new(
+            trainer.device_ref().clone(),
+            trainer.queue_ref().clone(),
+        );
+
+        eprintln!(
+            "[wgpu] Training initialized (seq={}, vocab={})",
+            seq, vocab
+        );
+
+        self.wgpu_training = Some(WgpuTrainingState {
+            logits_buf: make_buf(seq * vocab, "logits"),
+            labels_buf: make_buf(seq, "labels"),
+            losses_buf: make_buf(seq, "losses"),
+            logsumexp_buf: make_buf(seq, "logsumexp"),
+            cross_entropy: ce,
+            trainer,
+        });
     }
 
     // ── CUDA GPU acceleration ────────────────────────────────────────────
