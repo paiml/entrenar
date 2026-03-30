@@ -1242,6 +1242,16 @@ impl InstructPipeline {
             trainer.queue_ref().clone(),
         );
 
+        // Check if lm_head weight fits in wgpu buffer (vocab * hidden * 4 bytes)
+        let lm_head_bytes = (vocab as u64) * (_model_config.hidden_size as u64) * 4;
+        if lm_head_bytes > 2_147_483_647 {
+            eprintln!(
+                "[wgpu] lm_head too large ({:.1} GB > 2 GB wgpu limit) — using CPU",
+                lm_head_bytes as f64 / 1e9
+            );
+            return;
+        }
+
         eprintln!(
             "[wgpu] Training initialized (seq={}, vocab={})",
             seq, vocab

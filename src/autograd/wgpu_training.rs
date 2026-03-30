@@ -168,8 +168,8 @@ impl WgpuTrainer {
                 label: Some("WgpuTrainer"),
                 required_features: wgpu::Features::empty(),
                 required_limits: wgpu::Limits {
-                    max_storage_buffer_binding_size: 1 << 30, // 1 GB
-                    max_buffer_size: 1 << 30,
+                    max_storage_buffer_binding_size: adapter.limits().max_storage_buffer_binding_size,
+                    max_buffer_size: adapter.limits().max_buffer_size,
                     ..Default::default()
                 },
                 memory_hints: wgpu::MemoryHints::Performance,
