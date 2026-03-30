@@ -461,7 +461,6 @@ impl WgpuTransformerTrainer {
         target_ids: &[u32],        // [seq_len] — target token IDs
         model: &mut WgpuModelState,
     ) -> Result<(f32, f32), String> {
-        contract_pre_cross_entropy!(token_hidden);
         let s = target_ids.len() as u32;
         let h = model.hidden_size as u32;
         let i = model.intermediate_size as u32;
