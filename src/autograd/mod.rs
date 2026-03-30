@@ -37,6 +37,7 @@ pub mod cuda_training;
 pub mod graph_opt;
 pub mod wgpu_backward;
 pub mod wgpu_block;
+pub mod wgpu_cross_entropy;
 pub mod wgpu_training;
 pub(crate) mod ops;
 pub mod precision;
