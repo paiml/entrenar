@@ -35,12 +35,12 @@ fn run() -> Result<(), String> {
         .unwrap_or_else(|| "/home/noah/src/bashrs/training/conversations_v4.jsonl".to_string());
     let steps: usize = get_arg(&args, "--steps").and_then(|s| s.parse().ok()).unwrap_or(10);
     let lr: f32 = get_arg(&args, "--lr").and_then(|s| s.parse().ok()).unwrap_or(1e-4);
-    let seq_len: usize = get_arg(&args, "--seq-len").and_then(|s| s.parse().ok()).unwrap_or(32);
+    let seq_len: usize = get_arg(&args, "--seq-len").and_then(|s| s.parse().ok()).unwrap_or(128);
 
     let config = WgpuTrainConfig {
         model_dir: model_dir.into(),
         data_path: data_path.into(),
-        epochs: 1,
+        epochs: 3,
         lr,
         lora_rank: 16,
         lora_alpha: 32.0,
@@ -49,6 +49,7 @@ fn run() -> Result<(), String> {
         log_every: 1,
         save_every: steps,
         output_dir: "/tmp/wgpu-train-output".into(),
+        accumulation_steps: 4,
     };
 
     eprintln!("WGPU Training: {} steps, lr={lr}, seq_len={seq_len}", steps);

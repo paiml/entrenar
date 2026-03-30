@@ -15,27 +15,18 @@ use trueno::backends::gpu::GpuDevice;
 #[cfg(feature = "gpu")]
 fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> { let mut o = vec![0.0f32; rows*cols]; for r in 0..rows { for c in 0..cols { o[c*rows+r] = data[r*cols+c]; } } o }
 
-/// WGPU-accelerated transformer trainer (S18.15)
 #[cfg(feature = "gpu")]
 pub struct WgpuTransformerTrainer {
-    /// WGPU forward pass (existing)
     forward: WgpuForwardPass,
-    /// trueno GPU device for backward ops
     device: GpuDevice,
-    /// Model config
     config: TransformerConfig,
-    /// Current training step
     step: u32,
-    /// Learning rate
     lr: f32,
-    /// AdamW hyperparams
     beta1: f32,
     beta2: f32,
     eps: f32,
     weight_decay: f32,
-    /// LoRA rank (0 = full fine-tuning)
     lora_rank: u32,
-    /// LoRA alpha for scaling
     lora_alpha: f32,
 }
 
@@ -470,6 +461,7 @@ impl WgpuTransformerTrainer {
         target_ids: &[u32],        // [seq_len] — target token IDs
         model: &mut WgpuModelState,
     ) -> Result<(f32, f32), String> {
+        contract_pre_cross_entropy!(token_hidden);
         let s = target_ids.len() as u32;
         let h = model.hidden_size as u32;
         let i = model.intermediate_size as u32;
@@ -494,11 +486,12 @@ impl WgpuTransformerTrainer {
             let (q_w, k_w, v_w, o_w) = model.attn_cache[layer_idx].as_ref()
                 .map(|(q, k, v, o)| (q.as_slice(), k.as_slice(), v.as_slice(), o.as_slice()))
                 .expect("attn cache");
-            let attn_out = super::wgpu_attention::attention_forward(
+            let (attn_out, attn_cache) = super::wgpu_attention::attention_forward(
                 &self.device, &hidden, q_w, k_w, v_w, o_w,
                 &model.lora_q[layer_idx], &model.lora_v[layer_idx], self.lora_alpha,
                 s, h, model.num_heads as u32, model.num_kv_heads as u32, model.head_dim as u32,
             )?;
+            let attn_input = hidden.clone(); // save pre-attention input for backward
             for j in 0..(s * h) as usize { hidden[j] += attn_out[j]; }
             rmsnorm(&mut hidden, s as usize, h as usize); // pre-FFN norm
 
@@ -522,7 +515,11 @@ impl WgpuTransformerTrainer {
             for j in 0..(s * h) as usize { hidden[j] += ffn_out[j]; }
 
             layer_acts.push(super::wgpu_backward::LayerActivations {
-                hidden_input, gate_output: gate_out, up_output: up_out, silu_gate,
+                attn_input, hidden_input,
+                gate_output: gate_out, up_output: up_out, silu_gate,
+                q: attn_cache.q, k: attn_cache.k, v: attn_cache.v,
+                attn_weights: attn_cache.attn_weights, context: attn_cache.context,
+                lora_q_h: attn_cache.lora_q_h, lora_v_h: attn_cache.lora_v_h,
             });
         }
 

@@ -30,6 +30,8 @@ pub struct WgpuTrainConfig {
     pub log_every: usize,
     pub save_every: usize,
     pub output_dir: std::path::PathBuf,
+    /// Gradient accumulation steps (effective batch_size = accumulation_steps)
+    pub accumulation_steps: usize,
 }
 
 /// Load and tokenize one training example
@@ -89,16 +91,35 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
     tc.num_kv_heads = model.num_kv_heads;
     tc.vocab_size = model.vocab_size;
 
-    let mut trainer = WgpuTransformerTrainer::new(&tc, config.lr)?;
+    // Scale lr by 1/accumulation_steps for gradient accumulation equivalence
+    let effective_lr = config.lr / config.accumulation_steps.max(1) as f32;
+    let mut trainer = WgpuTransformerTrainer::new(&tc, effective_lr)?;
+    eprintln!("Effective lr: {effective_lr} (lr={} / accum={})\n", config.lr, config.accumulation_steps);
 
     // 5. Training loop
     let mut total_loss = 0.0f32;
     let mut step = 0usize;
 
+    let mut best_loss = f32::INFINITY;
     for epoch in 0..config.epochs {
-        eprintln!("--- Epoch {}/{} ---", epoch + 1, config.epochs);
+        // Shuffle data each epoch (deterministic seed for reproducibility)
+        let mut indices: Vec<usize> = (0..examples.len()).collect();
+        if epoch > 0 {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            epoch.hash(&mut hasher);
+            let seed = hasher.finish();
+            // Fisher-Yates shuffle with deterministic seed
+            for i in (1..indices.len()).rev() {
+                let j = ((seed.wrapping_mul(i as u64 + 1).wrapping_add(7)) % (i as u64 + 1)) as usize;
+                indices.swap(i, j);
+            }
+        }
+        eprintln!("--- Epoch {}/{} ({} examples) ---", epoch + 1, config.epochs, examples.len());
 
-        for (idx, text) in examples.iter().enumerate() {
+        for (idx, &ei) in indices.iter().enumerate() {
+            let text = &examples[ei];
             let (input_ids, target_ids) = tokenize_example(&tokenizer, text, config.seq_len);
             if input_ids.len() < 2 {
                 continue;
@@ -131,14 +152,9 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
             }
 
             if config.save_every > 0 && step % config.save_every == 0 {
-                model.save_checkpoint(
-                    &config.output_dir,
-                    step as u32,
-                    loss,
-                    config.lora_rank,
-                    config.lora_alpha,
-                )?;
+                model.save_checkpoint(&config.output_dir, step as u32, loss, config.lora_rank, config.lora_alpha)?;
             }
+            if loss < best_loss { best_loss = loss; }
         }
     }
 

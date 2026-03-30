@@ -32,13 +32,19 @@ fn norm_guard(output: &mut [f32], reference: &[f32], max_ratio: f32) {
     }
 }
 
-/// Attention forward pass for one layer
-///
-/// Returns output [seq_len, hidden_size] to be added as residual.
-///
-/// # Contract (C-WGPU-TRAIN-008)
-/// - Precondition: hidden is finite, all weight caches populated
-/// - Postcondition: output is finite, LoRA contributes when B≠0
+/// Attention cache returned from forward for use in backward
+#[cfg(feature = "gpu")]
+pub struct AttentionCache {
+    pub q: Vec<f32>,
+    pub k: Vec<f32>,
+    pub v: Vec<f32>,
+    pub attn_weights: Vec<f32>, // [num_heads, seq_len, seq_len]
+    pub context: Vec<f32>,
+    pub lora_q_h: Vec<f32>, // hidden @ A_q^T [s, rank]
+    pub lora_v_h: Vec<f32>, // hidden @ A_v^T [s, rank]
+}
+
+/// Attention forward. Returns (output, cache) for backward pass.
 #[cfg(feature = "gpu")]
 #[allow(clippy::too_many_arguments)]
 pub fn attention_forward(
@@ -56,7 +62,7 @@ pub fn attention_forward(
     num_heads: u32,
     num_kv_heads: u32,
     head_dim: u32,
-) -> Result<Vec<f32>, String> {
+) -> Result<(Vec<f32>, AttentionCache), String> {
     let s = seq_len as usize;
     let h = hidden_size as usize;
     let q_dim = (num_heads * head_dim) as usize;
@@ -75,6 +81,8 @@ pub fn attention_forward(
 
     // --- LoRA contributions (CPU, small rank) ---
     let rank = lora_q.rank as usize;
+    let mut h_a_saved: Option<Vec<f32>> = None;
+    let mut h_av_saved: Option<Vec<f32>> = None;
     if rank > 0 {
         let scaling_q = lora_alpha / lora_q.rank as f32;
         // LoRA Q: q += scaling * hidden @ A_q^T @ B_q^T
@@ -97,6 +105,7 @@ pub fn attention_forward(
                 q[si * q_dim + qi] += scaling_q * sum;
             }
         }
+        h_a_saved = Some(h_a);
 
         // LoRA V: v += scaling * hidden @ A_v^T @ B_v^T
         let v_rank = lora_v.rank as usize;
@@ -120,6 +129,7 @@ pub fn attention_forward(
                 v[si * kv_dim + vi] += scaling_v * sum;
             }
         }
+        h_av_saved = Some(h_av);
     }
 
     // QK-norm: per-head RMS normalization (prevents attention score explosion)
@@ -160,55 +170,30 @@ pub fn attention_forward(
         }
     }
 
-    // --- Grouped-Query Attention (GQA) ---
-    // Qwen3-4B: 32 Q heads, 8 KV heads → 4 Q heads per KV head
+    // GQA: 32 Q heads, 8 KV heads → 4 Q heads per KV head
     let heads_per_kv = nh / nkv;
-    let mut context = vec![0.0f32; s * q_dim]; // [seq_len, num_heads * head_dim]
+    let mut context = vec![0.0f32; s * q_dim];
+    let mut attn_weights = vec![0.0f32; nh * s * s]; // cache for backward
     let scale = 1.0 / (hd as f32).sqrt();
 
     for head in 0..nh {
         let kv_head = head / heads_per_kv;
-
-        // Compute attention scores for this head
         for qi in 0..s {
-            // Softmax numerator accumulation
             let mut max_score = f32::NEG_INFINITY;
-            let mut scores = vec![0.0f32; s];
-
+            let aw_off = head * s * s + qi * s;
             for ki in 0..s {
-                // Causal mask: only attend to positions ≤ qi
-                if ki > qi {
-                    scores[ki] = f32::NEG_INFINITY;
-                    continue;
-                }
+                if ki > qi { attn_weights[aw_off + ki] = 0.0; continue; }
                 let mut dot = 0.0f32;
-                for d in 0..hd {
-                    dot += q[qi * q_dim + head * hd + d] * k[ki * kv_dim + kv_head * hd + d];
-                }
-                scores[ki] = dot * scale;
-                if scores[ki] > max_score {
-                    max_score = scores[ki];
-                }
+                for d in 0..hd { dot += q[qi * q_dim + head * hd + d] * k[ki * kv_dim + kv_head * hd + d]; }
+                attn_weights[aw_off + ki] = dot * scale;
+                if attn_weights[aw_off + ki] > max_score { max_score = attn_weights[aw_off + ki]; }
             }
-
-            // Softmax
             let mut sum_exp = 0.0f32;
-            for ki in 0..s {
-                scores[ki] = (scores[ki] - max_score).exp();
-                sum_exp += scores[ki];
-            }
-            if sum_exp > 0.0 {
-                for ki in 0..s {
-                    scores[ki] /= sum_exp;
-                }
-            }
-
-            // Weighted sum of V
+            for ki in 0..s { attn_weights[aw_off + ki] = if ki > qi { 0.0 } else { (attn_weights[aw_off + ki] - max_score).exp() }; sum_exp += attn_weights[aw_off + ki]; }
+            if sum_exp > 0.0 { for ki in 0..s { attn_weights[aw_off + ki] /= sum_exp; } }
             for d in 0..hd {
                 let mut val = 0.0f32;
-                for ki in 0..s {
-                    val += scores[ki] * v[ki * kv_dim + kv_head * hd + d];
-                }
+                for ki in 0..s { val += attn_weights[aw_off + ki] * v[ki * kv_dim + kv_head * hd + d]; }
                 context[qi * q_dim + head * hd + d] = val;
             }
         }
@@ -219,7 +204,12 @@ pub fn attention_forward(
     device.matmul(&context, o_weight, &mut output, s, q_dim, h)?;
 
     norm_guard(&mut output, hidden, 2.0);
-    Ok(output)
+    let cache = AttentionCache {
+        q: q.clone(), k: k.clone(), v, attn_weights, context,
+        lora_q_h: if rank > 0 { h_a_saved.unwrap_or_default() } else { vec![] },
+        lora_v_h: if rank > 0 { h_av_saved.unwrap_or_default() } else { vec![] },
+    };
+    Ok((output, cache))
 }
 
 #[cfg(all(test, feature = "gpu"))]
@@ -245,7 +235,7 @@ mod tests {
         let lora_v = LoraAdapter::new(4, h, kv_dim as u32);
 
         // Without LoRA (B=0 → no contribution)
-        let out_base = attention_forward(
+        let (out_base, _cache) = attention_forward(
             &device, &hidden, &q_w, &k_w, &v_w, &o_w, &lora_q, &lora_v, 32.0, s, h, nh, nkv, hd,
         )
         .expect("attention_forward");
@@ -258,7 +248,7 @@ mod tests {
         for b in &mut lora_q2.b {
             *b = 0.01;
         }
-        let out_lora = attention_forward(
+        let (out_lora, _) = attention_forward(
             &device, &hidden, &q_w, &k_w, &v_w, &o_w, &lora_q2, &lora_v, 32.0, s, h, nh, nkv, hd,
         )
         .expect("attention_forward lora");
