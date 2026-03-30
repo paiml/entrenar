@@ -35,6 +35,7 @@ pub mod cuda_optim;
 pub mod cuda_tensor;
 pub mod cuda_training;
 pub mod graph_opt;
+pub mod wgpu_backward;
 pub mod wgpu_block;
 pub mod wgpu_training;
 pub(crate) mod ops;
