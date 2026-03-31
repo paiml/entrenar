@@ -412,6 +412,13 @@ fn save_and_validate_checkpoint(
         trainer.prepare_async_apr_save(model_name, "LlamaForCausalLM", step, loss_ema, lr as f64);
     let async_path = ckpt_path.clone();
     let async_output_dir = spec.training.output_dir.clone();
+    // ENT-269: Save LoRA adapter to checkpoint directory (PEFT format)
+    let ckpt_dir = ckpt_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let lora_ckpt_dir = ckpt_dir.join(format!("checkpoint-{step}"));
+    if let Err(e) = trainer.save_cuda_lora_adapter(&lora_ckpt_dir, Some(model_name)) {
+        println!("  [WARN] LoRA adapter checkpoint save failed: {e}");
+    }
+
     std::thread::spawn(move || {
         if let Err(e) = save_fn(&async_path) {
             println!("  [WARN] Async APR checkpoint save failed: {e}");
@@ -831,6 +838,10 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
         "✓ Model weights saved ({} bytes, APR)",
         std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
     );
+
+    // ENT-269: Save LoRA adapter as PEFT-compatible files (adapter_model.safetensors + adapter_config.json)
+    // C-QLORA-SAVE-001: NF4 QLoRA training MUST produce adapter_model.safetensors
+    trainer.save_cuda_lora_adapter(&spec.training.output_dir, Some(model_name))?;
 
     save_config_and_metadata(
         trainer.model().config(),

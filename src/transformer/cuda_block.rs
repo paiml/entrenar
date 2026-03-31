@@ -3542,22 +3542,22 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_forward;
-
         let s = saturating_u32(seq_len);
         let h = saturating_u32(hidden_size);
         let i_size = saturating_u32(intermediate_size);
         let n_inter = saturating_u32(seq_len * intermediate_size);
 
-        // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down[H,I]
-        // W_down is [H, I] row-major (HF: [hidden, intermediate])
-        gemm_forward(
+        // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down^T
+        // Forward was: ffn_out[S,H] = swiglu[S,I] @ W_down[I,H]  (m=S, k=I, n=H)
+        // Backward: grad_A[S,I] = grad_C[S,H] @ B[I,H]^T  (gemm_backward_a)
+        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
+        gemm_backward_a(
             grad_output,
             &self.w_down_fp32,
             &mut scratch.grad_swiglu,
             s,
-            i_size, // k = I (output cols)
-            h,      // n = H (shared dim)
+            i_size, // k = I (grad_A cols = forward's k)
+            h,      // n = H (grad_C cols = forward's n)
             stream,
         )?;
 
@@ -3597,27 +3597,29 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // Step 3: Propagate through gate/up projections (cuBLAS fp32)
-        // grad_norm2_gate[S,H] = d_gate[S,I] @ W_gate[I,H]
-        // W_gate is [I, H] row-major (HF: [intermediate, hidden])
-        gemm_forward(
-            &scratch.up_out, // d_gate
+        // Forward: gate[S,I] = norm2[S,H] @ W_gate[H,I]  (m=S, k=H, n=I)
+        // Backward: grad_norm2_gate[S,H] = d_gate[S,I] @ W_gate[H,I]^T
+        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
+        gemm_backward_a(
+            &scratch.up_out, // d_gate [S, I]
             &self.w_gate_fp32,
-            &mut scratch.ffn_out, // grad_norm2 part 1
+            &mut scratch.ffn_out, // grad_norm2 part 1 [S, H]
             s,
-            h,      // k = H (output cols)
-            i_size, // n = I (shared dim)
+            h,      // k = H (grad_A cols = forward's k)
+            i_size, // n = I (grad_C cols = forward's n)
             stream,
         )?;
 
-        // grad_norm2_up[S,H] = d_up[S,I] @ W_up[I,H]
-        // W_up is [I, H] row-major (HF: [intermediate, hidden])
-        gemm_forward(
-            &scratch.gate_out, // d_up
+        // Forward: up[S,I] = norm2[S,H] @ W_up[H,I]  (m=S, k=H, n=I)
+        // Backward: grad_norm2_up[S,H] = d_up[S,I] @ W_up[H,I]^T
+        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
+        gemm_backward_a(
+            &scratch.gate_out, // d_up [S, I]
             &self.w_up_fp32,
-            &mut scratch.grad_hidden, // grad_norm2 part 2
+            &mut scratch.grad_hidden, // grad_norm2 part 2 [S, H]
             s,
-            h,      // k = H (output cols)
-            i_size, // n = I (shared dim)
+            h,      // k = H (grad_A cols = forward's k)
+            i_size, // n = I (grad_C cols = forward's n)
             stream,
         )?;
 
@@ -3659,15 +3661,16 @@ impl CudaNf4TransformerBlock {
         let kvh = saturating_u32(kv_hidden_size);
 
         // Step 1: O projection backward
-        // grad_attn_out[S, q_dim] = grad_residual1[S, H] @ W_o[H, q_dim]
-        // W_o is [H, q_dim] row-major (HF: [hidden, q_dim])
-        gemm_forward(
+        // Forward: o_proj[S,H] = attn_out[S,qd] @ W_o[qd,H]  (m=S, k=qd, n=H)
+        // Backward: grad_attn_out[S,qd] = grad_residual1[S,H] @ W_o[qd,H]^T
+        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
+        gemm_backward_a(
             grad_residual1,
             &self.w_o_fp32,
             &mut scratch.attn_out, // reuse as grad_attn_out [S, q_dim]
             s,
-            qd, // k = q_dim (output cols)
-            h,  // n = H (shared dim)
+            qd, // k = q_dim (grad_A cols = forward's k)
+            h,  // n = H (grad_C cols = forward's n)
             stream,
         )?;
 
@@ -3713,15 +3716,16 @@ impl CudaNf4TransformerBlock {
         }
 
         // Step 3: Q projection backward (cuBLAS fp32 + LoRA)
-        // grad_norm1_q[S, H] = grad_q[S, q_dim] @ W_q[q_dim, H]
-        // W_q is [q_dim, H] row-major (HF: [q_dim, hidden])
-        gemm_forward(
+        // Forward: q[S,qd] = norm1[S,H] @ W_q[H,qd]  (m=S, k=H, n=qd)
+        // Backward: grad_norm1_q[S,H] = grad_q[S,qd] @ W_q[H,qd]^T
+        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
+        gemm_backward_a(
             &scratch.q, // grad_q [S, q_dim]
             &self.w_q_fp32,
             &mut scratch.o_proj_out, // grad_norm1 (partial) [S, H]
             s,
-            h,  // k = H (output cols)
-            qd, // n = q_dim (shared dim)
+            h,  // k = H (grad_A cols = forward's k)
+            qd, // n = q_dim (grad_C cols = forward's n)
             stream,
         )?;
 
@@ -3785,30 +3789,32 @@ impl CudaNf4TransformerBlock {
         }
 
         // Step 4: K projection backward (no LoRA on K)
-        // grad_norm1_k[S, H] = grad_k[S, kv_hidden] @ W_k[kv_hidden, H]
-        // W_k is [kv_hidden, H] row-major (HF: [kv_hidden, hidden])
-        gemm_forward(
+        // Forward: k[S,kvh] = norm1[S,H] @ W_k[H,kvh]  (m=S, k=H, n=kvh)
+        // Backward: grad_norm1_k[S,H] = grad_k[S,kvh] @ W_k[H,kvh]^T
+        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
+        gemm_backward_a(
             &scratch.k, // grad_k [S, kv_hidden]
             &self.w_k_fp32,
             &mut scratch.ffn_out, // temp [S, H]
             s,
-            h,   // k = H (output cols)
-            kvh, // n = kv_hidden (shared dim)
+            h,   // k = H (grad_A cols = forward's k)
+            kvh, // n = kv_hidden (grad_C cols = forward's n)
             stream,
         )?;
         // Accumulate: grad_norm1 += grad_norm1_k
         cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;
 
         // Step 5: V projection backward (cuBLAS fp32 + LoRA)
-        // grad_norm1_v[S, H] = grad_v[S, kv_hidden] @ W_v[kv_hidden, H]
-        // W_v is [kv_hidden, H] row-major (HF: [kv_hidden, hidden])
-        gemm_forward(
+        // Forward: v[S,kvh] = norm1[S,H] @ W_v[H,kvh]  (m=S, k=H, n=kvh)
+        // Backward: grad_norm1_v[S,H] = grad_v[S,kvh] @ W_v[H,kvh]^T
+        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
+        gemm_backward_a(
             &scratch.v, // grad_v [S, kv_hidden]
             &self.w_v_fp32,
             &mut scratch.ffn_out, // temp [S, H]
             s,
-            h,   // k = H (output cols)
-            kvh, // n = kv_hidden (shared dim)
+            h,   // k = H (grad_A cols = forward's k)
+            kvh, // n = kv_hidden (grad_C cols = forward's n)
             stream,
         )?;
         cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;

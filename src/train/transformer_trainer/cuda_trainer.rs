@@ -2997,6 +2997,134 @@ impl CudaTransformerTrainer {
         self.cuda_trainer.device_name()
     }
 
+    /// ENT-269: Save LoRA adapter weights as PEFT-compatible files.
+    ///
+    /// Downloads LoRA A/B matrices from GPU, un-scales B (divide by lora_scale),
+    /// transposes to PEFT convention (A=[rank, d_in], B=[d_out, rank]),
+    /// and writes `adapter_model.safetensors` + `adapter_config.json`.
+    ///
+    /// # Contract: C-QLORA-SAVE-001
+    ///
+    /// NF4 QLoRA training MUST produce `adapter_model.safetensors` in output_dir.
+    pub fn save_cuda_lora_adapter(
+        &self,
+        output_dir: &std::path::Path,
+        base_model_name: Option<&str>,
+    ) -> crate::Result<()> {
+        if !self.config.quantize_nf4 || !self.config.is_lora() {
+            return Ok(()); // Not a QLoRA run, nothing to save
+        }
+
+        let lora_rank = self.config.lora_rank.unwrap_or(16);
+        let lora_alpha = self.config.lora_alpha.unwrap_or(2.0 * lora_rank as f32);
+        let lora_scale = lora_alpha / lora_rank as f32;
+        let hidden_size = self.config.model_config.hidden_size;
+        let head_dim = self.config.model_config.head_dim();
+        let q_dim = self.config.model_config.num_attention_heads * head_dim;
+        let kv_hidden = self.config.model_config.num_kv_heads * head_dim;
+
+        let lora_config =
+            crate::lora::LoRAConfig::new(lora_rank, lora_alpha).target_qv_projections();
+
+        let mut adapters: Vec<(String, crate::lora::layer::LoRALayer)> = Vec::new();
+
+        for (i, block) in self.cuda_blocks.iter().enumerate() {
+            let (a_q, b_q_scaled, a_v, b_v_scaled) = match block.download_lora_weights() {
+                Ok(weights) => weights,
+                Err(_) => continue, // Skip non-NF4 blocks
+            };
+
+            if a_q.is_empty() && a_v.is_empty() {
+                continue;
+            }
+
+            // Q projection LoRA
+            if !a_q.is_empty() {
+                // GPU stores A_q as [hidden, rank] row-major, PEFT expects [rank, hidden]
+                let mut a_transposed = vec![0.0f32; lora_rank * hidden_size];
+                for r in 0..hidden_size {
+                    for c in 0..lora_rank {
+                        a_transposed[c * hidden_size + r] = a_q[r * lora_rank + c];
+                    }
+                }
+
+                // GPU stores B_q as [rank, q_dim] pre-scaled by lora_scale
+                // PEFT expects [q_dim, rank] un-scaled
+                let inv_scale = if lora_scale.abs() > 1e-10 { 1.0 / lora_scale } else { 1.0 };
+                let mut b_transposed = vec![0.0f32; q_dim * lora_rank];
+                for r in 0..lora_rank {
+                    for c in 0..q_dim {
+                        b_transposed[c * lora_rank + r] = b_q_scaled[r * q_dim + c] * inv_scale;
+                    }
+                }
+
+                let base_weight = crate::autograd::Tensor::zeros(q_dim * hidden_size, false);
+                let mut layer =
+                    crate::lora::layer::LoRALayer::new(base_weight, q_dim, hidden_size, lora_rank, lora_alpha);
+                // Overwrite the A and B data with trained weights
+                layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
+                layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
+
+                adapters.push((
+                    format!("model.layers.{i}.self_attn.q_proj"),
+                    layer,
+                ));
+            }
+
+            // V projection LoRA
+            if !a_v.is_empty() {
+                let mut a_transposed = vec![0.0f32; lora_rank * hidden_size];
+                for r in 0..hidden_size {
+                    for c in 0..lora_rank {
+                        a_transposed[c * hidden_size + r] = a_v[r * lora_rank + c];
+                    }
+                }
+
+                let inv_scale = if lora_scale.abs() > 1e-10 { 1.0 / lora_scale } else { 1.0 };
+                let mut b_transposed = vec![0.0f32; kv_hidden * lora_rank];
+                for r in 0..lora_rank {
+                    for c in 0..kv_hidden {
+                        b_transposed[c * lora_rank + r] = b_v_scaled[r * kv_hidden + c] * inv_scale;
+                    }
+                }
+
+                let base_weight = crate::autograd::Tensor::zeros(kv_hidden * hidden_size, false);
+                let mut layer =
+                    crate::lora::layer::LoRALayer::new(base_weight, kv_hidden, hidden_size, lora_rank, lora_alpha);
+                layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
+                layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
+
+                adapters.push((
+                    format!("model.layers.{i}.self_attn.v_proj"),
+                    layer,
+                ));
+            }
+        }
+
+        if adapters.is_empty() {
+            println!("  [WARN] No LoRA adapters found to save");
+            return Ok(());
+        }
+
+        let adapter_refs: Vec<(&str, &crate::lora::layer::LoRALayer)> =
+            adapters.iter().map(|(name, layer)| (name.as_str(), layer)).collect();
+
+        std::fs::create_dir_all(output_dir).ok();
+        crate::lora::save_adapter_peft(&adapter_refs, &lora_config, base_model_name, output_dir)
+            .map_err(|e| crate::error::Error::Io(format!("Failed to save PEFT adapter: {e}")))?;
+
+        let adapter_path = output_dir.join("adapter_model.safetensors");
+        let size_mb = std::fs::metadata(&adapter_path).map(|m| m.len()).unwrap_or(0) / (1024 * 1024);
+        println!(
+            "✓ LoRA adapter saved ({} layers, {} MB) to {}",
+            adapters.len(),
+            size_mb,
+            output_dir.display()
+        );
+
+        Ok(())
+    }
+
     /// R-001: Save CPU embedding optimizer state (m/v buffers + step counter).
     ///
     /// Writes `optimizer_state.json` to the given directory. GPU block optimizer
