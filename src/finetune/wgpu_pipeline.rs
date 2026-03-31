@@ -270,19 +270,19 @@ impl WgpuInstructPipeline {
 
         let t1 = std::time::Instant::now();
 
-        // 2. GPU forward through 28 transformer layers
+        // 2. GPU forward through 28 transformer layers — ONE submit for all layers
         self.fwd.queue_ref().write_buffer(
             self.fwd.hidden_buffer(), 0,
             bytemuck::cast_slice(&hidden),
         );
 
-        for layer_idx in 0..self.num_layers {
-            let prefix = format!("layer.{layer_idx}");
-            if let Err(e) = self.fwd.forward_layer_training(seq_len as u32, &prefix) {
-                eprintln!("[wgpu] Layer {layer_idx} failed: {e}");
+        let _saved_activations = match self.fwd.forward_all_layers_training(seq_len as u32, self.num_layers) {
+            Ok(saved) => saved,
+            Err(e) => {
+                eprintln!("[wgpu] GPU forward failed: {e}");
                 return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
             }
-        }
+        };
 
         let t2 = std::time::Instant::now();
 
