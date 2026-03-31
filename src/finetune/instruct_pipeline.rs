@@ -1980,6 +1980,15 @@ impl InstructPipeline {
         // KAIZEN-062: Upload hidden states into pre-allocated GPU buffer.
         // Partial write via copy_from_host_at — padded positions are irrelevant
         // (block.forward uses seq_len for attention masking and GEMM dimensions).
+        // PMAT-420: Verify embed upload
+        let embed_nz = hidden_slice.iter().filter(|&&x| x != 0.0).count();
+        eprintln!("[CUDA-TRAIN] embed CPU: len={} nonzero={embed_nz} first5={:?}",
+            hidden_slice.len(), &hidden_slice[..5.min(hidden_slice.len())]);
+
+        // PMAT-420: Ensure CUDA context is current before GPU operations.
+        // Training may run on a different thread than context creation (GH-284).
+        trainer.context().make_current().ok();
+
         training_state
             .fwd_scratch_a
             .copy_from_host_at(hidden_slice, 0)
@@ -1987,6 +1996,15 @@ impl InstructPipeline {
                 eprintln!("[CUDA] upload failed: {e}");
             })
             .ok()?;
+
+        // Verify GPU buffer after upload
+        {
+            let stream = trainer.stream();
+            stream.synchronize().ok();
+            let mut verify = vec![0.0f32; 5.min(hidden_slice.len())];
+            let _ = training_state.fwd_scratch_a.copy_to_host(&mut verify);
+            eprintln!("[CUDA-TRAIN] embed GPU verify: {:?}", verify);
+        }
 
         // KAIZEN-062: Ping-pong with pre-allocated forward scratch buffers.
         // Eliminates 2× cuMemAlloc + 2× cuMemFree per forward pass.
@@ -2027,17 +2045,24 @@ impl InstructPipeline {
             // Forward uses actual seq_len for attention masking; padded positions
             // produce zeros that don't affect loss (loss only covers actual tokens).
             //
-            // PMAT-420: Diagnostic logging for training forward failures.
-            // Inference forward works (30 tok/s) but training fails — buffer sizing suspected.
+            // PMAT-420: Per-layer NaN detection to find which layer introduces NaN.
             {
-                static FWD_TRACE: std::sync::atomic::AtomicBool =
-                    std::sync::atomic::AtomicBool::new(false);
-                if !FWD_TRACE.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                    eprintln!(
-                        "[CUDA-TRAIN] Layer {i} forward: seq_len={seq_len} in={} out={} hidden={hidden_size}",
-                        gpu_input.len(),
-                        gpu_output.len(),
-                    );
+                static FWD_TRACE_COUNT: std::sync::atomic::AtomicU32 =
+                    std::sync::atomic::AtomicU32::new(0);
+                let c = FWD_TRACE_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+                if c == 0 {
+                    // Check input for NaN before layer forward (first step only)
+                    stream.synchronize().ok();
+                    let mut buf = vec![0.0f32; std::cmp::min(gpu_input.len(), seq_len * hidden_size)];
+                    let _ = gpu_input.copy_to_host(&mut buf);
+                    let nan_count = buf.iter().filter(|x| x.is_nan()).count();
+                    let inf_count = buf.iter().filter(|x| x.is_infinite()).count();
+                    if nan_count > 0 || inf_count > 0 || i == 0 {
+                        eprintln!(
+                            "[CUDA-TRAIN] Layer {i} INPUT: nan={nan_count} inf={inf_count} first5={:?}",
+                            &buf[..5.min(buf.len())]
+                        );
+                    }
                 }
             }
             if let Err(e) =
@@ -2049,6 +2074,26 @@ impl InstructPipeline {
                     gpu_output.len(),
                 );
                 return None;
+            }
+            // PMAT-420: Check output for NaN after layer forward (first step only)
+            {
+                static FWD_TRACE_COUNT: std::sync::atomic::AtomicU32 =
+                    std::sync::atomic::AtomicU32::new(0);
+                let c = FWD_TRACE_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+                if c == 0 {
+                    stream.synchronize().ok();
+                    let mut buf = vec![0.0f32; std::cmp::min(gpu_output.len(), seq_len * hidden_size)];
+                    let _ = gpu_output.copy_to_host(&mut buf);
+                    let nan_count = buf.iter().filter(|x| x.is_nan()).count();
+                    let inf_count = buf.iter().filter(|x| x.is_infinite()).count();
+                    if nan_count > 0 || inf_count > 0 {
+                        eprintln!(
+                            "[CUDA-TRAIN] Layer {i} OUTPUT: nan={nan_count} inf={inf_count} first5={:?}",
+                            &buf[..5.min(buf.len())]
+                        );
+                        FWD_TRACE_COUNT.store(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
             }
             input_is_a = !input_is_a;
         }
