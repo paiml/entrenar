@@ -580,6 +580,10 @@ impl WgpuInstructPipeline {
             row_offset += ck;
         }
 
+        // Verify grad_hidden is non-zero
+        let gh_norm: f32 = grad_hidden.iter().map(|x| x * x).sum::<f32>().sqrt();
+        eprintln!("[DEBUG] grad_hidden norm={:.6}, len={}", gh_norm, grad_hidden.len());
+
         // FALSIFY-LORA-UPD-001: verify B_norm > 0 after step 1
         if self.lora_step > 0 && self.lora_step <= 3 {
             let b0 = self.trainer.download(&self.lora[0].projections[0].b);
@@ -617,48 +621,46 @@ impl WgpuInstructPipeline {
                     _ => continue,
                 };
 
-                // XA = X @ A  [seq, rank]
+                // Use matmul_backward which handles transposes internally:
+                // For h = XA @ B, backward gives:
+                //   dB = (XA)^T @ G  [rank, out]  (grad w.r.t. B)
+                //   d(XA) = G @ B^T  [seq, rank]  (grad w.r.t. XA)
+                // Then for XA = X @ A:
+                //   dA = X^T @ d(XA) [in, rank]
+
+                // Step 1: XA = X @ A  [seq, rank]
                 let xa = self.trainer.zeros((s * rank) as usize);
                 self.trainer.matmul_forward(input_buf, &proj.a, &xa, s, proj.in_dim, rank);
 
-                // dB = scale * XA^T @ G  [rank, out]
-                // XA^T[rank, seq] @ G[seq, out] → need transpose.
-                // Download XA, transpose on CPU, upload, matmul.
-                let xa_data = self.trainer.download(&xa);
-                let mut xa_t = vec![0.0f32; (rank * s) as usize];
-                for r_idx in 0..s as usize {
-                    for c_idx in 0..rank as usize {
-                        xa_t[c_idx * s as usize + r_idx] = xa_data[r_idx * rank as usize + c_idx];
-                    }
-                }
-                let xa_t_buf = self.trainer.upload(&xa_t);
+                // Step 2: backward of h = XA @ B → dB and d(XA)
                 let db = self.trainer.zeros((rank * proj.out_dim) as usize);
-                self.trainer.matmul_forward(&xa_t_buf, &grad_buf, &db, rank, s, proj.out_dim);
+                let d_xa = self.trainer.zeros((s * rank) as usize);
+                self.trainer.matmul_backward(&xa, &proj.b, &grad_buf, &d_xa, &db, s, rank, proj.out_dim);
 
-                // dA = scale * X^T @ (G @ B^T)  [in, rank]
-                // G @ B^T: [seq, out] @ [out, rank] — need B transposed
-                let b_data = self.trainer.download(&proj.b);
-                let mut bt = vec![0.0f32; (proj.out_dim * rank) as usize];
-                for r_idx in 0..rank as usize {
-                    for c_idx in 0..proj.out_dim as usize {
-                        bt[c_idx * rank as usize + r_idx] = b_data[r_idx * proj.out_dim as usize + c_idx];
-                    }
-                }
-                let bt_buf = self.trainer.upload(&bt);
-                let g_bt = self.trainer.zeros((s * rank) as usize);
-                self.trainer.matmul_forward(&grad_buf, &bt_buf, &g_bt, s, proj.out_dim, rank);
-
-                // X^T @ g_bt: [in, seq] @ [seq, rank] → [in, rank]
-                let x_data = self.trainer.download(input_buf);
-                let mut xt = vec![0.0f32; (proj.in_dim * s) as usize];
-                for r_idx in 0..s as usize {
-                    for c_idx in 0..proj.in_dim as usize {
-                        xt[c_idx * s as usize + r_idx] = x_data[r_idx * proj.in_dim as usize + c_idx];
-                    }
-                }
-                let xt_buf = self.trainer.upload(&xt);
+                // Step 3: backward of XA = X @ A → dA
                 let da = self.trainer.zeros((proj.in_dim * rank) as usize);
-                self.trainer.matmul_forward(&xt_buf, &g_bt, &da, proj.in_dim, s, rank);
+                let d_x_dummy = self.trainer.zeros((s * proj.in_dim) as usize);
+                self.trainer.matmul_backward(input_buf, &proj.a, &d_xa, &d_x_dummy, &da, s, proj.in_dim, rank);
+
+                // Debug: check gradient norms
+                if self.lora_step == 1 && layer_idx == 0 && proj.name == "q_proj" {
+                    let x_data = self.trainer.download(input_buf);
+                    let a_data = self.trainer.download(&proj.a);
+                    let xa_data = self.trainer.download(&xa);
+                    let x_norm: f32 = x_data.iter().map(|v| v*v).sum::<f32>().sqrt();
+                    let a_norm: f32 = a_data.iter().map(|v| v*v).sum::<f32>().sqrt();
+                    let xa_norm: f32 = xa_data.iter().map(|v| v*v).sum::<f32>().sqrt();
+                    let g_data = self.trainer.download(&grad_buf);
+                    let g_norm: f32 = g_data.iter().map(|v| v*v).sum::<f32>().sqrt();
+                    let xat_norm: f32 = xa_t.iter().map(|v| v*v).sum::<f32>().sqrt();
+                    eprintln!("[DEBUG] L0 q: X={:.4} A={:.4} XA={:.4} XAt={:.4} G={:.4} s={} rank={} out={}",
+                        x_norm, a_norm, xa_norm, xat_norm, g_norm, s, rank, proj.out_dim);
+                    let db_data = self.trainer.download(&db);
+                    let da_data = self.trainer.download(&da);
+                    let db_norm: f32 = db_data.iter().map(|x| x * x).sum::<f32>().sqrt();
+                    let da_norm: f32 = da_data.iter().map(|x| x * x).sum::<f32>().sqrt();
+                    eprintln!("[DEBUG] L0 q_proj dA_norm={:.6} dB_norm={:.6}", da_norm, db_norm);
+                }
 
                 // AdamW step: update A and B
                 // Contract: adamw-kernel-v1/weight_update
