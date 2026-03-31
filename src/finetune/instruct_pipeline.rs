@@ -721,18 +721,25 @@ impl InstructPipeline {
             return InstructStepResult { loss: 0.0, num_response_tokens: 0, perplexity: 1.0 };
         }
 
+        // PMAT-420: If GPU embeddings are minimal (VRAM-constrained), skip the GPU-resident
+        // logits path entirely — go straight to CPU-loss path which uses GPU transformer + CPU lm_head.
+        // This avoids CUDA context poisoning from attempting GPU lm_head with undersized buffers.
+        let has_gpu_embed = self.gpu_training.as_ref()
+            .map(|t| t.embed_transposed.len() >= self.model.config().hidden_size * vocab_size)
+            .unwrap_or(false);
+
+        if !has_gpu_embed {
+            return self.cuda_train_step_cpu_loss(
+                full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size,
+            );
+        }
+
         // 1. GPU forward → logits stay GPU-resident in training.logits_buf (KAIZEN-064)
         //    Eliminates ~296MB logits D2H download per step.
         if !self.forward_logits_gpu_resident(full_ids) {
-            // Fallback: GPU forward failed, use CPU path with D2H
             eprintln!("[CUDA] GPU forward failed, falling back to CPU for this step");
             return self.cuda_train_step_cpu_loss(
-                full_ids,
-                loss_start,
-                loss_end,
-                num_loss_tokens,
-                seq_len,
-                vocab_size,
+                full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size,
             );
         }
 
@@ -1023,11 +1030,28 @@ impl InstructPipeline {
         seq_len: usize,
         vocab_size: usize,
     ) -> InstructStepResult {
-        let logits_data = match self.forward_logits_gpu(full_ids) {
-            Some(data) => data,
-            None => {
-                let logits = self.model.forward(full_ids);
-                logits.data().as_slice().expect("contiguous logits").to_vec()
+        // PMAT-420: Check if GPU embeddings are available. If not (VRAM-constrained),
+        // skip forward_logits_gpu entirely to avoid CUDA context poisoning.
+        let has_gpu_embed = self.gpu_training.as_ref()
+            .map(|t| t.embed_transposed.len() >= vocab_size * self.model.config().hidden_size)
+            .unwrap_or(false);
+
+        let logits_data = if has_gpu_embed {
+            match self.forward_logits_gpu(full_ids) {
+                Some(data) => data,
+                None => {
+                    let logits = self.model.forward(full_ids);
+                    logits.data().as_slice().expect("contiguous logits").to_vec()
+                }
+            }
+        } else {
+            // GPU transformer + CPU lm_head hybrid (PMAT-420)
+            match self.forward_hidden_gpu_then_cpu_lmhead(full_ids) {
+                Some(data) => data,
+                None => {
+                    let logits = self.model.forward(full_ids);
+                    logits.data().as_slice().expect("contiguous logits").to_vec()
+                }
             }
         };
 
@@ -2378,6 +2402,66 @@ impl InstructPipeline {
             .ok()?;
 
         Some(full_logits[..seq_len * vocab_size].to_vec())
+    }
+
+    /// PMAT-420: GPU transformer forward + CPU lm_head.
+    ///
+    /// On VRAM-constrained GPUs (8GB), the full embedding matrix doesn't fit.
+    /// This method runs 28 transformer layers on GPU (fast), downloads normed
+    /// hidden states (~5MB), then does lm_head matmul on CPU (~200ms).
+    /// 10-50x faster than full CPU forward.
+    #[cfg(feature = "cuda")]
+    fn forward_hidden_gpu_then_cpu_lmhead(&mut self, token_ids: &[u32]) -> Option<Vec<f32>> {
+        let seq_len = token_ids.len();
+        let hidden_size = self.model.config().hidden_size;
+
+        // Run GPU transformer forward (writes normed hidden to lm_head_hidden_buf)
+        let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
+            (Some(ref t), Some(ref mut b)) => (t, b),
+            _ => return None,
+        };
+        let mut training = self.gpu_training.take();
+        let result = Self::forward_cuda_training(
+            &self.model,
+            token_ids,
+            trainer,
+            blocks,
+            training.as_mut()?,
+            &mut self.shared_scratch,
+        );
+        let training_state = training.as_ref()?;
+
+        // Download normed hidden states from GPU
+        let stream = trainer.stream();
+        stream.synchronize().ok()?;
+        let mut hidden = vec![0.0f32; training_state.lm_head_hidden_buf.len()];
+        training_state.lm_head_hidden_buf.copy_to_host(&mut hidden).ok()?;
+        self.gpu_training = training;
+
+        if result.is_none() {
+            return None;
+        }
+
+        // CPU lm_head: logits = hidden @ embed_T
+        let hidden_slice = &hidden[..seq_len * hidden_size];
+        let embed = self.model.embed_tokens.weight.data();
+        let embed_slice = embed.as_slice().expect("contiguous embed");
+        let vocab_size = self.model.config().vocab_size;
+
+        let mut logits = vec![0.0f32; seq_len * vocab_size];
+        for s in 0..seq_len {
+            for v in 0..vocab_size {
+                let mut sum = 0.0f32;
+                let h_base = s * hidden_size;
+                let e_base = v * hidden_size;
+                for k in 0..hidden_size {
+                    sum += hidden_slice[h_base + k] * embed_slice[e_base + k];
+                }
+                logits[s * vocab_size + v] = sum;
+            }
+        }
+
+        Some(logits)
     }
 
     /// GPU forward pass with logits staying GPU-resident (KAIZEN-064).
