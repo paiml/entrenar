@@ -637,16 +637,12 @@ impl InstructPipeline {
         let prompt_len = prompt_len.min(seq_len);
 
         // ── CUDA GPU path (NF4 QLoRA) ─────────────────────────────────
-        // PMAT-420: Only use CUDA path if GPU embeddings are available (full VRAM).
-        // On 8GB, embed buffers are minimal → CUDA backward doesn't work → use CPU autograd.
+        // ── CUDA GPU path (NF4 QLoRA) ─────────────────────────────────
+        // PMAT-420: Use CUDA path for ALL configs. On 8GB, the inference-style
+        // forward (fresh buffers, saves inputs) replaces the NaN-prone training forward.
         #[cfg(feature = "cuda")]
-        {
-            let has_full_gpu = self.gpu_training.as_ref()
-                .map(|t| t.embed_transposed.len() >= vocab_size * self.model.config().hidden_size)
-                .unwrap_or(false);
-            if self.cuda_blocks.is_some() && has_full_gpu {
-                return self.cuda_train_step(&full_ids, prompt_len, seq_len, vocab_size);
-            }
+        if self.cuda_blocks.is_some() {
+            return self.cuda_train_step(&full_ids, prompt_len, seq_len, vocab_size);
         }
 
         // ── wgpu GPU path (§26 WgpuTrainingPipeline) ─────────────────
@@ -1052,8 +1048,8 @@ impl InstructPipeline {
                 }
             }
         } else {
-            // PMAT-420: Use inference forward (which works) + CPU lm_head
-            match self.forward_inference_then_cpu_lmhead(full_ids) {
+            // PMAT-420: Inference-style forward + save inputs for backward
+            match self.forward_inference_saving_inputs(full_ids) {
                 Some(data) => data,
                 None => {
                     let logits = self.model.forward(full_ids);
@@ -2463,30 +2459,89 @@ impl InstructPipeline {
     /// hidden states (~5MB), then does lm_head matmul on CPU (~200ms).
     /// 10-50x faster than full CPU forward.
     #[cfg(feature = "cuda")]
-    /// PMAT-420: Use the INFERENCE forward path (which works) for training.
-    /// The inference path creates fresh buffers each call and avoids the
-    /// NF4 training block NaN issue. Hidden states → CPU lm_head.
+    /// PMAT-420: Inference forward + save layer inputs for backward.
+    ///
+    /// Uses inference-style fresh buffers (which work, no NaN) but also saves
+    /// each layer's input into training_state.layer_inputs for GPU backward.
+    /// This combines inference correctness with training backward capability.
     #[cfg(feature = "cuda")]
-    fn forward_inference_then_cpu_lmhead(&mut self, token_ids: &[u32]) -> Option<Vec<f32>> {
+    fn forward_inference_saving_inputs(&mut self, token_ids: &[u32]) -> Option<Vec<f32>> {
         let seq_len = token_ids.len();
         let hidden_size = self.model.config().hidden_size;
         let vocab_size = self.model.config().vocab_size;
 
-        // Use the working inference forward (fresh buffers, no padding issues)
-        let hidden_data = Self::forward_cuda_inference(
-            &self.model,
-            token_ids,
-            self.cuda_trainer.as_ref()?,
-            self.cuda_blocks.as_mut()?,
-            &mut self.shared_scratch,
-        )?;
+        let trainer = self.cuda_trainer.as_ref()?;
+        let blocks = self.cuda_blocks.as_mut()?;
+        let stream = trainer.stream();
 
-        // CPU lm_head with optimized matmul
+        // Embed on CPU, upload to GPU (fresh buffer, seq_len-sized)
+        let hidden = self.model.embed_tokens.forward(token_ids);
+        let hidden_data = hidden.data();
+        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
+
+        let mut gpu_input = trainer.upload(hidden_slice).ok()?;
+        let mut gpu_output = trainer.zeros(seq_len * hidden_size).ok()?;
+
+        // Forward through blocks, saving inputs for backward
+        for (i, block) in blocks.iter_mut().enumerate() {
+            // Save input for backward (copy to training state buffer)
+            if let Some(ref mut training) = self.gpu_training {
+                if i < training.layer_inputs.len() {
+                    if training.layer_inputs[i].len() != gpu_input.len() {
+                        if let Ok(buf) = trainer.zeros(gpu_input.len()) {
+                            training.layer_inputs[i] = buf;
+                        }
+                    }
+                    let _ = training.layer_inputs[i].copy_from_buffer(&gpu_input);
+                }
+            }
+
+            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream,
+                self.shared_scratch.as_mut()) {
+                eprintln!("[CUDA] Layer {i} forward failed: {e}");
+                return None;
+            }
+            std::mem::swap(&mut gpu_input, &mut gpu_output);
+        }
+
+        stream.synchronize().ok()?;
+
+        // Save blocks_output for RMSNorm backward
+        if let Some(ref mut training) = self.gpu_training {
+            if training.blocks_output.len() != gpu_input.len() {
+                if let Ok(buf) = trainer.zeros(gpu_input.len()) {
+                    training.blocks_output = buf;
+                }
+            }
+            let _ = training.blocks_output.copy_from_buffer(&gpu_input);
+        }
+
+        // Download hidden states for CPU RMSNorm + lm_head
+        let result = trainer.download(&gpu_input).ok()?;
+        if result.iter().any(|v| !v.is_finite()) {
+            eprintln!("[CUDA] NaN in forward output — inference-style forward failed");
+            return None;
+        }
+
+        // CPU RMSNorm
+        let result_tensor = crate::autograd::Tensor::from_vec(result, false);
+        let normed = self.model.norm.forward_batched(&result_tensor, seq_len, hidden_size);
+        let normed_data = normed.data();
+        let normed_slice = normed_data.as_slice().expect("contiguous normed");
+
+        // Save normed hidden for lm_head backward
+        if let Some(ref mut training) = self.gpu_training {
+            if let Ok(buf) = trainer.upload(normed_slice) {
+                training.lm_head_hidden_buf = buf;
+            }
+        }
+
+        // CPU lm_head
         let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
         let lm_data = lm_weight.data();
         let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
         let logits = crate::autograd::ops::matmul::matmul_nt_compute(
-            &hidden_data[..seq_len * hidden_size], lm_slice, seq_len, hidden_size, vocab_size,
+            normed_slice, lm_slice, seq_len, hidden_size, vocab_size,
         );
         Some(logits)
     }
