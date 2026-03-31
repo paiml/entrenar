@@ -441,48 +441,48 @@ impl WgpuInstructPipeline {
         let mut _saved_activations = Vec::with_capacity(self.num_layers);
         for layer_idx in 0..self.num_layers {
             let prefix = format!("layer.{layer_idx}");
-            // Base forward for this layer (13 passes including RMSNorm, GEMM, attention, etc.)
-            match self.fwd.forward_layer_training(seq_len as u32, &prefix) {
-                Ok(saved) => _saved_activations.push(saved),
-                Err(e) => {
-                    eprintln!("[wgpu] GPU forward layer {layer_idx} failed: {e}");
-                    return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
+            // Build QkvLoRA for this layer's Q/K/V projections
+            let qkv_lora = if layer_idx < self.lora.len() {
+                let lp = &self.lora[layer_idx].projections;
+                // Find Q, K, V projections by name
+                let q = lp.iter().find(|p| p.name == "q_proj");
+                let k = lp.iter().find(|p| p.name == "k_proj");
+                let v = lp.iter().find(|p| p.name == "v_proj");
+                match (q, k, v) {
+                    (Some(qp), Some(kp), Some(vp)) => {
+                        Some(trueno::backends::gpu::QkvLoRA {
+                            q_a: &qp.a, q_b: &qp.b,
+                            k_a: &kp.a, k_b: &kp.b,
+                            v_a: &vp.a, v_b: &vp.b,
+                            rank: self.lora_rank as u32,
+                            scale: self.lora_scale,
+                            in_dim: qp.in_dim,
+                            q_dim: qp.out_dim,
+                            kv_dim: kp.out_dim,
+                            lora_pipeline: &self.lora_addmm_pipeline,
+                            lora_bgl: &self.lora_addmm_bgl,
+                        })
+                    }
+                    _ => None,
                 }
+            } else {
+                None
+            };
+
+            // Forward with inline LoRA on Q/K/V (before attention consumes them)
+            let saved = self.fwd.alloc_layer_activations(seq_len as u32);
+            let mut encoder = self.fwd.device_ref().create_command_encoder(&Default::default());
+            if let Err(e) = self.fwd.encode_forward_layer_training(
+                &mut encoder, seq_len as u32, &prefix, &saved, qkv_lora.as_ref(),
+            ) {
+                eprintln!("[wgpu] GPU forward layer {layer_idx} failed: {e}");
+                return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
             }
+            self.fwd.queue_ref().submit(Some(encoder.finish()));
+            _saved_activations.push(saved);
 
-            // Apply LoRA addmm to each projection output
-            // The base forward already computed h = W @ x and stored in output buffers.
-            // LoRA adds: output += (saved_input @ A) @ B * scale
-            // saved_input = saved_activations[layer].attn_norm_out (for Q/K/V)
-            if layer_idx < self.lora.len() {
-                let saved = &_saved_activations[layer_idx];
-                let s = seq_len as u32;
-
-                for proj in &self.lora[layer_idx].projections {
-                    let input_buf = match proj.name.as_str() {
-                        "q_proj" | "k_proj" | "v_proj" => &saved.attn_norm_out,
-                        "o_proj" => &saved.attn_output,
-                        "gate_proj" | "up_proj" => &saved.ffn_norm_out,
-                        "down_proj" => &saved.silu_gate_output,
-                        _ => continue,
-                    };
-
-                    // Determine which output buffer was written by the base projection
-                    let output_buf = match proj.name.as_str() {
-                        "q_proj" => self.fwd.q_buffer(),
-                        "k_proj" => self.fwd.k_buffer(),
-                        "v_proj" => self.fwd.v_buffer(),
-                        // o_proj, gate, up, down write to various intermediate buffers
-                        // For now, skip non-QKV projections (QKV are most impactful for LoRA)
-                        _ => continue,
-                    };
-
-                    self.dispatch_lora_addmm(
-                        input_buf, &proj.a, &proj.b, output_buf,
-                        s, proj.in_dim, self.lora_rank as u32, proj.out_dim,
-                    );
-                }
-            }
+            // LoRA addmm for Q/K/V now happens INLINE in encode_forward_layer_training
+            // (before attention consumes Q/K/V buffers)
         }
 
         let t2 = std::time::Instant::now();
