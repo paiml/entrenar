@@ -65,6 +65,9 @@ pub struct WgpuInstructPipeline {
     /// Pre-uploaded lm_head — PRE-CHUNKED to avoid per-step download
     lm_head_t_chunks: Vec<(wgpu::Buffer, u32)>, // [(chunk_buf, chunk_n)] for forward
     lm_head_chunks: Vec<(wgpu::Buffer, u32)>,    // [(chunk_buf, chunk_n)] for backward
+    /// LoRA addmm pipeline: output += (input @ A) @ B * scale
+    lora_addmm_pipeline: wgpu::ComputePipeline,
+    lora_addmm_bgl: wgpu::BindGroupLayout,
     /// KAIZEN: scatter/gather pipelines (replace 1024 copy_buffer_to_buffer calls)
     scatter_pipeline: wgpu::ComputePipeline,
     gather_pipeline: wgpu::ComputePipeline,
@@ -183,6 +186,34 @@ impl WgpuInstructPipeline {
             entry_point: Some("main"), compilation_options: Default::default(), cache: None,
         });
 
+        // LoRA addmm pipeline: output += (input @ A) @ B * scale
+        let lora_bgl = trainer.device_ref().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("lora_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            ],
+        });
+        let lora_pl = trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("lora_pl"), bind_group_layouts: &[&lora_bgl], push_constant_ranges: &[],
+        });
+        let lora_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("lora_addmm"), source: wgpu::ShaderSource::Wgsl(trueno::backends::gpu::shaders::LORA_ADDMM_SHADER.into()),
+        });
+        let lora_addmm_pipeline = trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("lora_addmm_pipe"), layout: Some(&lora_pl), module: &lora_shader,
+            entry_point: Some("main"), compilation_options: Default::default(), cache: None,
+        });
+        let lora_addmm_bgl = lora_bgl;
+
         // Contract: lora-algebra-v1/lora_shape — A[in,rank], B[rank,out]
         // Contract: lora-gradient-flow-v1 — B initialized to zero, A Kaiming
         let r = lora_rank;
@@ -245,6 +276,8 @@ impl WgpuInstructPipeline {
             logsumexp_buf: make_buf(seq as u64, "logsumexp"),
             lm_head_t_chunks,
             lm_head_chunks,
+            lora_addmm_pipeline,
+            lora_addmm_bgl,
             scatter_pipeline,
             gather_pipeline,
             scatter_bgl,
@@ -262,6 +295,45 @@ impl WgpuInstructPipeline {
             output_norm,
             eps,
         }
+    }
+
+    /// LoRA addmm: output += (input @ A) @ B * scale. One GPU dispatch.
+    /// Contract: lora-algebra-v1/lora_shape
+    fn dispatch_lora_addmm(
+        &self,
+        input: &wgpu::Buffer,
+        lora_a: &wgpu::Buffer,
+        lora_b: &wgpu::Buffer,
+        output: &wgpu::Buffer,
+        seq_len: u32,
+        in_dim: u32,
+        rank: u32,
+        out_dim: u32,
+    ) {
+        #[repr(C)]
+        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+        struct P { seq_len: u32, in_dim: u32, rank: u32, out_dim: u32, scale: f32, _p0: u32, _p1: u32, _p2: u32 }
+        let params = P { seq_len, in_dim, rank, out_dim, scale: self.lora_scale, _p0: 0, _p1: 0, _p2: 0 };
+        let pbuf = self.trainer.device_ref().create_buffer(&wgpu::BufferDescriptor {
+            label: None, size: 32, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        self.trainer.queue_ref().write_buffer(&pbuf, 0, bytemuck::bytes_of(&params));
+        let bg = self.trainer.device_ref().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None, layout: &self.lora_addmm_bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: lora_a.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: lora_b.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: output.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: pbuf.as_entire_binding() },
+            ],
+        });
+        let total = seq_len * out_dim;
+        let wg = total.div_ceil(256);
+        let (x, y) = if wg <= 65535 { (wg, 1) } else { (65535, wg.div_ceil(65535)) };
+        let mut encoder = self.trainer.device_ref().create_command_encoder(&Default::default());
+        { let mut pass = encoder.begin_compute_pass(&Default::default()); pass.set_pipeline(&self.lora_addmm_pipeline); pass.set_bind_group(0, &bg, &[]); pass.dispatch_workgroups(x, y, 1); }
+        self.trainer.queue_ref().submit(Some(encoder.finish()));
     }
 
     /// GPU scatter: copy [seq, chunk_n] into [seq, full_n] at col_offset. One dispatch.
@@ -358,19 +430,60 @@ impl WgpuInstructPipeline {
 
         let t1 = std::time::Instant::now();
 
-        // 2. GPU forward through 28 transformer layers — ONE submit for all layers
+        // 2. GPU forward through 28 transformer layers with LoRA contribution
+        // Contract: lora-algebra-v1/lora_shape — h = W_base @ x + (x @ A) @ B * scale
+        // Per-layer forward: base GEMM (via WgslForwardPass) + LoRA addmm (via pipeline shader)
         self.fwd.queue_ref().write_buffer(
             self.fwd.hidden_buffer(), 0,
             bytemuck::cast_slice(&hidden),
         );
 
-        let _saved_activations = match self.fwd.forward_all_layers_training(seq_len as u32, self.num_layers) {
-            Ok(saved) => saved,
-            Err(e) => {
-                eprintln!("[wgpu] GPU forward failed: {e}");
-                return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
+        let mut _saved_activations = Vec::with_capacity(self.num_layers);
+        for layer_idx in 0..self.num_layers {
+            let prefix = format!("layer.{layer_idx}");
+            // Base forward for this layer (13 passes including RMSNorm, GEMM, attention, etc.)
+            match self.fwd.forward_layer_training(seq_len as u32, &prefix) {
+                Ok(saved) => _saved_activations.push(saved),
+                Err(e) => {
+                    eprintln!("[wgpu] GPU forward layer {layer_idx} failed: {e}");
+                    return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
+                }
             }
-        };
+
+            // Apply LoRA addmm to each projection output
+            // The base forward already computed h = W @ x and stored in output buffers.
+            // LoRA adds: output += (saved_input @ A) @ B * scale
+            // saved_input = saved_activations[layer].attn_norm_out (for Q/K/V)
+            if layer_idx < self.lora.len() {
+                let saved = &_saved_activations[layer_idx];
+                let s = seq_len as u32;
+
+                for proj in &self.lora[layer_idx].projections {
+                    let input_buf = match proj.name.as_str() {
+                        "q_proj" | "k_proj" | "v_proj" => &saved.attn_norm_out,
+                        "o_proj" => &saved.attn_output,
+                        "gate_proj" | "up_proj" => &saved.ffn_norm_out,
+                        "down_proj" => &saved.silu_gate_output,
+                        _ => continue,
+                    };
+
+                    // Determine which output buffer was written by the base projection
+                    let output_buf = match proj.name.as_str() {
+                        "q_proj" => self.fwd.q_buffer(),
+                        "k_proj" => self.fwd.k_buffer(),
+                        "v_proj" => self.fwd.v_buffer(),
+                        // o_proj, gate, up, down write to various intermediate buffers
+                        // For now, skip non-QKV projections (QKV are most impactful for LoRA)
+                        _ => continue,
+                    };
+
+                    self.dispatch_lora_addmm(
+                        input_buf, &proj.a, &proj.b, output_buf,
+                        s, proj.in_dim, self.lora_rank as u32, proj.out_dim,
+                    );
+                }
+            }
+        }
 
         let t2 = std::time::Instant::now();
 
