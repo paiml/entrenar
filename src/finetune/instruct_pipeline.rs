@@ -637,9 +637,16 @@ impl InstructPipeline {
         let prompt_len = prompt_len.min(seq_len);
 
         // ── CUDA GPU path (NF4 QLoRA) ─────────────────────────────────
+        // PMAT-420: Only use CUDA path if GPU embeddings are available (full VRAM).
+        // On 8GB, embed buffers are minimal → CUDA backward doesn't work → use CPU autograd.
         #[cfg(feature = "cuda")]
-        if self.cuda_blocks.is_some() {
-            return self.cuda_train_step(&full_ids, prompt_len, seq_len, vocab_size);
+        {
+            let has_full_gpu = self.gpu_training.as_ref()
+                .map(|t| t.embed_transposed.len() >= vocab_size * self.model.config().hidden_size)
+                .unwrap_or(false);
+            if self.cuda_blocks.is_some() && has_full_gpu {
+                return self.cuda_train_step(&full_ids, prompt_len, seq_len, vocab_size);
+            }
         }
 
         // ── wgpu GPU path (§26 WgpuTrainingPipeline) ─────────────────
