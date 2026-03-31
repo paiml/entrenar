@@ -273,6 +273,7 @@ impl Transformer {
     #[requires(!token_ids.is_empty())]
     #[ensures(ret.len() == token_ids.len() * self.config.vocab_size)]
     pub fn forward(&self, token_ids: &[u32]) -> Tensor {
+        contract_pre_embedding_lookup!(token_ids);
         let seq_len = token_ids.len();
         let hidden_size = self.config.hidden_size;
 
@@ -304,6 +305,7 @@ impl Transformer {
     #[requires(!token_ids.is_empty())]
     #[ensures(ret.len() == token_ids.len() * self.config.hidden_size)]
     pub fn forward_hidden(&self, token_ids: &[u32]) -> Tensor {
+        contract_pre_embedding_lookup!(token_ids);
         let seq_len = token_ids.len();
         let hidden_size = self.config.hidden_size;
 
@@ -336,6 +338,7 @@ impl Transformer {
         token_ids: &[u32],
         lora_layers: &[crate::lora::LoRALayer],
     ) -> Tensor {
+        contract_pre_embedding_lookup!(token_ids);
         let seq_len = token_ids.len();
         let hidden_size = self.config.hidden_size;
 
@@ -384,6 +387,7 @@ impl Transformer {
         token_ids: &[u32],
         lora_layers: &[crate::lora::LoRALayer],
     ) -> Tensor {
+        contract_pre_embedding_lookup!(token_ids);
         let seq_len = token_ids.len();
         let hidden_size = self.config.hidden_size;
 
@@ -394,6 +398,7 @@ impl Transformer {
 
     /// Get the last token's logits (for generation)
     pub fn forward_last(&self, token_ids: &[u32]) -> Tensor {
+        contract_pre_embedding_lookup!(token_ids);
         let logits = self.forward(token_ids);
         let seq_len = token_ids.len();
         let vocab_size = self.config.vocab_size;
@@ -436,6 +441,26 @@ impl Transformer {
     /// Get configuration
     pub fn config(&self) -> &TransformerConfig {
         &self.config
+    }
+
+    /// Embed a single token, returning hidden_size floats.
+    pub fn embed_token(&self, token_id: u32) -> Vec<f32> {
+        let w = self.embed_tokens.weight.data();
+        let data = w.as_slice().expect("contiguous embedding");
+        let h = self.config.hidden_size;
+        let offset = (token_id as usize) * h;
+        data[offset..offset + h].to_vec()
+    }
+
+    /// Get the output norm weight as a slice.
+    pub fn output_norm_weight_slice(&self) -> &[f32] {
+        self.norm.weight.data().as_slice().expect("contiguous norm weight")
+    }
+
+    /// Get the lm_head weight as a slice (vocab_size × hidden_size, row-major).
+    pub fn lm_head_weight_slice(&self) -> &[f32] {
+        let w = self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight);
+        w.data().as_slice().expect("contiguous lm_head")
     }
 
     /// Get the language model head weight tensor.
