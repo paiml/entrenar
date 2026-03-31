@@ -416,6 +416,11 @@ name = "wgpu_train"
 path = "examples/wgpu_train.rs"
 required-features = ["gpu"]
 
+[[example]]
+name = "wgpu_eval"
+path = "examples/wgpu_eval.rs"
+required-features = ["gpu"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--generate-link-to-definition"]
