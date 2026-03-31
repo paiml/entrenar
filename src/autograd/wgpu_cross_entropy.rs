@@ -247,7 +247,15 @@ impl WgslCrossEntropy {
             pass.set_pipeline(&self.backward_pipeline);
             pass.set_bind_group(0, &bg, &[]);
             let total = seq_len * vocab_size;
-            pass.dispatch_workgroups(total.div_ceil(256), 1, 1);
+            let workgroups = total.div_ceil(256);
+            if workgroups <= 65535 {
+                pass.dispatch_workgroups(workgroups, 1, 1);
+            } else {
+                // 2D dispatch for large tensors (>65535 workgroups)
+                let x = 65535u32;
+                let y = workgroups.div_ceil(x);
+                pass.dispatch_workgroups(x, y, 1);
+            }
         }
         self.queue.submit(Some(encoder.finish()));
     }
