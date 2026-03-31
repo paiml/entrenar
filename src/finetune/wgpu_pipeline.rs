@@ -652,9 +652,8 @@ impl WgpuInstructPipeline {
                     let xa_norm: f32 = xa_data.iter().map(|v| v*v).sum::<f32>().sqrt();
                     let g_data = self.trainer.download(&grad_buf);
                     let g_norm: f32 = g_data.iter().map(|v| v*v).sum::<f32>().sqrt();
-                    let xat_norm: f32 = xa_t.iter().map(|v| v*v).sum::<f32>().sqrt();
-                    eprintln!("[DEBUG] L0 q: X={:.4} A={:.4} XA={:.4} XAt={:.4} G={:.4} s={} rank={} out={}",
-                        x_norm, a_norm, xa_norm, xat_norm, g_norm, s, rank, proj.out_dim);
+                    eprintln!("[DEBUG] L0 q: X={:.4} A={:.4} XA={:.4} G={:.4} s={} rank={} out={}",
+                        x_norm, a_norm, xa_norm, g_norm, s, rank, proj.out_dim);
                     let db_data = self.trainer.download(&db);
                     let da_data = self.trainer.download(&da);
                     let db_norm: f32 = db_data.iter().map(|x| x * x).sum::<f32>().sqrt();

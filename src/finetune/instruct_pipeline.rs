@@ -1109,11 +1109,19 @@ impl InstructPipeline {
         let grad_hidden = match grad_hidden {
             Some(g) => g,
             None => {
-                return InstructStepResult {
-                    loss: avg_loss,
-                    num_response_tokens: num_loss_tokens,
-                    perplexity: avg_loss.exp().min(1e6),
-                };
+                // PMAT-420: GPU lm_head backward failed (minimal embed buffer on 8GB).
+                // Compute grad_hidden on CPU: grad_hidden[seq,hidden] = grad_logits[seq,vocab] @ embed[vocab,hidden]
+                let hidden_size = self.model.config().hidden_size;
+                let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
+                let lm_data = lm_weight.data();
+                let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
+                crate::autograd::ops::matmul::matmul_compute(
+                    &grad_logits[..seq_len * vocab_size],
+                    lm_slice, // embed[vocab, hidden]
+                    seq_len,
+                    vocab_size,
+                    hidden_size,
+                )
             }
         };
 
