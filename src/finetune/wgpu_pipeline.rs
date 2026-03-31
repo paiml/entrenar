@@ -130,6 +130,11 @@ impl WgpuInstructPipeline {
         }
     }
 
+    /// Encode text to token IDs using the tokenizer.
+    pub fn encode(&self, text: &str) -> Vec<u32> {
+        self.tokenizer.encode(text)
+    }
+
     /// Training step: forward → loss → backward → optimizer. All GPU.
     ///
     /// Contract: qlora-training-loop-v1 / lora_forward_wgsl
