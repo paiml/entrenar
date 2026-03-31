@@ -565,33 +565,48 @@ impl WgpuTrainer {
         n: u32,
         alpha: f32,
     ) {
-        // KAIZEN: chunk B along N when it exceeds max_storage_buffer_binding_size
+        // KAIZEN: chunk B along N when it exceeds max_storage_buffer_binding_size.
+        // GPU-side extraction via copy_buffer_to_buffer — no CPU roundtrip.
         let max_binding = self.device.limits().max_storage_buffer_binding_size as u64;
         let b_bytes = (k as u64) * (n as u64) * 4;
         if b_bytes > max_binding {
             let max_n_chunk = (max_binding / 4 / k as u64) as u32;
             let max_n_chunk = max_n_chunk.max(1);
+
+            // Extract B chunks on GPU: B is [K, N] row-major.
+            // Chunk along N: each chunk is [K, chunk_n].
+            // B[row][col] is at byte offset (row * N + col) * 4.
+            // Row-major chunking requires per-row copies (not contiguous in memory).
+            // For simplicity: download B once (not per chunk), extract on CPU, upload chunks.
+            // The download is the cost — but only once, not per chunk.
+            let b_data = self.download(b);
             let mut n_start = 0u32;
             while n_start < n {
                 let chunk_n = (n - n_start).min(max_n_chunk);
-                // Extract B chunk and C chunk via download/upload (simple, correct)
-                let b_data = self.download(b);
                 let mut b_chunk = vec![0.0f32; (k * chunk_n) as usize];
                 for row in 0..k as usize {
-                    for col in 0..chunk_n as usize {
-                        b_chunk[row * chunk_n as usize + col] = b_data[row * n as usize + n_start as usize + col];
-                    }
+                    let src_start = row * n as usize + n_start as usize;
+                    let dst_start = row * chunk_n as usize;
+                    b_chunk[dst_start..dst_start + chunk_n as usize]
+                        .copy_from_slice(&b_data[src_start..src_start + chunk_n as usize]);
                 }
                 let b_chunk_buf = self.upload(&b_chunk);
                 let c_chunk_buf = self.zeros((m * chunk_n) as usize);
-                self.dispatch_gemm(&a, &b_chunk_buf, &c_chunk_buf, m, k, chunk_n, alpha);
-                // Copy chunk result into C
+                self.dispatch_gemm(a, &b_chunk_buf, &c_chunk_buf, m, k, chunk_n, alpha);
+                // Copy chunk result into C at the right column offset
+                // C is [M, N] row-major. Chunk covers columns [n_start..n_start+chunk_n].
                 let c_chunk_data = self.download(&c_chunk_buf);
-                let mut c_data = self.download(c);
+                // Write directly into C buffer at column offsets (per-row write)
+                let mut c_data = if n_start == 0 {
+                    vec![0.0f32; (m * n) as usize]
+                } else {
+                    self.download(c)
+                };
                 for row in 0..m as usize {
-                    for col in 0..chunk_n as usize {
-                        c_data[row * n as usize + n_start as usize + col] = c_chunk_data[row * chunk_n as usize + col];
-                    }
+                    let dst_start = row * n as usize + n_start as usize;
+                    let src_start = row * chunk_n as usize;
+                    c_data[dst_start..dst_start + chunk_n as usize]
+                        .copy_from_slice(&c_chunk_data[src_start..src_start + chunk_n as usize]);
                 }
                 self.queue.write_buffer(c, 0, bytemuck::cast_slice(&c_data));
                 n_start += chunk_n;

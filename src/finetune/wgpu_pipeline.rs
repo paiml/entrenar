@@ -42,9 +42,10 @@ pub struct WgpuInstructPipeline {
     cross_entropy: WgslCrossEntropy,
     /// GPU optimizer + backward GEMM
     trainer: WgpuTrainer,
-    /// Pre-uploaded lm_head for forward/backward
-    lm_head_t_gpu: wgpu::Buffer, // [hidden, vocab] transposed
-    lm_head_gpu: wgpu::Buffer,   // [vocab, hidden] for backward
+    /// Pre-uploaded lm_head — PRE-CHUNKED to avoid per-step download
+    /// Each chunk is < 2 GB (fits in wgpu bind group)
+    lm_head_t_chunks: Vec<(wgpu::Buffer, u32)>, // [(chunk_buf, chunk_n)] for forward
+    lm_head_chunks: Vec<(wgpu::Buffer, u32)>,    // [(chunk_buf, chunk_n)] for backward
     /// GPU buffers
     logits_buf: wgpu::Buffer,
     labels_buf: wgpu::Buffer,
@@ -83,8 +84,8 @@ impl WgpuInstructPipeline {
         tokenizer: HfTokenizer,
         embed_weights: Vec<f32>,
         output_norm: Vec<f32>,
-        lm_head_t_gpu: wgpu::Buffer,
-        lm_head_gpu: wgpu::Buffer,
+        lm_head_t_chunks: Vec<(wgpu::Buffer, u32)>,
+        lm_head_chunks: Vec<(wgpu::Buffer, u32)>,
         num_layers: usize,
         hidden_dim: usize,
         vocab_size: usize,
@@ -116,8 +117,8 @@ impl WgpuInstructPipeline {
             labels_buf: make_buf(seq as u64, "labels"),
             losses_buf: make_buf(seq as u64, "losses"),
             logsumexp_buf: make_buf(seq as u64, "logsumexp"),
-            lm_head_t_gpu,
-            lm_head_gpu,
+            lm_head_t_chunks,
+            lm_head_chunks,
             trainer,
             num_layers,
             hidden_dim,
@@ -201,14 +202,25 @@ impl WgpuInstructPipeline {
             }
         }
 
-        // lm_head: logits = normed @ lm_head_t (GPU, pre-uploaded)
+        // lm_head: logits = normed @ lm_head_t (GPU, pre-chunked, no per-step download)
         let a_buf = self.trainer.upload(&normed);
-        let c_buf = self.trainer.zeros(seq_len * self.vocab_size);
-        self.trainer.matmul_forward(
-            &a_buf, &self.lm_head_t_gpu, &c_buf,
-            seq_len as u32, self.hidden_dim as u32, self.vocab_size as u32,
-        );
-        let logits_data = self.trainer.download(&c_buf);
+        let mut logits_data = vec![0.0f32; seq_len * self.vocab_size];
+        let mut col_offset = 0usize;
+        for (chunk_buf, chunk_n) in &self.lm_head_t_chunks {
+            let cn = *chunk_n as usize;
+            let c_chunk = self.trainer.zeros(seq_len * cn);
+            self.trainer.matmul_forward(
+                &a_buf, chunk_buf, &c_chunk,
+                seq_len as u32, self.hidden_dim as u32, *chunk_n,
+            );
+            let chunk_data = self.trainer.download(&c_chunk);
+            for row in 0..seq_len {
+                let dst = row * self.vocab_size + col_offset;
+                let src = row * cn;
+                logits_data[dst..dst + cn].copy_from_slice(&chunk_data[src..src + cn]);
+            }
+            col_offset += cn;
+        }
 
         let t3 = std::time::Instant::now();
 
@@ -245,15 +257,35 @@ impl WgpuInstructPipeline {
 
         let t4 = std::time::Instant::now();
 
-        // 6. lm_head backward: grad_hidden = grad_logits @ lm_head (pre-uploaded GPU)
+        // 6. lm_head backward: grad_hidden = grad_logits @ lm_head (pre-chunked GPU)
+        // grad_logits[seq, vocab] @ lm_head[vocab, hidden] = grad_hidden[seq, hidden]
+        // lm_head is chunked along rows (vocab dimension).
         let grad_logits = self.trainer.download(&self.logits_buf);
-        let ga_buf = self.trainer.upload(&grad_logits[..seq_len * self.vocab_size]);
-        let gh_buf = self.trainer.zeros(seq_len * self.hidden_dim);
-        self.trainer.matmul_forward(
-            &ga_buf, &self.lm_head_gpu, &gh_buf,
-            seq_len as u32, self.vocab_size as u32, self.hidden_dim as u32,
-        );
-        let _grad_hidden = self.trainer.download(&gh_buf);
+        let grad_logits_full = &grad_logits[..seq_len * self.vocab_size];
+        let mut grad_hidden = vec![0.0f32; seq_len * self.hidden_dim];
+        let mut row_offset = 0usize;
+        for (chunk_buf, chunk_k) in &self.lm_head_chunks {
+            let ck = *chunk_k as usize;
+            // Extract grad_logits columns for this chunk
+            let mut gl_chunk = vec![0.0f32; seq_len * ck];
+            for row in 0..seq_len {
+                let src = row * self.vocab_size + row_offset;
+                let dst = row * ck;
+                gl_chunk[dst..dst + ck].copy_from_slice(&grad_logits_full[src..src + ck]);
+            }
+            let gl_buf = self.trainer.upload(&gl_chunk);
+            let gh_chunk = self.trainer.zeros(seq_len * self.hidden_dim);
+            self.trainer.matmul_forward(
+                &gl_buf, chunk_buf, &gh_chunk,
+                seq_len as u32, *chunk_k, self.hidden_dim as u32,
+            );
+            // Accumulate into grad_hidden
+            let gh_data = self.trainer.download(&gh_chunk);
+            for i in 0..grad_hidden.len() {
+                grad_hidden[i] += gh_data[i];
+            }
+            row_offset += ck;
+        }
 
         let t5 = std::time::Instant::now();
 
