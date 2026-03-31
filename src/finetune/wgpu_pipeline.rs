@@ -287,7 +287,9 @@ impl WgpuInstructPipeline {
         let t2 = std::time::Instant::now();
 
         // 3. Download hidden, CPU RMSNorm, GPU lm_head matmul
+        let t2a = std::time::Instant::now();
         let final_hidden = self.fwd.download_hidden(self.hidden_dim * seq_len);
+        let t2b = std::time::Instant::now();
         let mut normed = vec![0.0f32; seq_len * self.hidden_dim];
         for pos in 0..seq_len {
             let offset = pos * self.hidden_dim;
@@ -299,6 +301,7 @@ impl WgpuInstructPipeline {
             }
         }
 
+        let t2c = std::time::Instant::now();
         // lm_head: chunked GEMM + GPU scatter (exact-sized buffers per step)
         let a_buf = self.trainer.upload(&normed);
         let labels: Vec<u32> = (0..seq_len)
@@ -379,11 +382,14 @@ impl WgpuInstructPipeline {
         let t5 = std::time::Instant::now();
 
         eprintln!(
-            "[PROFILE] step: {:.0}ms (embed={:.0} fwd={:.0} lm+norm={:.0} ce={:.0} bwd={:.0})",
+            "[PROFILE] step: {:.0}ms (embed={:.0} fwd={:.0} lm+norm={:.0}[dl={:.0} norm={:.0} gemm={:.0}] ce={:.0} bwd={:.0})",
             t5.duration_since(t0).as_millis(),
             t1.duration_since(t0).as_millis(),
             t2.duration_since(t1).as_millis(),
             t3.duration_since(t2).as_millis(),
+            t2b.duration_since(t2a).as_millis(),
+            t2c.duration_since(t2b).as_millis(),
+            t3.duration_since(t2c).as_millis(),
             t4.duration_since(t3).as_millis(),
             t5.duration_since(t4).as_millis(),
         );
