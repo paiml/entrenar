@@ -208,13 +208,9 @@ impl WgpuModelState {
             if lm_head_view.is_some() { break; }
         }
         let lm_head = lm_head_view.ok_or("lm_head/embed_tokens not found in any shard")?;
-
         let lm_head_len = lm_head.len();
-        let total_nf4_mb: f64 = layers.iter().map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
-        let total_lora_params: usize = lora.iter().map(|l| l.num_params()).sum();
-        eprintln!("Model loaded:");
-        eprintln!("  NF4 weights: {total_nf4_mb:.0} MB ({num_layers} layers)");
-        eprintln!("  LoRA params: {total_lora_params} (rank={lora_rank}, 7 modules/layer)");
+        let lora_params: usize = lora.iter().map(|l| l.num_params()).sum();
+        eprintln!("  LoRA params: {lora_params} (rank={lora_rank}, 7 modules/layer)");
         eprintln!("  LM head: {} elements ({:.1} MB)", lm_head_len, lm_head_len as f64 * 4.0 / 1024.0 / 1024.0);
         Ok(Self {
             layers,
@@ -261,12 +257,7 @@ impl WgpuModelState {
     }
 
     /// Total trainable parameters
-    pub fn trainable_params(&self) -> usize {
-        let lora: usize = self.lora.iter().map(|l| l.num_params()).sum();
-        lora + self.lm_head.len()
-    }
-
-    /// Save LoRA checkpoint (delegates to wgpu_checkpoint)
+    pub fn trainable_params(&self) -> usize { self.lora.iter().map(|l| l.num_params()).sum::<usize>() + self.lm_head.len() }
     pub fn save_checkpoint(&self, dir: &std::path::Path, step: u32, loss: f32, rank: u32, alpha: f32) -> Result<std::path::PathBuf, String> {
         super::wgpu_checkpoint::save_lora_checkpoint(&self.lora, self.hidden_size, dir, step, loss, rank, alpha)
     }
@@ -291,9 +282,9 @@ impl WgpuTransformerTrainer {
             step: 0,
             lr,
             beta1: 0.9,
-            beta2: 0.999,
+            beta2: 0.95, // albor recipe
             eps: 1e-8,
-            weight_decay: 0.01,
+            weight_decay: 0.1, // albor recipe
             lora_rank: 0,
             lora_alpha: 0.0,
         })
@@ -465,6 +456,9 @@ impl WgpuTransformerTrainer {
         model.populate_weight_cache(&self.device)?;
 
         let mut hidden = token_hidden.to_vec();
+        // NEFTune (C-WGPU-NEFTUNE-001)
+        let ns = 5.0f32 / ((s as f32) * (h as f32)).sqrt();
+        for (i, v) in hidden.iter_mut().enumerate() { *v += ((i as u64).wrapping_mul(6364136223846793005).wrapping_add(self.step as u64) as f32 / u64::MAX as f32 * 2.0 - 1.0) * ns; }
         let mut layer_acts = Vec::with_capacity(n_layers);
         // Inline RMSNorm helper
         let rmsnorm = |buf: &mut [f32], s: usize, h: usize| {
@@ -536,6 +530,10 @@ impl WgpuTransformerTrainer {
             }
         }
         loss /= s as f32;
+        // Focal weighting (C-WGPU-FOCAL-001)
+        for si in 0..s as usize { let t = target_ids[si] as usize; if t < v as usize {
+            let w = 0.3 + 0.7*(1.0-(grad_logits[si*v as usize+t]+1.0).clamp(0.0,1.0));
+            for vi in 0..v as usize { grad_logits[si*v as usize+vi] *= w; } }}
         for g in &mut grad_logits { *g /= s as f32; }
 
         // LM head backward

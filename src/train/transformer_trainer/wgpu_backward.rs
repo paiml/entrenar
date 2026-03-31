@@ -201,9 +201,10 @@ pub fn backward_through_layers(
                 grad_a[ri * h as usize + hi] = sum;
             }}
             total_lora_gnorm += grad_a.iter().map(|g| g * g).sum::<f32>();
+            // C-WGPU-LORAPLUS-001: LoRA+ — lr_B = 16 * lr_A (Hayou et al. 2024)
             let lq = &mut model.lora[layer_idx].q;
             cpu_adamw(&mut lq.a, &grad_a, &mut lq.m_a, &mut lq.v_a, lr, beta1, beta2, eps, weight_decay, step);
-            cpu_adamw(&mut lq.b, &grad_b, &mut lq.m_b, &mut lq.v_b, lr, beta1, beta2, eps, weight_decay, step);
+            cpu_adamw(&mut lq.b, &grad_b, &mut lq.m_b, &mut lq.v_b, lr * 16.0, beta1, beta2, eps, weight_decay, step);
         }
 
         // 4. LoRA V backward: same pattern with grad_v
@@ -228,7 +229,7 @@ pub fn backward_through_layers(
             total_lora_gnorm += grad_a.iter().map(|g| g * g).sum::<f32>();
             let lv = &mut model.lora[layer_idx].v;
             cpu_adamw(&mut lv.a, &grad_a, &mut lv.m_a, &mut lv.v_a, lr, beta1, beta2, eps, weight_decay, step);
-            cpu_adamw(&mut lv.b, &grad_b, &mut lv.m_b, &mut lv.v_b, lr, beta1, beta2, eps, weight_decay, step);
+            cpu_adamw(&mut lv.b, &grad_b, &mut lv.m_b, &mut lv.v_b, lr * 16.0, beta1, beta2, eps, weight_decay, step);
         }
     }
 
