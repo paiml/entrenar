@@ -45,10 +45,10 @@ pub struct WgpuInstructPipeline {
     /// Pre-uploaded lm_head — PRE-CHUNKED to avoid per-step download
     lm_head_t_chunks: Vec<(wgpu::Buffer, u32)>, // [(chunk_buf, chunk_n)] for forward
     lm_head_chunks: Vec<(wgpu::Buffer, u32)>,    // [(chunk_buf, chunk_n)] for backward
-    /// KAIZEN: pre-allocated scratch buffers (reused every step, no per-step alloc)
-    scratch_normed: wgpu::Buffer,       // [max_seq, hidden] — normed input for lm_head
-    scratch_c_chunks: Vec<wgpu::Buffer>, // [max_seq, chunk_n] — per-chunk GEMM output
-    scratch_gl_chunks: Vec<wgpu::Buffer>, // [max_seq, chunk_k] — per-chunk grad_logits slice
+    /// KAIZEN: scatter/gather pipelines (replace 1024 copy_buffer_to_buffer calls)
+    scatter_pipeline: wgpu::ComputePipeline,
+    gather_pipeline: wgpu::ComputePipeline,
+    scatter_bgl: wgpu::BindGroupLayout,
     /// GPU buffers
     logits_buf: wgpu::Buffer,
     labels_buf: wgpu::Buffer,
@@ -113,14 +113,44 @@ impl WgpuInstructPipeline {
             })
         };
 
-        // KAIZEN: pre-allocate scratch buffers for lm_head matmul
-        let scratch_normed = make_buf(max_seq_len as u64 * hidden_dim as u64, "scratch_normed");
-        let scratch_c_chunks: Vec<wgpu::Buffer> = lm_head_t_chunks.iter()
-            .map(|(_, cn)| make_buf(max_seq_len as u64 * *cn as u64, "scratch_c_chunk"))
-            .collect();
-        let scratch_gl_chunks: Vec<wgpu::Buffer> = lm_head_chunks.iter()
-            .map(|(_, ck)| make_buf(max_seq_len as u64 * *ck as u64, "scratch_gl_chunk"))
-            .collect();
+        // KAIZEN: scatter/gather pipelines (one dispatch replaces 1024 copies)
+        let scatter_bgl = trainer.device_ref().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("scatter_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2, visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                    count: None,
+                },
+            ],
+        });
+        let scatter_pl = trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("scatter_pl"), bind_group_layouts: &[&scatter_bgl], push_constant_ranges: &[],
+        });
+        let scatter_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("scatter"), source: wgpu::ShaderSource::Wgsl(trueno::backends::gpu::shaders::COLUMN_SCATTER_SHADER.into()),
+        });
+        let scatter_pipeline = trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("scatter_pipe"), layout: Some(&scatter_pl), module: &scatter_shader,
+            entry_point: Some("main"), compilation_options: Default::default(), cache: None,
+        });
+        let gather_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("gather"), source: wgpu::ShaderSource::Wgsl(trueno::backends::gpu::shaders::COLUMN_GATHER_SHADER.into()),
+        });
+        let gather_pipeline = trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("gather_pipe"), layout: Some(&scatter_pl), module: &gather_shader,
+            entry_point: Some("main"), compilation_options: Default::default(), cache: None,
+        });
 
         Self {
             fwd,
@@ -131,9 +161,9 @@ impl WgpuInstructPipeline {
             logsumexp_buf: make_buf(seq as u64, "logsumexp"),
             lm_head_t_chunks,
             lm_head_chunks,
-            scratch_normed,
-            scratch_c_chunks,
-            scratch_gl_chunks,
+            scatter_pipeline,
+            gather_pipeline,
+            scatter_bgl,
             trainer,
             num_layers,
             hidden_dim,
@@ -144,6 +174,58 @@ impl WgpuInstructPipeline {
             output_norm,
             eps,
         }
+    }
+
+    /// GPU scatter: copy [seq, chunk_n] into [seq, full_n] at col_offset. One dispatch.
+    fn dispatch_scatter(&self, src: &wgpu::Buffer, dst: &wgpu::Buffer, seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32) {
+        #[repr(C)]
+        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+        struct P { seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32 }
+        let params = P { seq_len, chunk_n, full_n, col_offset };
+        let pbuf = self.trainer.device_ref().create_buffer(&wgpu::BufferDescriptor {
+            label: None, size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        self.trainer.queue_ref().write_buffer(&pbuf, 0, bytemuck::bytes_of(&params));
+        let bg = self.trainer.device_ref().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None, layout: &self.scatter_bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: src.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: dst.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: pbuf.as_entire_binding() },
+            ],
+        });
+        let total = seq_len * chunk_n;
+        let wg = total.div_ceil(256);
+        let (x, y) = if wg <= 65535 { (wg, 1) } else { (65535, wg.div_ceil(65535)) };
+        let mut encoder = self.trainer.device_ref().create_command_encoder(&Default::default());
+        { let mut pass = encoder.begin_compute_pass(&Default::default()); pass.set_pipeline(&self.scatter_pipeline); pass.set_bind_group(0, &bg, &[]); pass.dispatch_workgroups(x, y, 1); }
+        self.trainer.queue_ref().submit(Some(encoder.finish()));
+    }
+
+    /// GPU gather: extract [seq, chunk_n] from [seq, full_n] at col_offset. One dispatch.
+    fn dispatch_gather(&self, src: &wgpu::Buffer, dst: &wgpu::Buffer, seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32) {
+        #[repr(C)]
+        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+        struct P { seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32 }
+        let params = P { seq_len, chunk_n, full_n, col_offset };
+        let pbuf = self.trainer.device_ref().create_buffer(&wgpu::BufferDescriptor {
+            label: None, size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        self.trainer.queue_ref().write_buffer(&pbuf, 0, bytemuck::bytes_of(&params));
+        let bg = self.trainer.device_ref().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None, layout: &self.scatter_bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: src.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: dst.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: pbuf.as_entire_binding() },
+            ],
+        });
+        let total = seq_len * chunk_n;
+        let wg = total.div_ceil(256);
+        let (x, y) = if wg <= 65535 { (wg, 1) } else { (65535, wg.div_ceil(65535)) };
+        let mut encoder = self.trainer.device_ref().create_command_encoder(&Default::default());
+        { let mut pass = encoder.begin_compute_pass(&Default::default()); pass.set_pipeline(&self.gather_pipeline); pass.set_bind_group(0, &bg, &[]); pass.dispatch_workgroups(x, y, 1); }
+        self.trainer.queue_ref().submit(Some(encoder.finish()));
     }
 
     /// Encode text to token IDs using the tokenizer.
@@ -231,17 +313,11 @@ impl WgpuInstructPipeline {
                 &a_buf, chunk_buf, &c_chunk,
                 seq_len as u32, self.hidden_dim as u32, *chunk_n,
             );
-            // GPU scatter: copy chunk columns into logits_buf
-            let mut encoder = self.trainer.device_ref()
-                .create_command_encoder(&Default::default());
-            for row in 0..seq_len as u64 {
-                encoder.copy_buffer_to_buffer(
-                    &c_chunk, row * cn * 4,
-                    &self.logits_buf, (row * self.vocab_size as u64 + col_offset) * 4,
-                    cn * 4,
-                );
-            }
-            self.trainer.queue_ref().submit(Some(encoder.finish()));
+            // GPU scatter: one dispatch replaces 512 copy_buffer_to_buffer calls
+            self.dispatch_scatter(
+                &c_chunk, &self.logits_buf,
+                seq_len as u32, *chunk_n, self.vocab_size as u32, col_offset as u32,
+            );
             col_offset += cn;
         }
 
@@ -275,29 +351,28 @@ impl WgpuInstructPipeline {
 
         // 6. lm_head backward via GPU scatter + pre-allocated scratch (KAIZEN: zero alloc)
         // grad_hidden = grad_logits @ lm_head, chunked along vocab dimension.
+        let mut grad_hidden = vec![0.0f32; seq_len * self.hidden_dim];
         // Extract grad_logits columns per chunk via GPU copy, GEMM, accumulate.
         let mut row_offset = 0u64;
         for (i, (chunk_buf, chunk_k)) in self.lm_head_chunks.iter().enumerate() {
             let ck = *chunk_k as u64;
-            // GPU scatter: extract grad_logits columns into scratch_gl_chunk
-            let mut encoder = self.trainer.device_ref()
-                .create_command_encoder(&Default::default());
-            for row in 0..seq_len as u64 {
-                encoder.copy_buffer_to_buffer(
-                    &self.logits_buf, (row * self.vocab_size as u64 + row_offset) * 4,
-                    &self.scratch_gl_chunks[i], row * ck * 4,
-                    ck * 4,
-                );
-            }
-            self.trainer.queue_ref().submit(Some(encoder.finish()));
-            // GEMM: scratch_gl[seq, chunk_k] @ lm_head_chunk[chunk_k, hidden] → scratch_normed[seq, hidden]
+            // GPU gather: extract grad_logits columns for this chunk
+            let gl_chunk = self.trainer.zeros((seq_len as u64 * ck) as usize);
+            self.dispatch_gather(
+                &self.logits_buf, &gl_chunk,
+                seq_len as u32, *chunk_k, self.vocab_size as u32, row_offset as u32,
+            );
+            // GEMM: gl_chunk[seq, chunk_k] @ lm_head_chunk[chunk_k, hidden] → grad contribution
+            let gh_chunk = self.trainer.zeros(seq_len * self.hidden_dim);
             self.trainer.matmul_forward(
-                &self.scratch_gl_chunks[i], chunk_buf, &self.scratch_normed,
+                &gl_chunk, chunk_buf, &gh_chunk,
                 seq_len as u32, *chunk_k, self.hidden_dim as u32,
             );
-            // Accumulate — for first chunk, scratch_normed IS grad_hidden.
-            // For subsequent chunks, we'd need to add. For now, last chunk overwrites.
-            // This is approximate — proper accumulation needs a GPU add kernel.
+            // Download and accumulate (GPU add kernel would be better)
+            let gh_data = self.trainer.download(&gh_chunk);
+            for j in 0..grad_hidden.len() {
+                grad_hidden[j] += gh_data[j];
+            }
             row_offset += ck;
         }
 
