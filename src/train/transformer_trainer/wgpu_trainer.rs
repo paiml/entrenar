@@ -56,9 +56,8 @@ pub struct WgpuModelState {
     pub head_dim: usize,
     pub intermediate_size: usize,
     /// Cached dequanted FFN weights per layer: (gate, up, down) fp32
-    pub(crate) ffn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>>,
-    /// Cached dequanted attention weights per layer: (q, k, v, o) fp32
-    pub(crate) attn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)>>,
+    pub ffn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>>,
+    pub attn_cache: Vec<Option<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)>>,
 }
 
 #[cfg(feature = "gpu")]
