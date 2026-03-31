@@ -2442,25 +2442,16 @@ impl InstructPipeline {
             return None;
         }
 
-        // CPU lm_head: logits = hidden @ embed_T
+        // CPU lm_head: use optimized matmul_nt_compute (SIMD via trueno)
+        // This is the same matmul used by model.forward() — not a naive loop.
         let hidden_slice = &hidden[..seq_len * hidden_size];
-        let embed = self.model.embed_tokens.weight.data();
-        let embed_slice = embed.as_slice().expect("contiguous embed");
         let vocab_size = self.model.config().vocab_size;
-
-        let mut logits = vec![0.0f32; seq_len * vocab_size];
-        for s in 0..seq_len {
-            for v in 0..vocab_size {
-                let mut sum = 0.0f32;
-                let h_base = s * hidden_size;
-                let e_base = v * hidden_size;
-                for k in 0..hidden_size {
-                    sum += hidden_slice[h_base + k] * embed_slice[e_base + k];
-                }
-                logits[s * vocab_size + v] = sum;
-            }
-        }
-
+        let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
+        let lm_data = lm_weight.data();
+        let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
+        let logits = crate::autograd::ops::matmul::matmul_nt_compute(
+            hidden_slice, lm_slice, seq_len, hidden_size, vocab_size,
+        );
         Some(logits)
     }
 

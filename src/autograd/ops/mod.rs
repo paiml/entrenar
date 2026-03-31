@@ -7,7 +7,7 @@ mod attention;
 mod basic;
 #[cfg(test)]
 mod correctness_tests;
-mod matmul;
+pub(crate) mod matmul;
 mod normalize;
 
 // Re-export all public operations
