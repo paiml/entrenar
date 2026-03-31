@@ -565,6 +565,40 @@ impl WgpuTrainer {
         n: u32,
         alpha: f32,
     ) {
+        // KAIZEN: chunk B along N when it exceeds max_storage_buffer_binding_size
+        let max_binding = self.device.limits().max_storage_buffer_binding_size as u64;
+        let b_bytes = (k as u64) * (n as u64) * 4;
+        if b_bytes > max_binding {
+            let max_n_chunk = (max_binding / 4 / k as u64) as u32;
+            let max_n_chunk = max_n_chunk.max(1);
+            let mut n_start = 0u32;
+            while n_start < n {
+                let chunk_n = (n - n_start).min(max_n_chunk);
+                // Extract B chunk and C chunk via download/upload (simple, correct)
+                let b_data = self.download(b);
+                let mut b_chunk = vec![0.0f32; (k * chunk_n) as usize];
+                for row in 0..k as usize {
+                    for col in 0..chunk_n as usize {
+                        b_chunk[row * chunk_n as usize + col] = b_data[row * n as usize + n_start as usize + col];
+                    }
+                }
+                let b_chunk_buf = self.upload(&b_chunk);
+                let c_chunk_buf = self.zeros((m * chunk_n) as usize);
+                self.dispatch_gemm(&a, &b_chunk_buf, &c_chunk_buf, m, k, chunk_n, alpha);
+                // Copy chunk result into C
+                let c_chunk_data = self.download(&c_chunk_buf);
+                let mut c_data = self.download(c);
+                for row in 0..m as usize {
+                    for col in 0..chunk_n as usize {
+                        c_data[row * n as usize + n_start as usize + col] = c_chunk_data[row * chunk_n as usize + col];
+                    }
+                }
+                self.queue.write_buffer(c, 0, bytemuck::cast_slice(&c_data));
+                n_start += chunk_n;
+            }
+            return;
+        }
+
         let dims = GemmDims {
             m,
             k,
