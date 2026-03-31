@@ -29,6 +29,7 @@ pub mod gradient_server;
 pub mod instruct_corpus;
 pub mod instruct_pipeline;
 pub mod instruct_trainer;
+pub mod wgpu_pipeline;
 pub mod linear_probe;
 pub mod multi_adapter_pipeline;
 mod popperian;
