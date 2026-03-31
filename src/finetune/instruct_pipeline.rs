@@ -1045,8 +1045,8 @@ impl InstructPipeline {
                 }
             }
         } else {
-            // GPU transformer + CPU lm_head hybrid (PMAT-420)
-            match self.forward_hidden_gpu_then_cpu_lmhead(full_ids) {
+            // PMAT-420: Use inference forward (which works) + CPU lm_head
+            match self.forward_inference_then_cpu_lmhead(full_ids) {
                 Some(data) => data,
                 None => {
                     let logits = self.model.forward(full_ids);
@@ -2447,6 +2447,35 @@ impl InstructPipeline {
     /// This method runs 28 transformer layers on GPU (fast), downloads normed
     /// hidden states (~5MB), then does lm_head matmul on CPU (~200ms).
     /// 10-50x faster than full CPU forward.
+    #[cfg(feature = "cuda")]
+    /// PMAT-420: Use the INFERENCE forward path (which works) for training.
+    /// The inference path creates fresh buffers each call and avoids the
+    /// NF4 training block NaN issue. Hidden states → CPU lm_head.
+    #[cfg(feature = "cuda")]
+    fn forward_inference_then_cpu_lmhead(&mut self, token_ids: &[u32]) -> Option<Vec<f32>> {
+        let seq_len = token_ids.len();
+        let hidden_size = self.model.config().hidden_size;
+        let vocab_size = self.model.config().vocab_size;
+
+        // Use the working inference forward (fresh buffers, no padding issues)
+        let hidden_data = Self::forward_cuda_inference(
+            &self.model,
+            token_ids,
+            self.cuda_trainer.as_ref()?,
+            self.cuda_blocks.as_mut()?,
+            &mut self.shared_scratch,
+        )?;
+
+        // CPU lm_head with optimized matmul
+        let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
+        let lm_data = lm_weight.data();
+        let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
+        let logits = crate::autograd::ops::matmul::matmul_nt_compute(
+            &hidden_data[..seq_len * hidden_size], lm_slice, seq_len, hidden_size, vocab_size,
+        );
+        Some(logits)
+    }
+
     #[cfg(feature = "cuda")]
     fn forward_hidden_gpu_then_cpu_lmhead(&mut self, token_ids: &[u32]) -> Option<Vec<f32>> {
         let seq_len = token_ids.len();
