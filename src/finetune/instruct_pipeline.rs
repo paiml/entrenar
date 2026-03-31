@@ -1048,6 +1048,10 @@ impl InstructPipeline {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
             let training = self.gpu_training.as_mut()?;
+            // PMAT-420: Check logits_buf can hold grad_logits before upload
+            if training.logits_buf.len() < grad_logits.len() {
+                return None;
+            }
             training
                 .logits_buf
                 .copy_from_host_at(&grad_logits, 0)
@@ -1055,6 +1059,10 @@ impl InstructPipeline {
                     eprintln!("[CUDA] lm_head backward: grad_logits upload failed: {e}");
                 })
                 .ok()?;
+            // PMAT-420: Guard against minimal embed buffer (VRAM-constrained path)
+            if training.embed_original.len() < vocab_size * hidden_size {
+                return None;
+            }
             // KAIZEN-068: embed_original is GPU-resident — no per-step H2D upload.
             gemm_forward(
                 &training.logits_buf,
