@@ -217,31 +217,26 @@ impl WgpuInstructPipeline {
             }
         }
 
-        // lm_head via pre-allocated scratch buffers (KAIZEN: zero per-step alloc)
-        // Upload normed to persistent scratch buffer
-        self.trainer.queue_ref().write_buffer(
-            &self.scratch_normed, 0,
-            bytemuck::cast_slice(&normed),
-        );
+        // lm_head: chunked GEMM + GPU scatter (exact-sized buffers per step)
+        let a_buf = self.trainer.upload(&normed);
         let labels: Vec<u32> = (0..seq_len)
             .map(|i| if i + 1 < full_ids.len() { full_ids[i + 1] } else { 0 })
             .collect();
 
-        // Chunked lm_head GEMM + GPU scatter into logits_buf
         let mut col_offset = 0u64;
-        for (i, (chunk_buf, chunk_n)) in self.lm_head_t_chunks.iter().enumerate() {
+        for (chunk_buf, chunk_n) in &self.lm_head_t_chunks {
             let cn = *chunk_n as u64;
-            // GEMM into pre-allocated scratch (no allocation)
+            let c_chunk = self.trainer.zeros((seq_len as u64 * cn) as usize);
             self.trainer.matmul_forward(
-                &self.scratch_normed, chunk_buf, &self.scratch_c_chunks[i],
+                &a_buf, chunk_buf, &c_chunk,
                 seq_len as u32, self.hidden_dim as u32, *chunk_n,
             );
-            // GPU scatter: copy chunk columns into logits_buf (one encoder, all rows)
+            // GPU scatter: copy chunk columns into logits_buf
             let mut encoder = self.trainer.device_ref()
                 .create_command_encoder(&Default::default());
             for row in 0..seq_len as u64 {
                 encoder.copy_buffer_to_buffer(
-                    &self.scratch_c_chunks[i], row * cn * 4,
+                    &c_chunk, row * cn * 4,
                     &self.logits_buf, (row * self.vocab_size as u64 + col_offset) * 4,
                     cn * 4,
                 );
