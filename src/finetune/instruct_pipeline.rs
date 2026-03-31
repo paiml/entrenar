@@ -212,8 +212,9 @@ struct WgpuTrainingState {
     labels_buf: trueno::backends::gpu::wgpu::Buffer,
     losses_buf: trueno::backends::gpu::wgpu::Buffer,
     logsumexp_buf: trueno::backends::gpu::wgpu::Buffer,
-    // Precomputed lm_head transpose (KAIZEN: avoids ~10s CPU transpose per step)
-    lm_head_transposed: Vec<f32>, // [hidden, vocab] — computed once at init
+    // Precomputed lm_head GPU buffers (KAIZEN: upload once, not per step)
+    lm_head_gpu: trueno::backends::gpu::wgpu::Buffer,   // [vocab, hidden] — for backward
+    lm_head_t_gpu: trueno::backends::gpu::wgpu::Buffer,  // [hidden, vocab] — for forward
     // Model config needed for forward pass
     num_layers: usize,
     hidden_dim: usize,
@@ -923,14 +924,12 @@ impl InstructPipeline {
                 }
             }
 
-            // lm_head via WgpuTrainer matmul (reuses existing device, no per-call init)
+            // lm_head via pre-uploaded GPU buffers (KAIZEN: zero per-step upload)
             // logits[seq, vocab] = normed[seq, hidden] @ lm_head_t[hidden, vocab]
             let wgpu_ref = self.wgpu_training.as_ref().unwrap();
-            let lm_head_t = &wgpu_ref.lm_head_transposed;
             let a_buf = wgpu_ref.trainer.upload(&normed);
-            let b_buf = wgpu_ref.trainer.upload(lm_head_t);
             let c_buf = wgpu_ref.trainer.zeros(seq_len * vocab_size);
-            wgpu_ref.trainer.matmul_forward(&a_buf, &b_buf, &c_buf, seq_len as u32, hidden_dim as u32, vocab_size as u32);
+            wgpu_ref.trainer.matmul_forward(&a_buf, &wgpu_ref.lm_head_t_gpu, &c_buf, seq_len as u32, hidden_dim as u32, vocab_size as u32);
             let logits = wgpu_ref.trainer.download(&c_buf);
             logits
         } else {
@@ -1002,15 +1001,14 @@ impl InstructPipeline {
         // The lm_head backward (grad_hidden = grad_logits @ embed^T) stays on CPU
         // for now since lm_head > 2GB. Full GPU lm_head backward needs chunked matmul.
 
-        // lm_head backward via WgpuTrainer matmul (reuses existing device)
+        // lm_head backward via pre-uploaded GPU buffer (KAIZEN: zero per-step upload)
         // grad_hidden[seq, hidden] = grad_logits[seq, vocab] @ lm_head[vocab, hidden]
+        let wgpu = self.wgpu_training.as_ref().unwrap();
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
-        let lm_head = self.model.lm_head_weight_slice();
         let a_buf = wgpu.trainer.upload(&grad_logits_data[..seq_len * vocab_size]);
-        let b_buf = wgpu.trainer.upload(lm_head);
         let c_buf = wgpu.trainer.zeros(seq_len * hidden_dim);
-        wgpu.trainer.matmul_forward(&a_buf, &b_buf, &c_buf, seq_len as u32, vocab_size as u32, hidden_dim as u32);
-        let grad_hidden = wgpu.trainer.download(&c_buf);
+        wgpu.trainer.matmul_forward(&a_buf, &wgpu.lm_head_gpu, &c_buf, seq_len as u32, vocab_size as u32, hidden_dim as u32);
+        let _grad_hidden = wgpu.trainer.download(&c_buf);
 
         // 5. GPU backward through LoRA layers using saved activations
         //    For each layer, compute LoRA A/B gradients:
@@ -1391,7 +1389,7 @@ impl InstructPipeline {
             trainer.queue_ref().clone(),
         );
 
-        // KAIZEN: precompute lm_head transpose once (avoids ~10s CPU transpose per step)
+        // KAIZEN: precompute lm_head + transpose, upload to GPU ONCE
         let lm_head_raw = self.model.lm_head_weight_slice();
         let h = hidden as usize;
         let v = vocab as usize;
@@ -1401,8 +1399,11 @@ impl InstructPipeline {
                 lm_head_transposed[hi * v + vi] = lm_head_raw[vi * h + hi];
             }
         }
+        let lm_head_gpu = trainer.upload(lm_head_raw);
+        let lm_head_t_gpu = trainer.upload(&lm_head_transposed);
+        drop(lm_head_transposed); // free CPU copy
         eprintln!(
-            "[wgpu] Training initialized (seq={}, vocab={}, layers={}, lm_head_t cached)",
+            "[wgpu] Training initialized (seq={}, vocab={}, layers={}, lm_head on GPU)",
             seq, vocab, num_layers
         );
 
@@ -1414,7 +1415,8 @@ impl InstructPipeline {
             logsumexp_buf: make_buf(seq as u64, "logsumexp"),
             cross_entropy: ce,
             trainer,
-            lm_head_transposed,
+            lm_head_gpu,
+            lm_head_t_gpu,
             num_layers,
             hidden_dim: hidden as usize,
             vocab_size: vocab as usize,
