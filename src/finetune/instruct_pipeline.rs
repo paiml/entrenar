@@ -2183,8 +2183,9 @@ impl InstructPipeline {
             let training_state = self.gpu_training.as_mut()?;
             let stream = trainer.stream();
 
-            // KAIZEN-062: Upload gradient directly to pre-allocated GPU buffer via partial write.
-            training_state.grad_upload_buf.copy_from_host_at(grad_final_hidden, 0).ok()?;
+            // PMAT-420: Use trainer.upload (fresh alloc) instead of copy_from_host_at
+            // which silently produces zeros on some CUDA driver configurations.
+            training_state.grad_upload_buf = trainer.upload(grad_final_hidden).ok()?;
 
             // RMSNorm backward on GPU
             crate::autograd::cuda_backward::rms_norm_backward(
