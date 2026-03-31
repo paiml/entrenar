@@ -642,8 +642,15 @@ impl WgpuInstructPipeline {
                 let d_x_dummy = self.trainer.zeros((s * proj.in_dim) as usize);
                 self.trainer.matmul_backward(input_buf, &proj.a, &d_xa, &d_x_dummy, &da, s, proj.in_dim, rank);
 
-                // Debug: check gradient norms
+                // Debug: check gradient norms immediately after computation
                 if self.lora_step == 1 && layer_idx == 0 && proj.name == "q_proj" {
+                    // Check db right after matmul_backward
+                    let db_imm = self.trainer.download(&db);
+                    let db_imm_norm: f32 = db_imm.iter().map(|x| x*x).sum::<f32>().sqrt();
+                    let da_imm = self.trainer.download(&da);
+                    let da_imm_norm: f32 = da_imm.iter().map(|x| x*x).sum::<f32>().sqrt();
+                    eprintln!("[DEBUG] IMMEDIATE: db_norm={:.6} da_norm={:.6}", db_imm_norm, da_imm_norm);
+
                     let x_data = self.trainer.download(input_buf);
                     let a_data = self.trainer.download(&proj.a);
                     let xa_data = self.trainer.download(&xa);

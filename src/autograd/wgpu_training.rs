@@ -750,7 +750,6 @@ impl WgpuTrainer {
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&self.matmul_pipeline);
             pass.set_bind_group(0, &bg, &[]);
-            // TILED_GEMM_SHADER uses 64×64 tiles (KAIZEN: was 16×16 = 1200x slower)
             pass.dispatch_workgroups(n.div_ceil(64), m.div_ceil(64), 1);
         }
         self.queue.submit(Some(encoder.finish()));
