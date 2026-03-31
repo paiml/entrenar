@@ -196,7 +196,11 @@ impl CudaBlockScratch {
             .map(|idx| {
                 let row = idx / max_seq_len;
                 let col = idx % max_seq_len;
-                if col <= row { 0.0f32 } else { f32::NEG_INFINITY }
+                if col <= row {
+                    0.0f32
+                } else {
+                    f32::NEG_INFINITY
+                }
             })
             .collect();
         let causal_mask = GpuBuffer::from_host(ctx, &causal_mask_data)?;
@@ -481,7 +485,11 @@ impl CudaTransformerBlock {
             .map(|idx| {
                 let row = idx / max_seq_len;
                 let col = idx % max_seq_len;
-                if col <= row { 0.0f32 } else { f32::NEG_INFINITY }
+                if col <= row {
+                    0.0f32
+                } else {
+                    f32::NEG_INFINITY
+                }
             })
             .collect();
         let causal_mask_data: Vec<f32> = single_mask
@@ -3195,7 +3203,13 @@ impl CudaNf4TransformerBlock {
                 let mask_view = unsafe { GpuBuffer::<f32>::from_raw_parts(mask_ptr, seq_sq) };
                 let scores_view = unsafe { GpuBuffer::<f32>::from_raw_parts(head_ptr, seq_sq) };
                 let mut out_view = unsafe { GpuBuffer::<f32>::from_raw_parts(head_ptr, seq_sq) };
-                residual_add_forward(&mask_view, &scores_view, &mut out_view, saturating_u32(seq_sq), stream)?;
+                residual_add_forward(
+                    &mask_view,
+                    &scores_view,
+                    &mut out_view,
+                    saturating_u32(seq_sq),
+                    stream,
+                )?;
                 leak(mask_view);
                 leak(scores_view);
                 leak(out_view);

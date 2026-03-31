@@ -1391,7 +1391,7 @@ impl CudaTransformerTrainer {
                 .unwrap_or(0.0);
         let lm_norm = lm_sq_norm.sqrt(); // L2 norm, NOT squared
         self.last_grad_norm = lm_norm; // R-004: capture for observability
-        // C-BACKPARITY-001: LM head gradient norm tracing (pre-clip).
+                                       // C-BACKPARITY-001: LM head gradient norm tracing (pre-clip).
         if std::env::var("ENTRENAR_TRACE_GRADIENTS").is_ok() {
             eprintln!("[grad-trace] lm_head gnorm={lm_norm:.6}");
             // Also trace the grad_hidden flowing to blocks
@@ -1399,7 +1399,8 @@ impl CudaTransformerTrainer {
                 &self.gpu_training.lm_head_grad_hidden,
                 self.gpu_training.lm_head_grad_hidden.len() as u32,
                 stream,
-            ).unwrap_or(0.0);
+            )
+            .unwrap_or(0.0);
             eprintln!("[grad-trace] lm_head_grad_hidden gnorm={:.6}", gh_sq.sqrt());
         }
         if let Some(max_norm) = max_grad_norm {
@@ -1674,11 +1675,8 @@ impl CudaTransformerTrainer {
                         stream,
                     );
                     // Also trace the activation gradient (flows between blocks)
-                    let act_sq = squared_sum_cuda(
-                        grad_input,
-                        grad_input.len() as u32,
-                        stream,
-                    ).unwrap_or(0.0);
+                    let act_sq = squared_sum_cuda(grad_input, grad_input.len() as u32, stream)
+                        .unwrap_or(0.0);
                     let act_gnorm = act_sq.sqrt();
                     eprintln!(
                         "[grad-trace] block={layer_idx} weight_gnorm={block_gnorm:.6} act_gnorm={act_gnorm:.6}"
@@ -3059,16 +3057,18 @@ impl CudaTransformerTrainer {
                 }
 
                 let base_weight = crate::autograd::Tensor::zeros(q_dim * hidden_size, false);
-                let mut layer =
-                    crate::lora::layer::LoRALayer::new(base_weight, q_dim, hidden_size, lora_rank, lora_alpha);
+                let mut layer = crate::lora::layer::LoRALayer::new(
+                    base_weight,
+                    q_dim,
+                    hidden_size,
+                    lora_rank,
+                    lora_alpha,
+                );
                 // Overwrite the A and B data with trained weights
                 layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
                 layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
 
-                adapters.push((
-                    format!("model.layers.{i}.self_attn.q_proj"),
-                    layer,
-                ));
+                adapters.push((format!("model.layers.{i}.self_attn.q_proj"), layer));
             }
 
             // V projection LoRA
@@ -3089,15 +3089,17 @@ impl CudaTransformerTrainer {
                 }
 
                 let base_weight = crate::autograd::Tensor::zeros(kv_hidden * hidden_size, false);
-                let mut layer =
-                    crate::lora::layer::LoRALayer::new(base_weight, kv_hidden, hidden_size, lora_rank, lora_alpha);
+                let mut layer = crate::lora::layer::LoRALayer::new(
+                    base_weight,
+                    kv_hidden,
+                    hidden_size,
+                    lora_rank,
+                    lora_alpha,
+                );
                 layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
                 layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
 
-                adapters.push((
-                    format!("model.layers.{i}.self_attn.v_proj"),
-                    layer,
-                ));
+                adapters.push((format!("model.layers.{i}.self_attn.v_proj"), layer));
             }
         }
 
@@ -3114,7 +3116,8 @@ impl CudaTransformerTrainer {
             .map_err(|e| crate::error::Error::Io(format!("Failed to save PEFT adapter: {e}")))?;
 
         let adapter_path = output_dir.join("adapter_model.safetensors");
-        let size_mb = std::fs::metadata(&adapter_path).map(|m| m.len()).unwrap_or(0) / (1024 * 1024);
+        let size_mb =
+            std::fs::metadata(&adapter_path).map(|m| m.len()).unwrap_or(0) / (1024 * 1024);
         println!(
             "✓ LoRA adapter saved ({} layers, {} MB) to {}",
             adapters.len(),
