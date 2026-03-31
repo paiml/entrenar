@@ -98,7 +98,7 @@ impl CudaTrainer {
         let mut buf = GpuBuffer::from_host(&self.ctx, data)
             .map_err(|e| CudaTensorError::AllocationFailed(format!("{e:?}")))?;
         // PMAT-420: Set context for thread-safe transfers
-        buf.set_context(self.ctx.clone());
+        buf.set_context(&self.ctx);
         Ok(buf)
     }
 

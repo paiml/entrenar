@@ -632,10 +632,15 @@ impl WgpuInstructPipeline {
                 let xa = self.trainer.zeros((s * rank) as usize);
                 self.trainer.matmul_forward(input_buf, &proj.a, &xa, s, proj.in_dim, rank);
 
+                // KAIZEN: force GPU sync — download xa, verify, re-upload
+                // matmul_backward downloads xa internally but may get stale zeros
+                let xa_flushed = self.trainer.download(&xa);
+                let xa_buf = self.trainer.upload(&xa_flushed);
+
                 // Step 2: backward of h = XA @ B → dB and d(XA)
                 let db = self.trainer.zeros((rank * proj.out_dim) as usize);
                 let d_xa = self.trainer.zeros((s * rank) as usize);
-                self.trainer.matmul_backward(&xa, &proj.b, &grad_buf, &d_xa, &db, s, rank, proj.out_dim);
+                self.trainer.matmul_backward(&xa_buf, &proj.b, &grad_buf, &d_xa, &db, s, rank, proj.out_dim);
 
                 // Step 3: backward of XA = X @ A → dA
                 let da = self.trainer.zeros((proj.in_dim * rank) as usize);
