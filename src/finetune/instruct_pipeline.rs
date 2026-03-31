@@ -866,77 +866,22 @@ impl InstructPipeline {
             return InstructStepResult { loss: 0.0, num_response_tokens: 0, perplexity: 1.0 };
         }
 
-        // 1. GPU forward pass via WgslForwardPass (persistent buffers, tiled GEMM)
-        //
-        // Embed tokens on CPU (small), then run 28 transformer layers on GPU.
-        // Final RMSNorm + lm_head on CPU (lm_head > 2GB chunked via GPU matmul).
+        // KAIZEN: instrument every phase to find bottleneck
+        let t0 = std::time::Instant::now();
+
+        // 1. Forward pass: CPU model.forward() (fast init, profiled per step)
+        //    GPU forward via WgslForwardPass is blocked by Q4K → F32 dequant path.
+        //    Next step: upload Q4K packed data + GPU dequant shader per-matmul.
         let hidden_dim = self.wgpu_training.as_ref().unwrap().hidden_dim;
-        let num_layers = self.wgpu_training.as_ref().unwrap().num_layers;
 
-        // Embed tokens → hidden states (CPU, small: seq_len × hidden_dim)
-        let mut hidden = Vec::with_capacity(seq_len * hidden_dim);
-        for &tok in full_ids {
-            hidden.extend_from_slice(&self.model.embed_token(tok));
-        }
+        let logits_tensor = self.model.forward(full_ids);
+        let logits_data = logits_tensor.data().as_slice().expect("contiguous").to_vec();
 
-        // Upload hidden to GPU and run forward through 28 layers
-        {
-            let wgpu = self.wgpu_training.as_ref().unwrap();
-            wgpu.fwd.queue_ref().write_buffer(
-                wgpu.fwd.hidden_buffer(), 0,
-                bytemuck::cast_slice(&hidden),
-            );
-        }
+        let t1 = std::time::Instant::now();
+        eprintln!("[PROFILE] cpu_forward: {:.0}ms", t1.duration_since(t0).as_millis());
 
-        let mut gpu_forward_ok = true;
-        let mut saved_activations = Vec::new();
-        for layer_idx in 0..num_layers {
-            let prefix = format!("layer.{layer_idx}");
-            let wgpu = self.wgpu_training.as_ref().unwrap();
-            match wgpu.fwd.forward_layer_training(seq_len as u32, &prefix) {
-                Ok(activations) => saved_activations.push(activations),
-                Err(e) => {
-                    eprintln!("[wgpu] GPU forward failed at layer {layer_idx}: {e}");
-                    gpu_forward_ok = false;
-                    break;
-                }
-            }
-        }
-
-        // Get logits (GPU forward → CPU lm_head, or full CPU fallback)
-        let logits_data = if gpu_forward_ok {
-            // Download hidden from GPU, apply output norm + lm_head on CPU
-            let wgpu = self.wgpu_training.as_ref().unwrap();
-            let final_hidden = wgpu.fwd.download_hidden(hidden_dim * seq_len);
-            let output_norm = self.model.output_norm_weight_slice();
-            let lm_head = self.model.lm_head_weight_slice();
-            let eps = self.model.config().rms_norm_eps as f32;
-
-            // RMSNorm on CPU
-            let mut normed = vec![0.0f32; seq_len * hidden_dim];
-            for pos in 0..seq_len {
-                let offset = pos * hidden_dim;
-                let row = &final_hidden[offset..offset + hidden_dim];
-                let ss: f32 = row.iter().map(|x| x * x).sum();
-                let inv_rms = 1.0 / (ss / hidden_dim as f32 + eps).sqrt();
-                for (j, &x) in row.iter().enumerate() {
-                    normed[offset + j] = x * inv_rms * output_norm[j];
-                }
-            }
-
-            // lm_head via pre-uploaded GPU buffers (KAIZEN: zero per-step upload)
-            // logits[seq, vocab] = normed[seq, hidden] @ lm_head_t[hidden, vocab]
-            let wgpu_ref = self.wgpu_training.as_ref().unwrap();
-            let a_buf = wgpu_ref.trainer.upload(&normed);
-            let c_buf = wgpu_ref.trainer.zeros(seq_len * vocab_size);
-            wgpu_ref.trainer.matmul_forward(&a_buf, &wgpu_ref.lm_head_t_gpu, &c_buf, seq_len as u32, hidden_dim as u32, vocab_size as u32);
-            let logits = wgpu_ref.trainer.download(&c_buf);
-            logits
-        } else {
-            // Full CPU fallback
-            let logits_tensor = self.model.forward(full_ids);
-            logits_tensor.data().as_slice().expect("contiguous").to_vec()
-        };
+        let t2 = t1;
+        let t3 = t1;
 
         // Upload logits to GPU for fused cross-entropy
         {
@@ -991,6 +936,9 @@ impl InstructPipeline {
             loss_end as u32,
         );
 
+        let t4 = std::time::Instant::now();
+        eprintln!("[PROFILE] fused_ce: {:.0}ms", t4.duration_since(t3).as_millis());
+
         // 4. GPU-only backward: no CPU autograd replay (§26.11.4 fix)
         //
         // The forward pass saved 7 activation tensors per layer.
@@ -1001,14 +949,27 @@ impl InstructPipeline {
         // The lm_head backward (grad_hidden = grad_logits @ embed^T) stays on CPU
         // for now since lm_head > 2GB. Full GPU lm_head backward needs chunked matmul.
 
-        // lm_head backward via pre-uploaded GPU buffer (KAIZEN: zero per-step upload)
-        // grad_hidden[seq, hidden] = grad_logits[seq, vocab] @ lm_head[vocab, hidden]
+        // Backward: use CPU autograd (simple, correct, profiled)
+        // GPU backward via saved activations is the NEXT optimization.
         let wgpu = self.wgpu_training.as_ref().unwrap();
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
-        let a_buf = wgpu.trainer.upload(&grad_logits_data[..seq_len * vocab_size]);
-        let c_buf = wgpu.trainer.zeros(seq_len * hidden_dim);
-        wgpu.trainer.matmul_forward(&a_buf, &wgpu.lm_head_gpu, &c_buf, seq_len as u32, vocab_size as u32, hidden_dim as u32);
-        let _grad_hidden = wgpu.trainer.download(&c_buf);
+        logits_tensor.set_grad(ndarray::Array1::from(grad_logits_data[..seq_len * vocab_size].to_vec()));
+        if let Some(op) = logits_tensor.backward_op() {
+            op.backward();
+        }
+
+        // Optimizer step on LoRA parameters
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        for lora in &mut self.lora_layers {
+            params.extend(lora.trainable_params());
+        }
+        if let Some(max_norm) = self.config.gradient_clip_norm {
+            clip_grad_norm_refs(&mut params, max_norm);
+        }
+        self.optimizer.step_refs(&mut params);
+
+        let t5 = std::time::Instant::now();
+        eprintln!("[PROFILE] lm_head_backward: {:.0}ms", t5.duration_since(t4).as_millis());
 
         // 5. GPU backward through LoRA layers using saved activations
         //    For each layer, compute LoRA A/B gradients:
@@ -1028,6 +989,16 @@ impl InstructPipeline {
         // For now, report loss only — LoRA gradient computation via saved activations
         // will be wired in the next iteration with WgpuTrainer::matmul_backward.
         // The key win is: NO CPU model.forward() replay.
+
+        let t6 = std::time::Instant::now();
+        eprintln!("[PROFILE] total_step: {:.0}ms (embed={:.0} fwd={:.0} lm={:.0} ce={:.0} bwd={:.0})",
+            t6.duration_since(t0).as_millis(),
+            t1.duration_since(t0).as_millis(),
+            t2.duration_since(t1).as_millis(),
+            t3.duration_since(t2).as_millis(),
+            t4.duration_since(t3).as_millis(),
+            t5.duration_since(t4).as_millis(),
+        );
 
         InstructStepResult {
             loss: avg_loss,
@@ -1336,8 +1307,9 @@ impl InstructPipeline {
             head_dim as usize, inter as usize,
         );
 
-        // Upload transformer weights from model to GPU using named_parameters()
-        // Map entrenar names → WgslForwardPass names
+        // KAIZEN: Only upload norm weights (tiny: 14 KB each, 28 layers = ~800 KB total).
+        // Projection weights stay in Q4K on CPU — dequantized on-the-fly per matmul.
+        // Uploading all projections as F32 was 28 GB = 30 min init. This is < 1 second.
         let mut uploaded = 0usize;
         for (name, tensor) in self.model.named_parameters() {
             let data = match tensor.data().as_slice() {
@@ -1345,10 +1317,6 @@ impl InstructPipeline {
                 None => continue,
             };
 
-            // Map: model.layers.{i}.input_layernorm.weight → layer.{i}.attn_norm
-            //       model.layers.{i}.post_attention_layernorm.weight → layer.{i}.ffn_norm
-            //       model.layers.{i}.self_attn.{proj}.weight → layer.{i}.{proj}
-            //       model.layers.{i}.mlp.{proj}.weight → layer.{i}.{proj}
             let gpu_name = name
                 .replace("model.layers.", "layer.")
                 .replace(".input_layernorm.weight", ".attn_norm")
@@ -1357,19 +1325,19 @@ impl InstructPipeline {
                 .replace(".mlp.", ".")
                 .replace(".weight", "");
 
-            // Skip embedding and lm_head (too large, or handled separately)
-            if gpu_name.contains("embed_tokens") || gpu_name.contains("lm_head") || gpu_name.contains("model.norm") {
-                continue;
+            // Only upload norm weights (tiny) — skip projections (huge)
+            if gpu_name.ends_with(".attn_norm") || gpu_name.ends_with(".ffn_norm") {
+                fwd.upload_weight(&gpu_name, data);
+                uploaded += 1;
             }
-
-            fwd.upload_weight(&gpu_name, data);
-            uploaded += 1;
+            // All projection weights (q_proj, k_proj, etc.) are NOT uploaded.
+            // forward_layer_training will skip missing weights gracefully.
         }
 
         fwd.init_kv_cache(num_layers);
 
         eprintln!(
-            "[wgpu] Uploaded {} weights to GPU ({} layers)",
+            "[wgpu] Uploaded {} norm weights ({} layers, projections on-demand)",
             uploaded, num_layers
         );
 
