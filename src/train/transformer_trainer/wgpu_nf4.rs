@@ -341,6 +341,7 @@ impl Nf4LayerWeights {
 /// Forward: y = x @ W^T + x @ B^T @ A^T (where A is [rank, in_dim], B is [out_dim, rank])
 /// Backward: gradients flow through B and A, frozen base W is not updated
 #[cfg(feature = "gpu")]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct LoraAdapter {
     /// A matrix [rank, in_dim] — fp32, trainable
     pub a: Vec<f32>,

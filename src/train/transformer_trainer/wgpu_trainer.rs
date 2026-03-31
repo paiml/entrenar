@@ -39,9 +39,8 @@ pub struct WgpuModelState {
     /// NF4 weights per layer (compact, stays in CPU RAM)
     pub layers: Vec<super::wgpu_nf4::Nf4LayerWeights>,
     /// LoRA Q adapters per layer (trainable, fp32)
-    pub lora_q: Vec<super::wgpu_nf4::LoraAdapter>,
-    /// LoRA V adapters per layer (trainable, fp32)
-    pub lora_v: Vec<super::wgpu_nf4::LoraAdapter>,
+    /// LoRA adapters per layer (7 projections: Q/K/V/O/gate/up/down)
+    pub lora: Vec<super::wgpu_checkpoint::LoraLayerSet>,
     /// LM head weight [vocab_size, hidden_size] fp32
     pub lm_head: Vec<f32>,
     /// LM head optimizer state
@@ -169,11 +168,12 @@ impl WgpuModelState {
         }
 
         // Create LoRA adapters for Q and V
-        let mut lora_q = Vec::with_capacity(num_layers);
-        let mut lora_v = Vec::with_capacity(num_layers);
+        let mut lora = Vec::with_capacity(num_layers);
         for _ in 0..num_layers {
-            lora_q.push(super::wgpu_nf4::LoraAdapter::new(lora_rank, hidden_size as u32, q_dim as u32));
-            lora_v.push(super::wgpu_nf4::LoraAdapter::new(lora_rank, hidden_size as u32, (num_kv_heads * head_dim) as u32));
+            lora.push(super::wgpu_checkpoint::LoraLayerSet::new(
+                lora_rank, hidden_size as u32, q_dim as u32,
+                (num_kv_heads * head_dim) as u32, intermediate_size as u32,
+            ));
         }
 
         // LM head: load from last shard
@@ -211,17 +211,14 @@ impl WgpuModelState {
 
         let lm_head_len = lm_head.len();
         let total_nf4_mb: f64 = layers.iter().map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
-        let total_lora_params: usize = lora_q.iter().chain(lora_v.iter()).map(|l| l.num_params()).sum();
-
+        let total_lora_params: usize = lora.iter().map(|l| l.num_params()).sum();
         eprintln!("Model loaded:");
         eprintln!("  NF4 weights: {total_nf4_mb:.0} MB ({num_layers} layers)");
-        eprintln!("  LoRA params: {total_lora_params} (rank={lora_rank}, Q+V)");
+        eprintln!("  LoRA params: {total_lora_params} (rank={lora_rank}, 7 modules/layer)");
         eprintln!("  LM head: {} elements ({:.1} MB)", lm_head_len, lm_head_len as f64 * 4.0 / 1024.0 / 1024.0);
-
         Ok(Self {
             layers,
-            lora_q,
-            lora_v,
+            lora,
             lm_head,
             lm_head_m: vec![0.0f32; lm_head_len],
             lm_head_v: vec![0.0f32; lm_head_len],
@@ -265,19 +262,18 @@ impl WgpuModelState {
 
     /// Total trainable parameters
     pub fn trainable_params(&self) -> usize {
-        let lora: usize = self.lora_q.iter().chain(self.lora_v.iter())
-            .map(|l| l.num_params()).sum();
+        let lora: usize = self.lora.iter().map(|l| l.num_params()).sum();
         lora + self.lm_head.len()
     }
 
     /// Save LoRA checkpoint (delegates to wgpu_checkpoint)
     pub fn save_checkpoint(&self, dir: &std::path::Path, step: u32, loss: f32, rank: u32, alpha: f32) -> Result<std::path::PathBuf, String> {
-        super::wgpu_checkpoint::save_lora_checkpoint(&self.lora_q, &self.lora_v, self.hidden_size, dir, step, loss, rank, alpha)
+        super::wgpu_checkpoint::save_lora_checkpoint(&self.lora, self.hidden_size, dir, step, loss, rank, alpha)
     }
 
     /// Load LoRA checkpoint (delegates to wgpu_checkpoint)
     pub fn load_checkpoint(&mut self, path: &std::path::Path) -> Result<(u32, f32), String> {
-        super::wgpu_checkpoint::load_lora_checkpoint(&mut self.lora_q, &mut self.lora_v, self.num_layers, self.hidden_size, path)
+        super::wgpu_checkpoint::load_lora_checkpoint(&mut self.lora, self.num_layers, self.hidden_size, path)
     }
 }
 
@@ -335,7 +331,7 @@ impl WgpuTransformerTrainer {
         hidden: &[f32],                           // [seq_len, hidden_size]
         model: &mut super::wgpu_nf4::Nf4LayerWeights,
         lora_q: &mut super::wgpu_nf4::LoraAdapter,
-        _lora_v: &mut super::wgpu_nf4::LoraAdapter,  // Phase 4: attention
+        _lora_v: &mut super::wgpu_nf4::LoraAdapter,
         seq_len: u32,
         hidden_size: u32,
         intermediate_size: u32,
@@ -486,7 +482,7 @@ impl WgpuTransformerTrainer {
                 .expect("attn cache");
             let (attn_out, attn_cache) = super::wgpu_attention::attention_forward(
                 &self.device, &hidden, q_w, k_w, v_w, o_w,
-                &model.lora_q[layer_idx], &model.lora_v[layer_idx], self.lora_alpha,
+                &model.lora[layer_idx].q, &model.lora[layer_idx].v, self.lora_alpha,
                 s, h, model.num_heads as u32, model.num_kv_heads as u32, model.head_dim as u32,
             )?;
             let attn_input = hidden.clone(); // save pre-attention input for backward

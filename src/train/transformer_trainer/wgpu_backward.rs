@@ -179,7 +179,7 @@ pub fn backward_through_layers(
         }
 
         // 3. LoRA Q backward: dL/dB = (α/r) * h_cached^T @ grad_q, dL/dA = (α/r) * B^T @ grad_q @ x
-        let rank = model.lora_q[layer_idx].rank as usize;
+        let rank = model.lora[layer_idx].q.rank as usize;
         if rank > 0 {
             let scaling = lora_alpha / rank as f32;
             // dL/dB_q [q_dim, rank] = scaling * grad_q^T[q_dim, s] @ h_cached[s, rank]
@@ -192,7 +192,7 @@ pub fn backward_through_layers(
             // Simpler: dL/dA = scaling * sum_s(grad_h_cached[s,rank] outer x[s,h]) where grad_h_cached = grad_q @ B
             let mut grad_h_cached = vec![0.0f32; s as usize * rank];
             for si in 0..s as usize { for ri in 0..rank { let mut sum = 0.0f32;
-                for qi in 0..q_dim { sum += grad_q[si * q_dim + qi] * model.lora_q[layer_idx].b[qi * rank + ri]; }
+                for qi in 0..q_dim { sum += grad_q[si * q_dim + qi] * model.lora[layer_idx].q.b[qi * rank + ri]; }
                 grad_h_cached[si * rank + ri] = sum * scaling;
             }}
             let mut grad_a = vec![0.0f32; rank * h as usize];
@@ -201,13 +201,13 @@ pub fn backward_through_layers(
                 grad_a[ri * h as usize + hi] = sum;
             }}
             total_lora_gnorm += grad_a.iter().map(|g| g * g).sum::<f32>();
-            let lq = &mut model.lora_q[layer_idx];
+            let lq = &mut model.lora[layer_idx].q;
             cpu_adamw(&mut lq.a, &grad_a, &mut lq.m_a, &mut lq.v_a, lr, beta1, beta2, eps, weight_decay, step);
             cpu_adamw(&mut lq.b, &grad_b, &mut lq.m_b, &mut lq.v_b, lr, beta1, beta2, eps, weight_decay, step);
         }
 
         // 4. LoRA V backward: same pattern with grad_v
-        let v_rank = model.lora_v[layer_idx].rank as usize;
+        let v_rank = model.lora[layer_idx].v.rank as usize;
         if v_rank > 0 {
             let scaling = lora_alpha / v_rank as f32;
             let mut grad_b = vec![0.0f32; kv_dim * v_rank];
@@ -217,7 +217,7 @@ pub fn backward_through_layers(
             }}
             let mut grad_h_cached = vec![0.0f32; s as usize * v_rank];
             for si in 0..s as usize { for ri in 0..v_rank { let mut sum = 0.0f32;
-                for vi in 0..kv_dim { sum += grad_v[si * kv_dim + vi] * model.lora_v[layer_idx].b[vi * v_rank + ri]; }
+                for vi in 0..kv_dim { sum += grad_v[si * kv_dim + vi] * model.lora[layer_idx].v.b[vi * v_rank + ri]; }
                 grad_h_cached[si * v_rank + ri] = sum * scaling;
             }}
             let mut grad_a = vec![0.0f32; v_rank * h as usize];
@@ -226,7 +226,7 @@ pub fn backward_through_layers(
                 grad_a[ri * h as usize + hi] = sum;
             }}
             total_lora_gnorm += grad_a.iter().map(|g| g * g).sum::<f32>();
-            let lv = &mut model.lora_v[layer_idx];
+            let lv = &mut model.lora[layer_idx].v;
             cpu_adamw(&mut lv.a, &grad_a, &mut lv.m_a, &mut lv.v_a, lr, beta1, beta2, eps, weight_decay, step);
             cpu_adamw(&mut lv.b, &grad_b, &mut lv.m_b, &mut lv.v_b, lr, beta1, beta2, eps, weight_decay, step);
         }
@@ -254,8 +254,7 @@ mod tests {
 
         let mut model = super::super::wgpu_trainer::WgpuModelState {
             layers: vec![],
-            lora_q: (0..n_layers).map(|_| LoraAdapter::new(rank, h, h)).collect(),
-            lora_v: (0..n_layers).map(|_| LoraAdapter::new(rank, h, h)).collect(),
+            lora: (0..n_layers).map(|_| crate::train::transformer_trainer::wgpu_checkpoint::LoraLayerSet::new(rank, h, h, h, i_size)).collect(),
             lm_head: vec![0.0f32; 32 * h as usize],
             lm_head_m: vec![0.0f32; 32 * h as usize],
             lm_head_v: vec![0.0f32; 32 * h as usize],
@@ -308,8 +307,8 @@ mod tests {
             (0..(s * h) as usize).map(|j| (j as f32 - 8.0) * 0.01).collect();
 
         // Save original LoRA weights for comparison
-        let orig_q_a_0 = model.lora_q[0].a.clone();
-        let orig_v_a_0 = model.lora_v[0].a.clone();
+        let orig_q_a_0 = model.lora[0].q.a.clone();
+        let orig_v_a_0 = model.lora[0].v.a.clone();
 
         let gnorm = backward_through_layers(
             &device,
@@ -330,8 +329,8 @@ mod tests {
         .expect("backward");
 
         // LoRA weights must have changed
-        assert_ne!(model.lora_q[0].a, orig_q_a_0, "LoRA Q adapter A must be updated");
-        assert_ne!(model.lora_v[0].a, orig_v_a_0, "LoRA V adapter A must be updated");
+        assert_ne!(model.lora[0].q.a, orig_q_a_0, "LoRA Q adapter A must be updated");
+        assert_ne!(model.lora[0].v.a, orig_v_a_0, "LoRA V adapter A must be updated");
         assert!(gnorm >= 0.0, "Gradient norm must be non-negative");
         assert!(grad_hidden.iter().all(|g| g.is_finite()), "All gradients finite");
 

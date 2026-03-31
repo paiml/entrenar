@@ -100,7 +100,7 @@ fn run() -> Result<(), String> {
                 .expect("attn cache");
             let (attn_out, _cache) = entrenar::train::transformer_trainer::wgpu_attention::attention_forward(
                 &device, &hidden, q_w, k_w, v_w, o_w,
-                &model.lora_q[layer_idx], &model.lora_v[layer_idx], lora_alpha,
+                &model.lora[layer_idx].q, &model.lora[layer_idx].v, lora_alpha,
                 s, h as u32, nh, nkv, hd,
             )?;
             for j in 0..(s as usize * h) { hidden[j] += attn_out[j]; }
