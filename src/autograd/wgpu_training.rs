@@ -37,12 +37,10 @@ impl WgpuTrainer {
 #[cfg(feature = "gpu")]
 use trueno::backends::gpu::wgpu;
 
-// Use trueno's naive tiled GEMM for now. The CUTLASS-style 64×64 tiled GEMM
-// is in trueno's TILED_GEMM_SHADER but cross-crate cfg visibility makes it
-// hard to import. Use the proven MATMUL_SHADER (16×16 tiled, correct results)
-// for the parity gate, then switch to TILED_GEMM after parity is proven.
+// KAIZEN root cause: MATMUL_SHADER (16×16) was 1200x slower than TILED_GEMM_SHADER (64×64).
+// Parity proven (3/3 tests). Switching to tiled GEMM (375 GFLOPS vs ~20 GFLOPS).
 #[cfg(feature = "gpu")]
-const GEMM_SHADER: &str = trueno::backends::gpu::shaders::MATMUL_SHADER;
+const GEMM_SHADER: &str = trueno::backends::gpu::shaders::TILED_GEMM_SHADER;
 
 /// WGSL AdamW optimizer kernel
 #[cfg(feature = "gpu")]
@@ -659,9 +657,8 @@ impl WgpuTrainer {
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&self.matmul_pipeline);
             pass.set_bind_group(0, &bg, &[]);
-            // MATMUL_SHADER uses 16×16 tiles (will upgrade to TILED_GEMM_SHADER
-            // 64×64 tiles after cross-crate visibility is resolved)
-            pass.dispatch_workgroups(m.div_ceil(16), n.div_ceil(16), 1);
+            // TILED_GEMM_SHADER uses 64×64 tiles (KAIZEN: was 16×16 = 1200x slower)
+            pass.dispatch_workgroups(n.div_ceil(64), m.div_ceil(64), 1);
         }
         self.queue.submit(Some(encoder.finish()));
     }
