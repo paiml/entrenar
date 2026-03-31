@@ -3024,7 +3024,7 @@ impl CudaTransformerTrainer {
         let lora_config =
             crate::lora::LoRAConfig::new(lora_rank, lora_alpha).target_qv_projections();
 
-        let mut adapters: Vec<(String, crate::lora::layer::LoRALayer)> = Vec::new();
+        let mut adapters: Vec<(String, crate::lora::LoRALayer)> = Vec::new();
 
         for (i, block) in self.cuda_blocks.iter().enumerate() {
             let (a_q, b_q_scaled, a_v, b_v_scaled) = match block.download_lora_weights() {
@@ -3057,7 +3057,7 @@ impl CudaTransformerTrainer {
                 }
 
                 let base_weight = crate::autograd::Tensor::zeros(q_dim * hidden_size, false);
-                let mut layer = crate::lora::layer::LoRALayer::new(
+                let mut layer = crate::lora::LoRALayer::new(
                     base_weight,
                     q_dim,
                     hidden_size,
@@ -3089,7 +3089,7 @@ impl CudaTransformerTrainer {
                 }
 
                 let base_weight = crate::autograd::Tensor::zeros(kv_hidden * hidden_size, false);
-                let mut layer = crate::lora::layer::LoRALayer::new(
+                let mut layer = crate::lora::LoRALayer::new(
                     base_weight,
                     kv_hidden,
                     hidden_size,
@@ -3108,7 +3108,7 @@ impl CudaTransformerTrainer {
             return Ok(());
         }
 
-        let adapter_refs: Vec<(&str, &crate::lora::layer::LoRALayer)> =
+        let adapter_refs: Vec<(&str, &crate::lora::LoRALayer)> =
             adapters.iter().map(|(name, layer)| (name.as_str(), layer)).collect();
 
         std::fs::create_dir_all(output_dir).ok();
