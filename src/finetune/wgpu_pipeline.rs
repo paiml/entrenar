@@ -467,6 +467,8 @@ impl WgpuInstructPipeline {
             row_offset += ck;
         }
 
+        eprintln!("[DEBUG] seq_len={} hidden={} rank={} lora_layers={}", seq_len, self.hidden_dim, self.lora_rank, self.lora.len());
+
         // 7. LoRA gradient computation + AdamW step
         // Contract: wgpu-production-training-v1/C-WGPU-LORA-BWD-001
         //   dL/dB = (α/r) * (X @ A)^T @ G   [rank, out]

@@ -551,6 +551,99 @@ impl WgpuTrainer {
         &self.device
     }
 
+    /// Create from an existing device + queue (share device with WgslForwardPass).
+    /// Contract: single device for all GPU operations — no cross-device buffer access.
+    pub fn from_device(device: wgpu::Device, queue: wgpu::Queue) -> Result<Self> {
+        let matmul_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("tiled_gemm"),
+            source: wgpu::ShaderSource::Wgsl(GEMM_SHADER.into()),
+        });
+        let matmul_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("gemm_bgl"),
+            entries: &[
+                storage_entry(0, true),
+                storage_entry(1, true),
+                storage_entry(2, false),
+                uniform_entry(3),
+            ],
+        });
+        let matmul_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("gemm_pl"),
+            bind_group_layouts: &[&matmul_bgl],
+            push_constant_ranges: &[],
+        });
+        let matmul_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("tiled_gemm_pipe"),
+            layout: Some(&matmul_pl),
+            module: &matmul_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let adamw_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("adamw"),
+            source: wgpu::ShaderSource::Wgsl(ADAMW_SHADER.into()),
+        });
+        let adamw_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("adamw_bgl"),
+            entries: &[
+                storage_entry(0, false),
+                storage_entry(1, true),
+                storage_entry(2, false),
+                storage_entry(3, false),
+                uniform_entry(4),
+            ],
+        });
+        let adamw_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("adamw_pl"),
+            bind_group_layouts: &[&adamw_bgl],
+            push_constant_ranges: &[],
+        });
+        let adamw_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("adamw_pipe"),
+            layout: Some(&adamw_pl),
+            module: &adamw_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let clip_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("grad_clip"),
+            source: wgpu::ShaderSource::Wgsl(GRAD_CLIP_SHADER.into()),
+        });
+        let clip_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("clip_bgl"),
+            entries: &[storage_entry(0, false), uniform_entry(1)],
+        });
+        let clip_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("clip_pl"),
+            bind_group_layouts: &[&clip_bgl],
+            push_constant_ranges: &[],
+        });
+        let clip_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("clip_pipe"),
+            layout: Some(&clip_pl),
+            module: &clip_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        Ok(Self {
+            device,
+            queue,
+            matmul_pipeline,
+            matmul_bgl,
+            adamw_pipeline,
+            adamw_bgl,
+            clip_pipeline,
+            clip_bgl,
+            step: 0,
+        })
+    }
+
     // --- Internal helpers ---
 
     fn dispatch_gemm(
