@@ -417,6 +417,11 @@ path = "examples/wgpu_train.rs"
 required-features = ["gpu"]
 
 [[example]]
+name = "wgpu_canary"
+path = "examples/wgpu_canary.rs"
+required-features = ["gpu"]
+
+[[example]]
 name = "wgpu_eval"
 path = "examples/wgpu_eval.rs"
 required-features = ["gpu"]
