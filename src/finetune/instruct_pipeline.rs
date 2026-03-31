@@ -1980,30 +1980,22 @@ impl InstructPipeline {
         // KAIZEN-062: Upload hidden states into pre-allocated GPU buffer.
         // Partial write via copy_from_host_at — padded positions are irrelevant
         // (block.forward uses seq_len for attention masking and GEMM dimensions).
-        // PMAT-420: Verify embed upload
-        let embed_nz = hidden_slice.iter().filter(|&&x| x != 0.0).count();
-        eprintln!("[CUDA-TRAIN] embed CPU: len={} nonzero={embed_nz} first5={:?}",
-            hidden_slice.len(), &hidden_slice[..5.min(hidden_slice.len())]);
-
-        // PMAT-420: Ensure CUDA context is current before GPU operations.
-        // Training may run on a different thread than context creation (GH-284).
-        trainer.context().make_current().ok();
-
-        training_state
-            .fwd_scratch_a
-            .copy_from_host_at(hidden_slice, 0)
-            .map_err(|e| {
-                eprintln!("[CUDA] upload failed: {e}");
-            })
+        // PMAT-420: Use fresh upload instead of copy_from_host_at on pre-allocated buffer.
+        // Inference forward works with trainer.upload() — training's copy_from_host_at silently
+        // fails (zeros). The pre-allocated scratch buffer may have stale CUDA state.
+        // Fresh upload allocates new GPU memory each step (same as working inference path).
+        training_state.fwd_scratch_a = trainer
+            .upload(hidden_slice)
+            .map_err(|e| eprintln!("[CUDA] embed upload failed: {e}"))
             .ok()?;
-
-        // Verify GPU buffer after upload
-        {
-            let stream = trainer.stream();
-            stream.synchronize().ok();
-            let mut verify = vec![0.0f32; 5.min(hidden_slice.len())];
-            let _ = training_state.fwd_scratch_a.copy_to_host(&mut verify);
-            eprintln!("[CUDA-TRAIN] embed GPU verify: {:?}", verify);
+        // Pad to max buffer size for block.forward compatibility
+        if training_state.fwd_scratch_a.len() < training_state.fwd_scratch_b.len() {
+            let mut padded = vec![0.0f32; training_state.fwd_scratch_b.len()];
+            padded[..hidden_slice.len()].copy_from_slice(hidden_slice);
+            training_state.fwd_scratch_a = trainer
+                .upload(&padded)
+                .map_err(|e| eprintln!("[CUDA] padded upload failed: {e}"))
+                .ok()?;
         }
 
         // KAIZEN-062: Ping-pong with pre-allocated forward scratch buffers.
