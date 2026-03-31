@@ -212,6 +212,8 @@ struct WgpuTrainingState {
     labels_buf: trueno::backends::gpu::wgpu::Buffer,
     losses_buf: trueno::backends::gpu::wgpu::Buffer,
     logsumexp_buf: trueno::backends::gpu::wgpu::Buffer,
+    // Precomputed lm_head transpose (KAIZEN: avoids ~10s CPU transpose per step)
+    lm_head_transposed: Vec<f32>, // [hidden, vocab] — computed once at init
     // Model config needed for forward pass
     num_layers: usize,
     hidden_dim: usize,
@@ -921,43 +923,14 @@ impl InstructPipeline {
                 }
             }
 
-            // lm_head via GPU chunked matmul (KAIZEN: was CPU triple-loop)
-            // logits[seq, vocab] = normed[seq, hidden] @ lm_head^T[hidden, vocab]
-            // lm_head is [vocab, hidden] so lm_head^T is [hidden, vocab]
-            // We compute: normed[seq, hidden] @ lm_head^T[hidden, vocab]
-            // = matmul(normed, lm_head^T, seq, hidden, vocab)
-            // But lm_head is stored as [vocab, hidden], so we need to transpose.
-            // Alternative: treat as normed[seq, hidden] and iterate lm_head rows.
-            // For GPU: transpose lm_head to [hidden, vocab], then matmul.
-            let mut lm_head_t = vec![0.0f32; hidden_dim * vocab_size];
-            for v in 0..vocab_size {
-                for h in 0..hidden_dim {
-                    lm_head_t[h * vocab_size + v] = lm_head[v * hidden_dim + h];
-                }
-            }
+            // lm_head via GPU chunked matmul using cached transpose
+            // logits[seq, vocab] = normed[seq, hidden] @ lm_head_t[hidden, vocab]
+            let wgpu_ref = self.wgpu_training.as_ref().unwrap();
+            let lm_head_t = &wgpu_ref.lm_head_transposed;
             let mut logits = vec![0.0f32; seq_len * vocab_size];
             if let Ok(gpu) = trueno::backends::gpu::GpuDevice::new() {
-                if let Err(e) = gpu.matmul(&normed, &lm_head_t, &mut logits, seq_len, hidden_dim, vocab_size) {
-                    eprintln!("[wgpu] lm_head forward GPU failed: {e} — CPU fallback");
-                    for pos in 0..seq_len {
-                        for v in 0..vocab_size {
-                            let mut sum = 0.0f32;
-                            for h in 0..hidden_dim {
-                                sum += normed[pos * hidden_dim + h] * lm_head[v * hidden_dim + h];
-                            }
-                            logits[pos * vocab_size + v] = sum;
-                        }
-                    }
-                }
-            } else {
-                for pos in 0..seq_len {
-                    for v in 0..vocab_size {
-                        let mut sum = 0.0f32;
-                        for h in 0..hidden_dim {
-                            sum += normed[pos * hidden_dim + h] * lm_head[v * hidden_dim + h];
-                        }
-                        logits[pos * vocab_size + v] = sum;
-                    }
+                if let Err(e) = gpu.matmul(&normed, lm_head_t, &mut logits, seq_len, hidden_dim, vocab_size) {
+                    eprintln!("[wgpu] lm_head forward GPU failed: {e}");
                 }
             }
             logits
@@ -1452,8 +1425,18 @@ impl InstructPipeline {
             trainer.queue_ref().clone(),
         );
 
+        // KAIZEN: precompute lm_head transpose once (avoids ~10s CPU transpose per step)
+        let lm_head_raw = self.model.lm_head_weight_slice();
+        let h = hidden as usize;
+        let v = vocab as usize;
+        let mut lm_head_transposed = vec![0.0f32; h * v];
+        for vi in 0..v {
+            for hi in 0..h {
+                lm_head_transposed[hi * v + vi] = lm_head_raw[vi * h + hi];
+            }
+        }
         eprintln!(
-            "[wgpu] Training initialized (seq={}, vocab={}, layers={})",
+            "[wgpu] Training initialized (seq={}, vocab={}, layers={}, lm_head_t cached)",
             seq, vocab, num_layers
         );
 
@@ -1465,6 +1448,7 @@ impl InstructPipeline {
             logsumexp_buf: make_buf(seq as u64, "logsumexp"),
             cross_entropy: ce,
             trainer,
+            lm_head_transposed,
             num_layers,
             hidden_dim: hidden as usize,
             vocab_size: vocab as usize,
