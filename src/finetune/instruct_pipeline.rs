@@ -798,6 +798,10 @@ impl InstructPipeline {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
             let training = self.gpu_training.as_mut()?;
+            // PMAT-420: Skip GPU lm_head backward if embeddings are CPU-only (VRAM-constrained)
+            if training.embed_original.len() < vocab_size * hidden_size {
+                return None;
+            }
             gemm_forward(
                 &training.logits_buf,
                 &training.embed_original,
@@ -1769,34 +1773,54 @@ impl InstructPipeline {
         let grad_buf_b = trainer.zeros(buf_size).ok()?;
         let grad_final_norm_weight = trainer.zeros(hidden_size).ok()?;
 
-        // Upload embedding weights in both layouts:
-        // - embed_transposed [hidden, vocab]: for lm_head forward GEMM (logits = hidden @ embed_T)
-        // - embed_original [vocab, hidden]: for lm_head backward GEMM (grad_hidden = grad_logits @ embed)
-        // KAIZEN-068: Both layouts stored permanently on GPU. Eliminates ~1.45GB H2D upload per step.
-        // VRAM cost: ~1.45GB additional (Qwen3-4B: 151936 × 2560 × 4). Fits in 24GB RTX 4090.
+        // Upload embedding weights for GPU-resident lm_head GEMM.
+        // KAIZEN-068: Both layouts stored permanently on GPU. Eliminates ~1.45GB H2D upload/step.
+        // VRAM cost: ~1.45GB additional (151936 × 1536 × 4 bytes × 2 layouts).
+        //
+        // PMAT-420: On <=16GB VRAM, skip GPU embeddings — use CPU lm_head fallback instead.
+        // This keeps GPU for transformer blocks (where throughput matters) and does lm_head on CPU.
+        // On yoga (8GB): model=1.1GB + blocks=~4GB + embeddings=1.77GB = OOM.
+        // Without embeddings: model=1.1GB + blocks=~4GB = fits.
         let vocab_size = model_config.vocab_size;
         let embed_data = model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
-        let embed_original = trainer
-            .upload(embed_slice)
-            .map_err(|e| {
-                eprintln!("[CUDA] embed_original upload failed: {e}");
-            })
-            .ok()?;
+        let embed_bytes = vocab_size * hidden_size * 4 * 2; // both layouts
+        let vram_available_mb = trainer.free_memory_mb().unwrap_or(0);
+        let embed_mb = embed_bytes / (1024 * 1024);
+        let use_gpu_embed = vram_available_mb > (embed_mb + 512) as u64; // need 512MB headroom
 
-        let mut embed_t = vec![0.0f32; hidden_size * vocab_size];
-        for v in 0..vocab_size {
-            for k in 0..hidden_size {
-                embed_t[k * vocab_size + v] = embed_slice[v * hidden_size + k];
+        let (embed_original, embed_transposed) = if use_gpu_embed {
+            eprintln!(
+                "[CUDA] GPU-resident embeddings: {embed_mb}MB (VRAM free: {vram_available_mb}MB)"
+            );
+            let orig = trainer
+                .upload(embed_slice)
+                .map_err(|e| eprintln!("[CUDA] embed_original upload failed: {e}"))
+                .ok()?;
+
+            let mut embed_t = vec![0.0f32; hidden_size * vocab_size];
+            for v in 0..vocab_size {
+                for k in 0..hidden_size {
+                    embed_t[k * vocab_size + v] = embed_slice[v * hidden_size + k];
+                }
             }
-        }
-        let embed_transposed = trainer
-            .upload(&embed_t)
-            .map_err(|e| {
-                eprintln!("[CUDA] embed_transposed upload failed: {e}");
-            })
-            .ok()?;
+            let trans = trainer
+                .upload(&embed_t)
+                .map_err(|e| eprintln!("[CUDA] embed_transposed upload failed: {e}"))
+                .ok()?;
+            (orig, trans)
+        } else {
+            eprintln!(
+                "[CUDA] Skipping GPU embeddings ({embed_mb}MB > {vram_available_mb}MB free). \
+                 Using CPU lm_head — GPU for transformer blocks only."
+            );
+            // Minimal 1-element buffers so struct construction succeeds.
+            // forward_logits_gpu_resident() will detect size mismatch and use CPU path.
+            let orig = trainer.zeros(1).ok()?;
+            let trans = trainer.zeros(1).ok()?;
+            (orig, trans)
+        };
 
         // Logits scratch: [max_seq_len, vocab_size]
         let logits_buf = trainer
@@ -1970,10 +1994,28 @@ impl InstructPipeline {
 
             // Forward uses actual seq_len for attention masking; padded positions
             // produce zeros that don't affect loss (loss only covers actual tokens).
+            //
+            // PMAT-420: Diagnostic logging for training forward failures.
+            // Inference forward works (30 tok/s) but training fails — buffer sizing suspected.
+            {
+                static FWD_TRACE: std::sync::atomic::AtomicBool =
+                    std::sync::atomic::AtomicBool::new(false);
+                if !FWD_TRACE.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    eprintln!(
+                        "[CUDA-TRAIN] Layer {i} forward: seq_len={seq_len} in={} out={} hidden={hidden_size}",
+                        gpu_input.len(),
+                        gpu_output.len(),
+                    );
+                }
+            }
             if let Err(e) =
                 block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut())
             {
-                eprintln!("[CUDA] Layer {i} forward failed: {e}");
+                eprintln!(
+                    "[CUDA] Layer {i} forward failed: {e} (seq_len={seq_len} in={} out={} hidden={hidden_size})",
+                    gpu_input.len(),
+                    gpu_output.len(),
+                );
                 return None;
             }
             input_is_a = !input_is_a;
@@ -2393,6 +2435,13 @@ impl InstructPipeline {
             (Some(ref t), Some(ref mut tr)) => (t, tr),
             _ => return false,
         };
+
+        // PMAT-420: If embed_transposed is minimal (VRAM-constrained path),
+        // skip GPU lm_head GEMM — return false to trigger CPU fallback.
+        if training.embed_transposed.len() < hidden_size * vocab_size {
+            return false;
+        }
+
         let stream = trainer.stream();
 
         // TRACE: Check hidden state before lm_head

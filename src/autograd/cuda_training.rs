@@ -105,6 +105,12 @@ impl CudaTrainer {
         self.upload(&data)
     }
 
+    /// Query free VRAM in MB (via cuMemGetInfo).
+    /// Returns None if query fails.
+    pub fn free_memory_mb(&self) -> Option<u64> {
+        self.ctx.memory_info().map(|(free, _total)| (free / (1024 * 1024)) as u64).ok()
+    }
+
     /// Download GPU buffer to host
     pub fn download(&self, buffer: &GpuBuffer<f32>) -> Result<Vec<f32>> {
         let mut result = vec![0.0f32; buffer.len()];
