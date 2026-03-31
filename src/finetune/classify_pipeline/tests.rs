@@ -1586,6 +1586,45 @@ fn test_cov_long_input() {
     assert!(p.train_step(&long_input, 0).is_finite());
 }
 
+/// Regression: forward_only_with_probs must clamp seq_len to max_seq_len (entrenar#280).
+#[test]
+fn test_forward_only_with_probs_long_input() {
+    let mut p = ClassifyPipeline::new(
+        &tiny_config(),
+        ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            max_seq_len: 10,
+            ..ClassifyConfig::default()
+        },
+    );
+    let long_input: Vec<u32> = (0..50).collect();
+    let (loss, pred, probs) = p.forward_only_with_probs(&long_input, 0);
+    assert!(loss.is_finite());
+    assert!(pred < 3);
+    assert_eq!(probs.len(), 3);
+}
+
+/// Regression: multi_label_train_step must clamp seq_len to max_seq_len (entrenar#280).
+#[test]
+fn test_multi_label_train_step_long_input() {
+    let mut p = ClassifyPipeline::new(
+        &tiny_config(),
+        ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            max_seq_len: 10,
+            ..ClassifyConfig::default()
+        },
+    );
+    let long_input: Vec<u32> = (0..50).collect();
+    let targets = vec![1.0, 0.0, 1.0];
+    let loss = p.multi_label_train_step(&long_input, &targets);
+    assert!(loss.is_finite());
+}
+
 #[test]
 fn test_cov_lora_count() {
     let p = ClassifyPipeline::new(

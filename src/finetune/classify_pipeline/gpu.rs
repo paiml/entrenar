@@ -1197,6 +1197,12 @@ impl ClassifyPipeline {
     /// - **wgpu path**: Batched FFN matmuls via `WgpuForwardPass`, attention on CPU
     /// - **CPU path**: Use `Transformer::forward_hidden()`
     fn forward_hidden_dispatch(&mut self, token_ids: &[u32]) -> Tensor {
+        // Poka-yoke: clamp seq_len to max_seq_len at GPU kernel boundary.
+        // GPU buffers are pre-allocated to max_seq_len * hidden_size; passing
+        // longer sequences causes OOB writes and SIGSEGV (paiml/entrenar#280).
+        let max_seq = self.config.max_seq_len;
+        let token_ids = if token_ids.len() > max_seq { &token_ids[..max_seq] } else { token_ids };
+
         #[cfg(feature = "cuda")]
         if let Some(tensor) = self.try_forward_hidden_gpu(token_ids) {
             return tensor;

@@ -707,7 +707,8 @@ impl ClassifyPipeline {
         token_ids: &[u32],
         label: usize,
     ) -> (f32, usize, Vec<f32>) {
-        let seq_len = token_ids.len();
+        let seq_len = token_ids.len().min(self.config.max_seq_len);
+        let token_ids = &token_ids[..seq_len];
         let num_classes = self.config.num_classes;
 
         let hidden = self.forward_hidden_dispatch(token_ids);
@@ -755,7 +756,8 @@ impl ClassifyPipeline {
     /// # Returns
     /// Loss value as f32
     pub fn multi_label_train_step(&mut self, token_ids: &[u32], targets: &[f32]) -> f32 {
-        let seq_len = token_ids.len();
+        let seq_len = token_ids.len().min(self.config.max_seq_len);
+        let token_ids = &token_ids[..seq_len];
         let num_classes = self.config.num_classes;
         assert_eq!(targets.len(), num_classes, "F-CLASS-001: target length must match num_classes");
 
