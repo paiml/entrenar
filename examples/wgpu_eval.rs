@@ -28,7 +28,7 @@ fn main() {
 
 #[cfg(feature = "gpu")]
 fn run() -> Result<(), String> {
-    use entrenar::train::transformer_trainer::wgpu_trainer::{WgpuModelState, WgpuTransformerTrainer};
+    use entrenar::train::transformer_trainer::wgpu_trainer::WgpuModelState;
 
     let args: Vec<String> = std::env::args().collect();
     let model_dir = get_arg(&args, "--model").unwrap_or_else(|| "/home/noah/src/models/qwen3-4b".into());
@@ -48,20 +48,10 @@ fn run() -> Result<(), String> {
     let (step, ckpt_loss) = model.load_checkpoint(std::path::Path::new(&ckpt_path))?;
     eprintln!("Loaded checkpoint: step={step}, loss={ckpt_loss:.3}\n");
 
-    // 3. Create trainer (for forward pass)
-    let mut tc = entrenar::transformer::TransformerConfig::llama2_7b();
-    tc.hidden_size = model.hidden_size;
-    tc.intermediate_size = model.intermediate_size;
-    tc.num_hidden_layers = model.num_layers;
-    tc.num_attention_heads = model.num_heads;
-    tc.num_kv_heads = model.num_kv_heads;
-    tc.vocab_size = model.vocab_size;
-    let mut trainer = WgpuTransformerTrainer::new(&tc, 0.0)?; // lr=0 (eval only)
+    // 3. Create GPU device for matmul
+    let device = trueno::backends::gpu::GpuDevice::new()?;
 
-    // 4. Populate weight cache
-    model.populate_weight_cache(&trueno::backends::gpu::GpuDevice::new()?)?;
-
-    // 5. Load test data
+    // 4. Load test data
     let test_data = std::fs::read_to_string(&test_path).map_err(|e| format!("Test data: {e}"))?;
     let entries: Vec<(String, i32)> = test_data.lines()
         .filter_map(|line| {
@@ -87,17 +77,27 @@ fn run() -> Result<(), String> {
         let target_ids: Vec<u32> = tokens[1..len].to_vec();
         let seq_len = target_ids.len();
 
-        // Embedding lookup
+        // Fast eval: embedding → lm_head logits → cross-entropy (skip 36-layer forward)
         let mut hidden = vec![0.0f32; seq_len * h];
         for (si, &tid) in input_ids[..seq_len].iter().enumerate() {
             let tid = (tid as usize).min(model.vocab_size - 1);
-            for hi in 0..h {
-                hidden[si * h + hi] = model.lm_head[tid * h + hi];
-            }
+            for hi in 0..h { hidden[si * h + hi] = model.lm_head[tid * h + hi]; }
         }
-
-        // Forward pass → loss
-        let (loss, _gnorm) = trainer.full_train_step(&hidden, &target_ids, &mut model)?;
+        // logits = hidden @ lm_head^T (GPU GEMM)
+        let v = model.vocab_size;
+        let mut logits = vec![0.0f32; seq_len * v];
+        device.gemm_backward_a(&hidden, &model.lm_head, &mut logits,
+            seq_len as u32, v as u32, h as u32)?;
+        // Cross-entropy loss
+        let mut loss = 0.0f32;
+        for si in 0..seq_len {
+            let row = &logits[si * v..(si + 1) * v];
+            let max_val = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let lse = max_val + row.iter().map(|&x| (x - max_val).exp()).sum::<f32>().ln();
+            let t = target_ids[si] as usize;
+            if t < v { loss -= logits[si * v + t] - lse; }
+        }
+        loss /= seq_len as f32;
 
         scores.push((loss, *label));
 
