@@ -9,6 +9,7 @@ members = [
     "crates/entrenar-inspect",
     "crates/entrenar-bench",
 ]
+exclude = ["crates/burn-canary"]
 
 [workspace.package]
 edition = "2021"
