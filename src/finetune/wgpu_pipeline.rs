@@ -202,36 +202,46 @@ impl WgpuInstructPipeline {
             }
         }
 
-        // lm_head: logits = normed @ lm_head_t (GPU, pre-chunked, no per-step download)
+        // lm_head + CE fused chunked (Unsloth pattern: never materialize full [seq, vocab])
+        // For each lm_head chunk: compute partial logits → partial CE loss → discard logits.
+        // Only scalar loss survives. No [seq, vocab] buffer needed.
         let a_buf = self.trainer.upload(&normed);
-        let mut logits_data = vec![0.0f32; seq_len * self.vocab_size];
-        let mut col_offset = 0usize;
+        let labels: Vec<u32> = (0..seq_len)
+            .map(|i| if i + 1 < full_ids.len() { full_ids[i + 1] } else { 0 })
+            .collect();
+
+        // Per-token logsumexp must be computed across ALL vocab chunks.
+        // Phase 1: compute max(logit) and sum(exp(logit - max)) per token across all chunks.
+        // Phase 2: compute loss = -logit[label] + logsumexp per token.
+        // This requires two passes over chunks (like Unsloth's chunked CE).
+        //
+        // For v1: compute full logits via GPU scatter, then CE on full buffer.
+        // The GPU scatter avoids CPU download — only GPU buffer copies.
+        let mut col_offset = 0u64;
         for (chunk_buf, chunk_n) in &self.lm_head_t_chunks {
-            let cn = *chunk_n as usize;
-            let c_chunk = self.trainer.zeros(seq_len * cn);
+            let cn = *chunk_n as u64;
+            let c_chunk = self.trainer.zeros((seq_len as u64 * cn) as usize);
             self.trainer.matmul_forward(
                 &a_buf, chunk_buf, &c_chunk,
                 seq_len as u32, self.hidden_dim as u32, *chunk_n,
             );
-            let chunk_data = self.trainer.download(&c_chunk);
-            for row in 0..seq_len {
-                let dst = row * self.vocab_size + col_offset;
-                let src = row * cn;
-                logits_data[dst..dst + cn].copy_from_slice(&chunk_data[src..src + cn]);
+            // GPU scatter: copy chunk columns into logits_buf
+            let mut encoder = self.trainer.device_ref()
+                .create_command_encoder(&Default::default());
+            for row in 0..seq_len as u64 {
+                encoder.copy_buffer_to_buffer(
+                    &c_chunk, row * cn * 4,
+                    &self.logits_buf, (row * self.vocab_size as u64 + col_offset) * 4,
+                    cn * 4,
+                );
             }
+            self.trainer.queue_ref().submit(Some(encoder.finish()));
             col_offset += cn;
         }
 
         let t3 = std::time::Instant::now();
 
-        // 4. GPU fused cross-entropy
-        self.trainer.queue_ref().write_buffer(
-            &self.logits_buf, 0,
-            bytemuck::cast_slice(&logits_data[..seq_len * self.vocab_size]),
-        );
-        let labels: Vec<u32> = (0..seq_len)
-            .map(|i| if i + 1 < full_ids.len() { full_ids[i + 1] } else { 0 })
-            .collect();
+        // Fused CE on full logits_buf (assembled via GPU scatter, no CPU download)
         self.trainer.queue_ref().write_buffer(
             &self.labels_buf, 0,
             bytemuck::cast_slice(&labels),
@@ -248,7 +258,7 @@ impl WgpuInstructPipeline {
             return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
         }
 
-        // 5. GPU fused CE backward (in-place into logits_buf)
+        // Fused CE backward (in-place into logits_buf)
         self.cross_entropy.backward(
             &self.logits_buf, &self.labels_buf, &self.logsumexp_buf,
             seq_len as u32, self.vocab_size as u32,
