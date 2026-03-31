@@ -921,15 +921,43 @@ impl InstructPipeline {
                 }
             }
 
-            // lm_head on CPU: logits[seq, vocab] = normed[seq, hidden] @ lm_head^T
+            // lm_head via GPU chunked matmul (KAIZEN: was CPU triple-loop)
+            // logits[seq, vocab] = normed[seq, hidden] @ lm_head^T[hidden, vocab]
+            // lm_head is [vocab, hidden] so lm_head^T is [hidden, vocab]
+            // We compute: normed[seq, hidden] @ lm_head^T[hidden, vocab]
+            // = matmul(normed, lm_head^T, seq, hidden, vocab)
+            // But lm_head is stored as [vocab, hidden], so we need to transpose.
+            // Alternative: treat as normed[seq, hidden] and iterate lm_head rows.
+            // For GPU: transpose lm_head to [hidden, vocab], then matmul.
+            let mut lm_head_t = vec![0.0f32; hidden_dim * vocab_size];
+            for v in 0..vocab_size {
+                for h in 0..hidden_dim {
+                    lm_head_t[h * vocab_size + v] = lm_head[v * hidden_dim + h];
+                }
+            }
             let mut logits = vec![0.0f32; seq_len * vocab_size];
-            for pos in 0..seq_len {
-                for v in 0..vocab_size {
-                    let mut sum = 0.0f32;
-                    for h in 0..hidden_dim {
-                        sum += normed[pos * hidden_dim + h] * lm_head[v * hidden_dim + h];
+            if let Ok(gpu) = trueno::backends::gpu::GpuDevice::new() {
+                if let Err(e) = gpu.matmul(&normed, &lm_head_t, &mut logits, seq_len, hidden_dim, vocab_size) {
+                    eprintln!("[wgpu] lm_head forward GPU failed: {e} — CPU fallback");
+                    for pos in 0..seq_len {
+                        for v in 0..vocab_size {
+                            let mut sum = 0.0f32;
+                            for h in 0..hidden_dim {
+                                sum += normed[pos * hidden_dim + h] * lm_head[v * hidden_dim + h];
+                            }
+                            logits[pos * vocab_size + v] = sum;
+                        }
                     }
-                    logits[pos * vocab_size + v] = sum;
+                }
+            } else {
+                for pos in 0..seq_len {
+                    for v in 0..vocab_size {
+                        let mut sum = 0.0f32;
+                        for h in 0..hidden_dim {
+                            sum += normed[pos * hidden_dim + h] * lm_head[v * hidden_dim + h];
+                        }
+                        logits[pos * vocab_size + v] = sum;
+                    }
                 }
             }
             logits
@@ -1002,18 +1030,46 @@ impl InstructPipeline {
         // The lm_head backward (grad_hidden = grad_logits @ embed^T) stays on CPU
         // for now since lm_head > 2GB. Full GPU lm_head backward needs chunked matmul.
 
-        // lm_head backward on CPU: grad_hidden = grad_logits @ lm_head (not transposed)
-        // grad_logits is [seq, vocab], lm_head is [vocab, hidden], result is [seq, hidden]
+        // lm_head backward via GPU chunked matmul (KAIZEN: was CPU triple-loop = ~9 min)
+        // grad_hidden[seq, hidden] = grad_logits[seq, vocab] @ lm_head[vocab, hidden]
+        // lm_head is [vocab, hidden] row-major — this is NOT transposed, it's a direct matmul.
+        // Uses GpuDevice::matmul which auto-chunks B when > 2GB.
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
         let lm_head = self.model.lm_head_weight_slice();
         let mut grad_hidden = vec![0.0f32; seq_len * hidden_dim];
-        for pos in 0..seq_len {
-            for h in 0..hidden_dim {
-                let mut sum = 0.0f32;
-                for v in 0..vocab_size {
-                    sum += grad_logits_data[pos * vocab_size + v] * lm_head[v * hidden_dim + h];
+
+        // Use wgpu GPU matmul with auto-chunking for > 2GB
+        if let Ok(gpu) = trueno::backends::gpu::GpuDevice::new() {
+            if let Err(e) = gpu.matmul(
+                &grad_logits_data[..seq_len * vocab_size],
+                lm_head,
+                &mut grad_hidden,
+                seq_len,
+                vocab_size,
+                hidden_dim,
+            ) {
+                eprintln!("[wgpu] lm_head backward GPU failed: {e} — CPU fallback");
+                // CPU fallback
+                for pos in 0..seq_len {
+                    for h in 0..hidden_dim {
+                        let mut sum = 0.0f32;
+                        for v in 0..vocab_size {
+                            sum += grad_logits_data[pos * vocab_size + v] * lm_head[v * hidden_dim + h];
+                        }
+                        grad_hidden[pos * hidden_dim + h] = sum;
+                    }
                 }
-                grad_hidden[pos * hidden_dim + h] = sum;
+            }
+        } else {
+            // No GPU — CPU fallback
+            for pos in 0..seq_len {
+                for h in 0..hidden_dim {
+                    let mut sum = 0.0f32;
+                    for v in 0..vocab_size {
+                        sum += grad_logits_data[pos * vocab_size + v] * lm_head[v * hidden_dim + h];
+                    }
+                    grad_hidden[pos * hidden_dim + h] = sum;
+                }
             }
         }
 
