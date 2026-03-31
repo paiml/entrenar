@@ -580,7 +580,12 @@ impl WgpuInstructPipeline {
             row_offset += ck;
         }
 
-        eprintln!("[DEBUG] seq_len={} hidden={} rank={} lora_layers={}", seq_len, self.hidden_dim, self.lora_rank, self.lora.len());
+        // FALSIFY-LORA-UPD-001: verify B_norm > 0 after step 1
+        if self.lora_step > 0 && self.lora_step <= 3 {
+            let b0 = self.trainer.download(&self.lora[0].projections[0].b);
+            let b_norm: f32 = b0.iter().map(|x| x * x).sum::<f32>().sqrt();
+            eprintln!("[FALSIFY] step={} B[0].q_proj norm={:.6}", self.lora_step, b_norm);
+        }
 
         // 7. LoRA gradient computation + AdamW step
         // Contract: wgpu-production-training-v1/C-WGPU-LORA-BWD-001
@@ -589,7 +594,7 @@ impl WgpuInstructPipeline {
         // Contract: adamw-kernel-v1/weight_update
         // Contract: lora-gradient-flow-v1 — B_norm > 0 after step 1
         self.lora_step += 1;
-        let lr = 1e-4_f32; // from config
+        let lr = 2e-4_f32; // standard QLoRA lr (Dettmers et al.)
         let s = seq_len as u32;
         let rank = self.lora_rank as u32;
 
@@ -659,11 +664,11 @@ impl WgpuInstructPipeline {
                 // Contract: adamw-kernel-v1/weight_update
                 self.trainer.adamw_step(
                     &proj.a, &da, &proj.m_a, &proj.v_a,
-                    lr * self.lora_scale, 0.9, 0.999, 1e-8, 0.01,
+                    lr, 0.9, 0.999, 1e-8, 0.01,
                 );
                 self.trainer.adamw_step(
                     &proj.b, &db, &proj.m_b, &proj.v_b,
-                    lr * self.lora_scale, 0.9, 0.999, 1e-8, 0.01,
+                    lr, 0.9, 0.999, 1e-8, 0.01,
                 );
             }
         }
