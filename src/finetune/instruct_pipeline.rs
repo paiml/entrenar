@@ -923,16 +923,15 @@ impl InstructPipeline {
                 }
             }
 
-            // lm_head via GPU chunked matmul using cached transpose
+            // lm_head via WgpuTrainer matmul (reuses existing device, no per-call init)
             // logits[seq, vocab] = normed[seq, hidden] @ lm_head_t[hidden, vocab]
             let wgpu_ref = self.wgpu_training.as_ref().unwrap();
             let lm_head_t = &wgpu_ref.lm_head_transposed;
-            let mut logits = vec![0.0f32; seq_len * vocab_size];
-            if let Ok(gpu) = trueno::backends::gpu::GpuDevice::new() {
-                if let Err(e) = gpu.matmul(&normed, lm_head_t, &mut logits, seq_len, hidden_dim, vocab_size) {
-                    eprintln!("[wgpu] lm_head forward GPU failed: {e}");
-                }
-            }
+            let a_buf = wgpu_ref.trainer.upload(&normed);
+            let b_buf = wgpu_ref.trainer.upload(lm_head_t);
+            let c_buf = wgpu_ref.trainer.zeros(seq_len * vocab_size);
+            wgpu_ref.trainer.matmul_forward(&a_buf, &b_buf, &c_buf, seq_len as u32, hidden_dim as u32, vocab_size as u32);
+            let logits = wgpu_ref.trainer.download(&c_buf);
             logits
         } else {
             // Full CPU fallback
@@ -1003,48 +1002,15 @@ impl InstructPipeline {
         // The lm_head backward (grad_hidden = grad_logits @ embed^T) stays on CPU
         // for now since lm_head > 2GB. Full GPU lm_head backward needs chunked matmul.
 
-        // lm_head backward via GPU chunked matmul (KAIZEN: was CPU triple-loop = ~9 min)
+        // lm_head backward via WgpuTrainer matmul (reuses existing device)
         // grad_hidden[seq, hidden] = grad_logits[seq, vocab] @ lm_head[vocab, hidden]
-        // lm_head is [vocab, hidden] row-major — this is NOT transposed, it's a direct matmul.
-        // Uses GpuDevice::matmul which auto-chunks B when > 2GB.
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
         let lm_head = self.model.lm_head_weight_slice();
-        let mut grad_hidden = vec![0.0f32; seq_len * hidden_dim];
-
-        // Use wgpu GPU matmul with auto-chunking for > 2GB
-        if let Ok(gpu) = trueno::backends::gpu::GpuDevice::new() {
-            if let Err(e) = gpu.matmul(
-                &grad_logits_data[..seq_len * vocab_size],
-                lm_head,
-                &mut grad_hidden,
-                seq_len,
-                vocab_size,
-                hidden_dim,
-            ) {
-                eprintln!("[wgpu] lm_head backward GPU failed: {e} — CPU fallback");
-                // CPU fallback
-                for pos in 0..seq_len {
-                    for h in 0..hidden_dim {
-                        let mut sum = 0.0f32;
-                        for v in 0..vocab_size {
-                            sum += grad_logits_data[pos * vocab_size + v] * lm_head[v * hidden_dim + h];
-                        }
-                        grad_hidden[pos * hidden_dim + h] = sum;
-                    }
-                }
-            }
-        } else {
-            // No GPU — CPU fallback
-            for pos in 0..seq_len {
-                for h in 0..hidden_dim {
-                    let mut sum = 0.0f32;
-                    for v in 0..vocab_size {
-                        sum += grad_logits_data[pos * vocab_size + v] * lm_head[v * hidden_dim + h];
-                    }
-                    grad_hidden[pos * hidden_dim + h] = sum;
-                }
-            }
-        }
+        let a_buf = wgpu.trainer.upload(&grad_logits_data[..seq_len * vocab_size]);
+        let b_buf = wgpu.trainer.upload(lm_head);
+        let c_buf = wgpu.trainer.zeros(seq_len * hidden_dim);
+        wgpu.trainer.matmul_forward(&a_buf, &b_buf, &c_buf, seq_len as u32, vocab_size as u32, hidden_dim as u32);
+        let grad_hidden = wgpu.trainer.download(&c_buf);
 
         // 5. GPU backward through LoRA layers using saved activations
         //    For each layer, compute LoRA A/B gradients:
