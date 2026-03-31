@@ -10,13 +10,24 @@ use trueno::backends::gpu::GpuDevice;
 
 /// Per-head RMS normalization (QK-norm for Qwen3)
 #[cfg(feature = "gpu")]
-fn head_rms_norm(buf: &mut [f32], seq_len: usize, n_heads: usize, total_dim: usize, head_dim: usize) {
+fn head_rms_norm(
+    buf: &mut [f32],
+    seq_len: usize,
+    n_heads: usize,
+    total_dim: usize,
+    head_dim: usize,
+) {
     let eps = 1e-6f32;
     for si in 0..seq_len {
         for head in 0..n_heads {
             let off = si * total_dim + head * head_dim;
-            let rms = (buf[off..off + head_dim].iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt();
-            for d in 0..head_dim { buf[off + d] /= rms; }
+            let rms = (buf[off..off + head_dim].iter().map(|x| x * x).sum::<f32>()
+                / head_dim as f32
+                + eps)
+                .sqrt();
+            for d in 0..head_dim {
+                buf[off + d] /= rms;
+            }
         }
     }
 }
@@ -28,7 +39,9 @@ fn norm_guard(output: &mut [f32], reference: &[f32], max_ratio: f32) {
     let ref_n = reference.iter().map(|v| v * v).sum::<f32>().sqrt();
     if out_n > ref_n * max_ratio && ref_n > 1e-6 {
         let scale = ref_n / out_n;
-        for v in output { *v *= scale; }
+        for v in output {
+            *v *= scale;
+        }
     }
 }
 
@@ -182,18 +195,35 @@ pub fn attention_forward(
             let mut max_score = f32::NEG_INFINITY;
             let aw_off = head * s * s + qi * s;
             for ki in 0..s {
-                if ki > qi { attn_weights[aw_off + ki] = 0.0; continue; }
+                if ki > qi {
+                    attn_weights[aw_off + ki] = 0.0;
+                    continue;
+                }
                 let mut dot = 0.0f32;
-                for d in 0..hd { dot += q[qi * q_dim + head * hd + d] * k[ki * kv_dim + kv_head * hd + d]; }
+                for d in 0..hd {
+                    dot += q[qi * q_dim + head * hd + d] * k[ki * kv_dim + kv_head * hd + d];
+                }
                 attn_weights[aw_off + ki] = dot * scale;
-                if attn_weights[aw_off + ki] > max_score { max_score = attn_weights[aw_off + ki]; }
+                if attn_weights[aw_off + ki] > max_score {
+                    max_score = attn_weights[aw_off + ki];
+                }
             }
             let mut sum_exp = 0.0f32;
-            for ki in 0..s { attn_weights[aw_off + ki] = if ki > qi { 0.0 } else { (attn_weights[aw_off + ki] - max_score).exp() }; sum_exp += attn_weights[aw_off + ki]; }
-            if sum_exp > 0.0 { for ki in 0..s { attn_weights[aw_off + ki] /= sum_exp; } }
+            for ki in 0..s {
+                attn_weights[aw_off + ki] =
+                    if ki > qi { 0.0 } else { (attn_weights[aw_off + ki] - max_score).exp() };
+                sum_exp += attn_weights[aw_off + ki];
+            }
+            if sum_exp > 0.0 {
+                for ki in 0..s {
+                    attn_weights[aw_off + ki] /= sum_exp;
+                }
+            }
             for d in 0..hd {
                 let mut val = 0.0f32;
-                for ki in 0..s { val += attn_weights[aw_off + ki] * v[ki * kv_dim + kv_head * hd + d]; }
+                for ki in 0..s {
+                    val += attn_weights[aw_off + ki] * v[ki * kv_dim + kv_head * hd + d];
+                }
                 context[qi * q_dim + head * hd + d] = val;
             }
         }
@@ -203,9 +233,13 @@ pub fn attention_forward(
     let mut output = vec![0.0f32; s * h];
     device.matmul(&context, o_weight, &mut output, s, q_dim, h)?;
 
-    norm_guard(&mut output, hidden, 2.0);
+    norm_guard(&mut output, hidden, 10.0); // relaxed from 2.0 — lets LoRA contribute more
     let cache = AttentionCache {
-        q: q.clone(), k: k.clone(), v, attn_weights, context,
+        q: q.clone(),
+        k: k.clone(),
+        v,
+        attn_weights,
+        context,
         lora_q_h: if rank > 0 { h_a_saved.unwrap_or_default() } else { vec![] },
         lora_v_h: if rank > 0 { h_av_saved.unwrap_or_default() } else { vec![] },
     };
