@@ -33,6 +33,20 @@
 #[macro_use]
 #[allow(unused_macros)]
 mod generated_contracts;
+
+// Fallback macros for contracts not yet in build.rs codegen
+// (embedding-lookup-v1 was added in provable-contracts 0.2 but
+// entrenar's build.rs hasn't been updated to generate it yet)
+#[cfg(not(feature = "__has_embedding_contract"))]
+macro_rules! contract_pre_embedding_lookup {
+    () => {{}};
+    ($input:expr) => {{ let _ = &$input; }};
+}
+#[cfg(not(feature = "__has_embedding_contract"))]
+macro_rules! contract_post_embedding_lookup {
+    ($result:expr) => {{ let _ = &$result; }};
+}
+
 pub mod aprender_compat;
 pub mod autograd;
 #[cfg(feature = "citl")]
