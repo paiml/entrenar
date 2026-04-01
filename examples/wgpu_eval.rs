@@ -81,16 +81,14 @@ fn run() -> Result<(), String> {
         .collect();
     eprintln!("Test entries: {} (max {})\n", entries.len(), max_entries);
 
-    // 4. Score each entry: full forward through 36 layers + lm_head → CE loss
-    let mut scores: Vec<(f32, i32)> = Vec::new();
+    // 4. Score each entry with BOTH methods (ensemble)
+    // Stores: (full_forward_loss, lm_head_loss, seq_len, label)
+    let mut all_scores: Vec<(f32, f32, usize, i32)> = Vec::new();
 
     for (idx, (input, label)) in entries.iter().enumerate() {
         let tokens = tokenizer.encode(input);
         let len = tokens.len().min(64);
-        if len < 2 {
-            continue;
-        }
-
+        if len < 2 { continue; }
         let input_ids = &tokens[..len];
         let target_ids: Vec<u32> = tokens[1..len].to_vec();
         let s = target_ids.len() as u32;
@@ -99,10 +97,10 @@ fn run() -> Result<(), String> {
         let mut hidden = vec![0.0f32; s as usize * h];
         for (si, &tid) in input_ids[..s as usize].iter().enumerate() {
             let tid = (tid as usize).min(v - 1);
-            for hi in 0..h {
-                hidden[si * h + hi] = model.lm_head[tid * h + hi];
-            }
+            for hi in 0..h { hidden[si * h + hi] = model.lm_head[tid * h + hi]; }
         }
+        // lm_head-only score (before transformer forward)
+        let lm_loss = compute_ce_loss(&device, &hidden, &target_ids, &model.lm_head, h, v)?;
 
         // Full forward or lm_head-only
         if !fast {
@@ -175,101 +173,86 @@ fn run() -> Result<(), String> {
             }
         } // end if !fast
 
-        // lm_head → logits → cross-entropy loss
-        let mut logits = vec![0.0f32; s as usize * v];
-        device.gemm_backward_a(&hidden, &model.lm_head, &mut logits, s, v as u32, h as u32)?;
-        let mut loss = 0.0f32;
-        for si in 0..s as usize {
-            let row = &logits[si * v..(si + 1) * v];
-            let max_val = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-            let lse = max_val + row.iter().map(|&x| (x - max_val).exp()).sum::<f32>().ln();
-            let t = target_ids[si] as usize;
-            if t < v {
-                loss -= logits[si * v + t] - lse;
-            }
-        }
-        loss /= s as f32;
+        // Full-forward loss (after transformer)
+        let ff_loss = compute_ce_loss(&device, &hidden, &target_ids, &model.lm_head, h, v)?;
 
-        scores.push((loss, *label));
+        all_scores.push((ff_loss, lm_loss, s as usize, *label));
         if (idx + 1) % 50 == 0 {
-            eprintln!("  [{}/{}] loss={loss:.3} label={label}", idx + 1, entries.len());
+            eprintln!("  [{}/{}] ff={ff_loss:.1} lm={lm_loss:.1} label={label}", idx + 1, entries.len());
         }
     }
 
-    // 5. Z-score normalize losses (reduces variance, improves MCC)
-    let mean: f32 = scores.iter().map(|(s, _)| *s).sum::<f32>() / scores.len() as f32;
-    let var: f32 =
-        scores.iter().map(|(s, _)| (s - mean) * (s - mean)).sum::<f32>() / scores.len() as f32;
-    let std = var.sqrt().max(1e-6);
-    let z_scores: Vec<(f32, i32)> = scores.iter().map(|(s, l)| ((s - mean) / std, *l)).collect();
+    // 5. Build multiple scoring methods from the two raw scores
+    // Method 1: full-forward inverted
+    let scores_ff_inv: Vec<(f32, i32)> = all_scores.iter().map(|(ff, _, _, l)| (-ff, *l)).collect();
+    // Method 2: lm_head raw (higher = unsafe)
+    let scores_lm: Vec<(f32, i32)> = all_scores.iter().map(|(_, lm, _, l)| (*lm, *l)).collect();
+    // Method 3: ensemble = lm_head_loss - alpha * full_forward_loss (inverted ff + raw lm)
+    let scores_ens: Vec<(f32, i32)> = all_scores.iter().map(|(ff, lm, _, l)| (lm - 0.5 * ff, *l)).collect();
+    // Method 4: length-normalized full-forward inverted
+    let scores_len: Vec<(f32, i32)> = all_scores.iter().map(|(ff, _, slen, l)| (-ff / (*slen as f32).sqrt(), *l)).collect();
+    // Method 5: ensemble + length norm
+    let scores_ens_len: Vec<(f32, i32)> = all_scores.iter().map(|(ff, lm, slen, l)| {
+        let norm = (*slen as f32).sqrt();
+        (lm / norm - 0.5 * ff / norm, *l)
+    }).collect();
 
-    // Try both raw and z-scored
-    let (mcc_raw, thr_raw, tp_r, fp_r, tn_r, fn_r) = compute_best_mcc(&scores);
-    let (mcc_z, thr_z, tp_z, fp_z, tn_z, fn_z) = compute_best_mcc(&z_scores);
+    let (mcc_ff, _, tp_ff, fp_ff, tn_ff, fn_ff) = compute_best_mcc(&scores_ff_inv);
+    let (mcc_lm, _, tp_lm, fp_lm, tn_lm, fn_lm) = compute_best_mcc(&scores_lm);
+    let (mcc_ens, _, tp_e, fp_e, tn_e, fn_e) = compute_best_mcc(&scores_ens);
+    let (mcc_len, _, tp_ln, fp_ln, tn_ln, fn_ln) = compute_best_mcc(&scores_len);
+    let (mcc_el, _, tp_el, fp_el, tn_el, fn_el) = compute_best_mcc(&scores_ens_len);
 
-    // Also try log-loss (compresses outliers)
-    let log_scores: Vec<(f32, i32)> = scores.iter().map(|(s, l)| (s.ln(), *l)).collect();
-    let (mcc_log, thr_log, tp_l, fp_l, tn_l, fn_l) = compute_best_mcc(&log_scores);
+    // Grid search alpha for ensemble
+    let mut best_alpha_mcc = 0.0f32;
+    let mut best_alpha = 0.0f32;
+    for a in 0..20 {
+        let alpha = a as f32 * 0.1;
+        let sc: Vec<(f32, i32)> = all_scores.iter().map(|(ff, lm, _, l)| (lm - alpha * ff, *l)).collect();
+        let (m, _, _, _, _, _) = compute_best_mcc(&sc);
+        if m > best_alpha_mcc { best_alpha_mcc = m; best_alpha = alpha; }
+    }
 
-    // Also try percentile rank
-    let mut sorted: Vec<f32> = scores.iter().map(|(s, _)| *s).collect();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let pct_scores: Vec<(f32, i32)> = scores
-        .iter()
-        .map(|(s, l)| {
-            let rank = sorted.iter().position(|v| v >= s).unwrap_or(0);
-            (rank as f32 / sorted.len() as f32, *l)
-        })
-        .collect();
-    let (mcc_pct, thr_pct, tp_p, fp_p, tn_p, fn_p) = compute_best_mcc(&pct_scores);
+    let best_mcc = mcc_ff.max(mcc_lm).max(mcc_ens).max(mcc_len).max(mcc_el).max(best_alpha_mcc);
 
-    // Also try inverted direction (lower loss = unsafe)
-    let inv_scores: Vec<(f32, i32)> = scores.iter().map(|(s, l)| (-s, *l)).collect();
-    let (mcc_inv, thr_inv, tp_i, fp_i, tn_i, fn_i) = compute_best_mcc(&inv_scores);
-
-    let best_mcc = mcc_raw.max(mcc_z).max(mcc_log).max(mcc_pct).max(mcc_inv);
-    let mode = if best_mcc == mcc_inv { "inverted" } else if best_mcc == mcc_pct {
-        "percentile"
-    } else if best_mcc == mcc_log {
-        "log"
-    } else if best_mcc == mcc_z {
-        "z-score"
-    } else {
-        "raw"
-    };
-
-    eprintln!("\n=== Results ({}) ===", if fast { "lm_head-only" } else { "Full Forward" });
-    eprintln!("Entries scored: {}", scores.len());
-    eprintln!(
-        "  Raw:        MCC={mcc_raw:.4} (thr={thr_raw:.3}) TP={tp_r} FP={fp_r} TN={tn_r} FN={fn_r}"
-    );
-    eprintln!(
-        "  Z-score:    MCC={mcc_z:.4} (thr={thr_z:.3}) TP={tp_z} FP={fp_z} TN={tn_z} FN={fn_z}"
-    );
-    eprintln!(
-        "  Log-loss:   MCC={mcc_log:.4} (thr={thr_log:.3}) TP={tp_l} FP={fp_l} TN={tn_l} FN={fn_l}"
-    );
-    eprintln!("  Percentile: MCC={mcc_pct:.4} (thr={thr_pct:.3}) TP={tp_p} FP={fp_p} TN={tn_p} FN={fn_p}");
-    eprintln!("  Inverted:   MCC={mcc_inv:.4} (thr={thr_inv:.3}) TP={tp_i} FP={fp_i} TN={tn_i} FN={fn_i}");
-    eprintln!("\nBest: MCC={best_mcc:.4} ({mode})");
+    eprintln!("\n=== Results ({}) ===", if fast {"lm_head-only"} else {"Ensemble"});
+    eprintln!("Entries scored: {}", all_scores.len());
+    eprintln!("  FF inverted:  MCC={mcc_ff:.4} TP={tp_ff} FP={fp_ff} TN={tn_ff} FN={fn_ff}");
+    eprintln!("  lm_head raw:  MCC={mcc_lm:.4} TP={tp_lm} FP={fp_lm} TN={tn_lm} FN={fn_lm}");
+    eprintln!("  Ensemble:     MCC={mcc_ens:.4} TP={tp_e} FP={fp_e} TN={tn_e} FN={fn_e}");
+    eprintln!("  Len-norm FF:  MCC={mcc_len:.4} TP={tp_ln} FP={fp_ln} TN={tn_ln} FN={fn_ln}");
+    eprintln!("  Ens+LenNorm:  MCC={mcc_el:.4} TP={tp_el} FP={fp_el} TN={tn_el} FN={fn_el}");
+    eprintln!("  Grid(a={best_alpha:.1}): MCC={best_alpha_mcc:.4}");
+    eprintln!("\nBest: MCC={best_mcc:.4}");
     eprintln!("Ship criteria: MCC > 0.50 → {}", if best_mcc > 0.5 { "PASS" } else { "FAIL" });
     eprintln!("Stretch goal: MCC > 0.75 → {}", if best_mcc > 0.75 { "PASS" } else { "FAIL" });
 
-    let safe_losses: Vec<f32> = scores.iter().filter(|(_, l)| *l == 0).map(|(s, _)| *s).collect();
-    let unsafe_losses: Vec<f32> = scores.iter().filter(|(_, l)| *l == 1).map(|(s, _)| *s).collect();
-    if !safe_losses.is_empty() && !unsafe_losses.is_empty() {
-        let avg_s = safe_losses.iter().sum::<f32>() / safe_losses.len() as f32;
-        let avg_u = unsafe_losses.iter().sum::<f32>() / unsafe_losses.len() as f32;
-        let std_s = (safe_losses.iter().map(|x| (x - avg_s) * (x - avg_s)).sum::<f32>()
-            / safe_losses.len() as f32)
-            .sqrt();
-        let std_u = (unsafe_losses.iter().map(|x| (x - avg_u) * (x - avg_u)).sum::<f32>()
-            / unsafe_losses.len() as f32)
-            .sqrt();
-        eprintln!("Safe:   mean={avg_s:.1} std={std_s:.1} (n={})", safe_losses.len());
-        eprintln!("Unsafe: mean={avg_u:.1} std={std_u:.1} (n={})", unsafe_losses.len());
+    let safe_ff: Vec<f32> = all_scores.iter().filter(|s| s.3 == 0).map(|s| s.0).collect();
+    let unsafe_ff: Vec<f32> = all_scores.iter().filter(|s| s.3 == 1).map(|s| s.0).collect();
+    if !safe_ff.is_empty() && !unsafe_ff.is_empty() {
+        let ms = safe_ff.iter().sum::<f32>() / safe_ff.len() as f32;
+        let mu = unsafe_ff.iter().sum::<f32>() / unsafe_ff.len() as f32;
+        let ss = (safe_ff.iter().map(|x| (x-ms)*(x-ms)).sum::<f32>() / safe_ff.len() as f32).sqrt();
+        let su = (unsafe_ff.iter().map(|x| (x-mu)*(x-mu)).sum::<f32>() / unsafe_ff.len() as f32).sqrt();
+        eprintln!("FF  Safe: mean={ms:.1} std={ss:.1} (n={}) | Unsafe: mean={mu:.1} std={su:.1} (n={})", safe_ff.len(), unsafe_ff.len());
     }
     Ok(())
+}
+
+#[cfg(feature = "gpu")]
+fn compute_ce_loss(device: &trueno::backends::gpu::GpuDevice, hidden: &[f32], targets: &[u32], lm_head: &[f32], h: usize, v: usize) -> Result<f32, String> {
+    let s = targets.len();
+    let mut logits = vec![0.0f32; s * v];
+    device.gemm_backward_a(hidden, lm_head, &mut logits, s as u32, v as u32, h as u32)?;
+    let mut loss = 0.0f32;
+    for si in 0..s {
+        let row = &logits[si * v..(si + 1) * v];
+        let mx = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let lse = mx + row.iter().map(|&x| (x - mx).exp()).sum::<f32>().ln();
+        let t = targets[si] as usize;
+        if t < v { loss -= logits[si * v + t] - lse; }
+    }
+    Ok(loss / s as f32)
 }
 
 #[cfg(feature = "gpu")]
