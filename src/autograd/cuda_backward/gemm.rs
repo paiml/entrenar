@@ -45,8 +45,10 @@ pub fn gemm_backward_a(
     })?;
 
     // ALB-075: cuBLAS SIMD fast path (6-14x faster than PTX)
-    // ALB-076: Uses CUBLAS_DEFAULT_MATH (no tensor cores) — tensor core
-    // algorithms produce NaN for transposed GEMMs with gradient magnitudes ~1e5.
+    // ALB-076: Uses CUBLAS_DEFAULT_MATH (no tensor cores) for backward GEMMs.
+    // trueno#170 fixed NaN corruption caused by tensor core algorithms (TF32)
+    // on transposed GEMMs with gradient magnitudes ~1e5. Forward GEMMs remain
+    // on tensor cores since NoTrans/NoTrans is unaffected.
     if let Some(cublas) = cache.cublas() {
         return cublas_gemm_backward_a(cublas, grad_output, b, grad_a, m, k, n);
     }
@@ -120,8 +122,10 @@ pub fn gemm_backward_b(
     })?;
 
     // ALB-075: cuBLAS SIMD fast path (6-14x faster than PTX)
-    // ALB-076: Uses CUBLAS_DEFAULT_MATH (no tensor cores) — tensor core
-    // algorithms produce NaN for transposed GEMMs with gradient magnitudes ~1e5.
+    // ALB-076: Uses CUBLAS_DEFAULT_MATH (no tensor cores) for backward GEMMs.
+    // trueno#170 fixed NaN corruption caused by tensor core algorithms (TF32)
+    // on transposed GEMMs with gradient magnitudes ~1e5. Forward GEMMs remain
+    // on tensor cores since NoTrans/NoTrans is unaffected.
     if let Some(cublas) = cache.cublas() {
         return cublas_gemm_backward_b(cublas, a, grad_output, grad_b, m, k, n);
     }

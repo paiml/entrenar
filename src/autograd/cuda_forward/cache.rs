@@ -39,7 +39,7 @@ pub(super) struct ForwardKernelCache {
     modules: HashMap<String, CudaModule>,
     /// Device SM target string (e.g. "sm_89" for RTX 4090)
     sm_target: String,
-    /// cuBLAS handle for tensor core GEMMs (ALB-075)
+    /// cuBLAS handle (ALB-075): forward=tensor cores, backward=SIMD (ALB-076/trueno#170)
     cublas: Option<CublasHandle>,
 }
 
@@ -51,10 +51,10 @@ impl ForwardKernelCache {
         // since we already have a valid CudaContext).
         let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
 
-        // Initialize cuBLAS handle for tensor core GEMMs (ALB-075).
+        // Initialize cuBLAS (ALB-075). Forward: TF32 tensor cores. Backward: SIMD (trueno#170).
         let cublas = match CublasHandle::new(&ctx) {
             Ok(handle) => {
-                eprintln!("[CUDA] cuBLAS initialized — tensor core GEMMs enabled");
+                eprintln!("[CUDA] cuBLAS initialized — forward tensor core, backward SIMD GEMMs");
                 Some(handle)
             }
             Err(e) => {

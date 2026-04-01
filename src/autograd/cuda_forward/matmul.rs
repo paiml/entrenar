@@ -71,8 +71,8 @@ pub fn fused_swiglu_forward(
 ///
 /// Computes: C = A @ B where A is MxK, B is KxN, C is MxN
 ///
-/// Dispatches to cuBLAS tensor cores when available (ALB-075), falling back
-/// to hand-written PTX naive GEMM otherwise.
+/// Dispatches to cuBLAS tensor core TF32 when available (ALB-075), falling back to PTX
+/// naive GEMM. Backward GEMMs use CUBLAS_DEFAULT_MATH (SIMD) per ALB-076/trueno#170.
 #[cfg(feature = "cuda")]
 pub fn gemm_forward(
     a: &GpuBuffer<f32>,
@@ -87,9 +87,7 @@ pub fn gemm_forward(
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
-
-    // cuBLAS fast path: tensor core GEMM (ALB-075)
-    if let Some(cublas) = cache.cublas() {
+    if let Some(cublas) = cache.cublas() { // cuBLAS tensor core forward (ALB-075)
         return cublas_gemm_forward(cublas, a, b, c, m, k, n);
     }
 
@@ -488,7 +486,8 @@ pub fn gemm_forward_bf16(
 ///
 /// Naive GEMM with inline BF16 truncation: loads f32, truncates to bf16 precision
 /// (AND 0xFFFF0000), multiplies as f32, accumulates in f32. This matches the
-/// precision characteristics of hardware bf16 tensor cores (bf16 multiply, f32 accum).
+/// precision characteristics of hardware BF16 tensor cores (BF16 multiply, f32 accum,
+/// safe because forward GEMMs are NoTrans/NoTrans — unaffected by ALB-076/trueno#170).
 #[cfg(feature = "cuda")]
 fn build_gemm_bf16_compute_ptx(sm_target: &str) -> String {
     format!(

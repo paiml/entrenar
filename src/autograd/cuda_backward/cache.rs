@@ -30,7 +30,8 @@ pub(super) struct KernelCache {
     ctx: Arc<CudaContext>,
     modules: HashMap<String, CudaModule>,
     sm_target: String,
-    /// cuBLAS handle for tensor core GEMMs (ALB-075)
+    /// cuBLAS handle for backward GEMMs (ALB-075). Uses CUBLAS_DEFAULT_MATH
+    /// (SIMD, no tensor cores) per ALB-076/trueno#170 to avoid NaN in transposed GEMMs.
     cublas: Option<CublasHandle>,
 }
 
