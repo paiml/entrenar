@@ -87,7 +87,7 @@ pub fn gemm_forward(
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
-    if let Some(cublas) = cache.cublas() { // cuBLAS tensor core forward (ALB-075)
+    if let Some(cublas) = cache.cublas() {
         return cublas_gemm_forward(cublas, a, b, c, m, k, n);
     }
 
