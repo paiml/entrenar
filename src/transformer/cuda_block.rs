@@ -51,7 +51,7 @@ use crate::autograd::cuda_forward::{
     rms_norm_forward, rope_neox_forward, scale_forward, silu_forward,
 };
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_optim::adamw_step_cuda;
+use crate::autograd::cuda_optim::{adamw_step_cuda, gradient_clip_cuda, squared_sum_cuda};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_tensor::Result;
 
@@ -3340,6 +3340,60 @@ impl CudaLoraGradWorkspace {
             grad_input_norm: GpuBuffer::new(ctx, h)?,
             grad_post_attn_norm: GpuBuffer::new(ctx, h)?,
         })
+    }
+
+    /// ENT-265: Clip all 6 LoRA gradient buffers by global L2 norm.
+    ///
+    /// Computes the global L2 norm across A_q, B_q, A_v, B_v, input_norm,
+    /// and post_attn_norm. If the norm exceeds `max_norm`, scales all buffers
+    /// down by `max_norm / (total_norm + 1e-6)`.
+    ///
+    /// Two-phase design: phase 1 reads norms (immutable), phase 2 applies
+    /// scale (mutable). This satisfies the borrow checker when the workspace
+    /// is behind a mutable reference.
+    pub(crate) fn clip_gradients(&mut self, max_norm: f32, stream: &CudaStream) {
+        // Phase 1: compute global L2 norm
+        let sq_a_q =
+            squared_sum_cuda(&self.grad_lora_a_q, self.grad_lora_a_q.len() as u32, stream)
+                .unwrap_or(0.0);
+        let sq_b_q =
+            squared_sum_cuda(&self.grad_lora_b_q, self.grad_lora_b_q.len() as u32, stream)
+                .unwrap_or(0.0);
+        let sq_a_v =
+            squared_sum_cuda(&self.grad_lora_a_v, self.grad_lora_a_v.len() as u32, stream)
+                .unwrap_or(0.0);
+        let sq_b_v =
+            squared_sum_cuda(&self.grad_lora_b_v, self.grad_lora_b_v.len() as u32, stream)
+                .unwrap_or(0.0);
+        let sq_in =
+            squared_sum_cuda(&self.grad_input_norm, self.grad_input_norm.len() as u32, stream)
+                .unwrap_or(0.0);
+        let sq_pa = squared_sum_cuda(
+            &self.grad_post_attn_norm,
+            self.grad_post_attn_norm.len() as u32,
+            stream,
+        )
+        .unwrap_or(0.0);
+        let total_norm = (sq_a_q + sq_b_q + sq_a_v + sq_b_v + sq_in + sq_pa).sqrt();
+
+        if total_norm <= max_norm {
+            return;
+        }
+
+        // Phase 2: apply clip scale
+        let clip_scale = max_norm / (total_norm + 1e-6);
+        let n_aq = self.grad_lora_a_q.len() as u32;
+        let n_bq = self.grad_lora_b_q.len() as u32;
+        let n_av = self.grad_lora_a_v.len() as u32;
+        let n_bv = self.grad_lora_b_v.len() as u32;
+        let n_in = self.grad_input_norm.len() as u32;
+        let n_pa = self.grad_post_attn_norm.len() as u32;
+        let _ = gradient_clip_cuda(&mut self.grad_lora_a_q, clip_scale, n_aq, stream);
+        let _ = gradient_clip_cuda(&mut self.grad_lora_b_q, clip_scale, n_bq, stream);
+        let _ = gradient_clip_cuda(&mut self.grad_lora_a_v, clip_scale, n_av, stream);
+        let _ = gradient_clip_cuda(&mut self.grad_lora_b_v, clip_scale, n_bv, stream);
+        let _ = gradient_clip_cuda(&mut self.grad_input_norm, clip_scale, n_in, stream);
+        let _ = gradient_clip_cuda(&mut self.grad_post_attn_norm, clip_scale, n_pa, stream);
     }
 }
 

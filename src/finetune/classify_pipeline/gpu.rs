@@ -1063,6 +1063,14 @@ impl ClassifyPipeline {
             .unwrap_or(0);
         let zeros = vec![0.0f32; max_accum_len];
 
+        // ENT-265: Clip accumulated NF4 LoRA gradients before optimizer step.
+        // Without this, NF4 dequant amplifies gradients causing divergence.
+        if let Some(max_norm) = self.config.gradient_clip_norm {
+            for accum in grad_accum.iter_mut() {
+                accum.clip_gradients(max_norm, stream);
+            }
+        }
+
         for layer_idx in 0..blocks.len() {
             let _ = blocks[layer_idx].lora_optimizer_step(
                 &mut opt_states[layer_idx],

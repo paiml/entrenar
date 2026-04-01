@@ -1546,80 +1546,10 @@ impl CudaTransformerTrainer {
                 // Without this, NF4 LoRA grads are unbounded — causes weight
                 // divergence and embedding grad explosion (Run 7c: 26M at step 225).
                 if let Some(max_norm) = max_grad_norm {
-                    // Phase 1: compute global L2 norm (immutable borrows)
-                    let clip_scale = {
-                        let ws = self
-                            .nf4_lora_grad_workspace
-                            .as_ref()
-                            .expect("NF4 requires LoRA grad ws");
-                        let sq_a_q = squared_sum_cuda(
-                            &ws.grad_lora_a_q,
-                            ws.grad_lora_a_q.len() as u32,
-                            stream,
-                        )
-                        .unwrap_or(0.0);
-                        let sq_b_q = squared_sum_cuda(
-                            &ws.grad_lora_b_q,
-                            ws.grad_lora_b_q.len() as u32,
-                            stream,
-                        )
-                        .unwrap_or(0.0);
-                        let sq_a_v = squared_sum_cuda(
-                            &ws.grad_lora_a_v,
-                            ws.grad_lora_a_v.len() as u32,
-                            stream,
-                        )
-                        .unwrap_or(0.0);
-                        let sq_b_v = squared_sum_cuda(
-                            &ws.grad_lora_b_v,
-                            ws.grad_lora_b_v.len() as u32,
-                            stream,
-                        )
-                        .unwrap_or(0.0);
-                        let sq_in = squared_sum_cuda(
-                            &ws.grad_input_norm,
-                            ws.grad_input_norm.len() as u32,
-                            stream,
-                        )
-                        .unwrap_or(0.0);
-                        let sq_pa = squared_sum_cuda(
-                            &ws.grad_post_attn_norm,
-                            ws.grad_post_attn_norm.len() as u32,
-                            stream,
-                        )
-                        .unwrap_or(0.0);
-                        let total_norm = (sq_a_q + sq_b_q + sq_a_v + sq_b_v + sq_in + sq_pa).sqrt();
-                        if total_norm > max_norm {
-                            max_norm / (total_norm + 1e-6)
-                        } else {
-                            1.0
-                        }
-                    };
-                    // Phase 2: apply clip scale (mutable borrows — lengths captured in phase 1 scope)
-                    if clip_scale < 1.0 {
-                        let ws = self
-                            .nf4_lora_grad_workspace
-                            .as_mut()
-                            .expect("NF4 requires LoRA grad ws");
-                        let n_aq = ws.grad_lora_a_q.len() as u32;
-                        let n_bq = ws.grad_lora_b_q.len() as u32;
-                        let n_av = ws.grad_lora_a_v.len() as u32;
-                        let n_bv = ws.grad_lora_b_v.len() as u32;
-                        let n_in = ws.grad_input_norm.len() as u32;
-                        let n_pa = ws.grad_post_attn_norm.len() as u32;
-                        let _ = gradient_clip_cuda(&mut ws.grad_lora_a_q, clip_scale, n_aq, stream);
-                        let _ = gradient_clip_cuda(&mut ws.grad_lora_b_q, clip_scale, n_bq, stream);
-                        let _ = gradient_clip_cuda(&mut ws.grad_lora_a_v, clip_scale, n_av, stream);
-                        let _ = gradient_clip_cuda(&mut ws.grad_lora_b_v, clip_scale, n_bv, stream);
-                        let _ =
-                            gradient_clip_cuda(&mut ws.grad_input_norm, clip_scale, n_in, stream);
-                        let _ = gradient_clip_cuda(
-                            &mut ws.grad_post_attn_norm,
-                            clip_scale,
-                            n_pa,
-                            stream,
-                        );
-                    }
+                    self.nf4_lora_grad_workspace
+                        .as_mut()
+                        .expect("NF4 requires LoRA grad ws")
+                        .clip_gradients(max_norm, stream);
                 }
 
                 // NF4 LoRA optimizer step — always runs, even during accumulation.
@@ -2798,6 +2728,23 @@ impl CudaTransformerTrainer {
         loss: f64,
         lr: f64,
     ) -> Box<dyn FnOnce(&std::path::Path) -> crate::Result<()> + Send> {
+        self.prepare_async_apr_save_with_tokenizer(name, architecture, step, loss, lr, None)
+    }
+
+    /// ALB-130: Prepare APR checkpoint with embedded tokenizer for inference.
+    ///
+    /// Training checkpoints must be self-contained for eval (`apr eval --task humaneval`).
+    /// Without embedded tokenizer, inference falls back to structural validation (fake 100%).
+    /// The tokenizer path comes from `spec.data.tokenizer` in the training YAML.
+    pub fn prepare_async_apr_save_with_tokenizer(
+        &mut self,
+        name: &str,
+        architecture: &str,
+        step: usize,
+        loss: f64,
+        lr: f64,
+        tokenizer_path: Option<&std::path::Path>,
+    ) -> Box<dyn FnOnce(&std::path::Path) -> crate::Result<()> + Send> {
         self.sync_weights_to_cpu();
 
         let param_data = self.snapshot_param_data();
@@ -2856,6 +2803,51 @@ impl CudaTransformerTrainer {
         let model_config_json = serde_json::to_string(&self.config.model_config).ok();
         let is_delta_checkpoint = self.config.quantize_nf4 && self.config.is_lora();
 
+        // ALB-130: Pre-read tokenizer.json for embedding in checkpoint.
+        // Parse HuggingFace tokenizer format → extract vocab + merges + special token IDs.
+        let tokenizer_data: Option<(Vec<String>, Vec<String>, Option<u64>, Option<u64>)> =
+            tokenizer_path.and_then(|p| {
+                let json_bytes = std::fs::read(p).ok()?;
+                let tok: serde_json::Value = serde_json::from_slice(&json_bytes).ok()?;
+                let model = tok.get("model")?;
+                let vocab_obj = model.get("vocab")?.as_object()?;
+                // Build sorted-by-id vocab list
+                let mut vocab_pairs: Vec<(String, u64)> = vocab_obj
+                    .iter()
+                    .filter_map(|(k, v)| Some((k.clone(), v.as_u64()?)))
+                    .collect();
+                vocab_pairs.sort_by_key(|(_, id)| *id);
+                let vocab: Vec<String> = vocab_pairs.into_iter().map(|(k, _)| k).collect();
+                // Merges as "token1 token2" strings
+                let merges: Vec<String> = model
+                    .get("merges")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                // Special tokens: BOS=<s>=1, EOS=</s>=2 (from added_tokens)
+                let added = tok.get("added_tokens").and_then(|a| a.as_array());
+                let bos_id = added.and_then(|arr| {
+                    arr.iter()
+                        .find(|t| t.get("content").and_then(|c| c.as_str()) == Some("<s>"))
+                        .and_then(|t| t.get("id")?.as_u64())
+                });
+                let eos_id = added.and_then(|arr| {
+                    arr.iter()
+                        .find(|t| t.get("content").and_then(|c| c.as_str()) == Some("</s>"))
+                        .and_then(|t| t.get("id")?.as_u64())
+                });
+                if vocab.is_empty() {
+                    return None;
+                }
+                println!(
+                    "  [ALB-130] Embedding tokenizer: {} vocab, {} merges",
+                    vocab.len(),
+                    merges.len()
+                );
+                Some((vocab, merges, bos_id, eos_id))
+            });
+
         Box::new(move |path: &std::path::Path| {
             use aprender::serialization::apr::AprWriter;
             use serde_json::Value as Jv;
@@ -2879,6 +2871,24 @@ impl CudaTransformerTrainer {
             writer.set_metadata("optimizer_step", Jv::String(embed_step.to_string()));
             if let Some(cfg) = model_config_json {
                 writer.set_metadata("model_config", Jv::String(cfg));
+            }
+
+            // ALB-130: Embed tokenizer vocab + merges for standalone inference
+            if let Some((vocab, merges, bos_id, eos_id)) = tokenizer_data {
+                writer.set_metadata(
+                    "tokenizer.vocabulary",
+                    Jv::Array(vocab.into_iter().map(Jv::String).collect()),
+                );
+                writer.set_metadata(
+                    "tokenizer.merges",
+                    Jv::Array(merges.into_iter().map(Jv::String).collect()),
+                );
+                if let Some(bos) = bos_id {
+                    writer.set_metadata("tokenizer.bos_token_id", Jv::Number(bos.into()));
+                }
+                if let Some(eos) = eos_id {
+                    writer.set_metadata("tokenizer.eos_token_id", Jv::Number(eos.into()));
+                }
             }
 
             // Find hidden_size from norm weights for shape inference
