@@ -1146,8 +1146,11 @@ impl InstructPipeline {
             let grad_nz = grad_hidden.iter().filter(|&&x| x != 0.0).count();
             static BWD_LOG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
             if BWD_LOG.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 3 {
-                eprintln!("[PMAT-420] backward: grad_hidden len={} nonzero={grad_nz} first5={:?}",
-                    grad_hidden.len(), &grad_hidden[..5.min(grad_hidden.len())]);
+                eprintln!(
+                    "[PMAT-420] backward: grad_hidden len={} nonzero={grad_nz} first5={:?}",
+                    grad_hidden.len(),
+                    &grad_hidden[..5.min(grad_hidden.len())]
+                );
             }
             self.backward_nf4_gpu_blocks(&grad_hidden, seq_len);
         }
@@ -2008,26 +2011,17 @@ impl InstructPipeline {
         let hidden_data = hidden.data();
         let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
 
-        // KAIZEN-062: Upload hidden states into pre-allocated GPU buffer.
-        // Partial write via copy_from_host_at — padded positions are irrelevant
-        // (block.forward uses seq_len for attention masking and GEMM dimensions).
-        // PMAT-420: Use fresh upload instead of copy_from_host_at on pre-allocated buffer.
-        // Inference forward works with trainer.upload() — training's copy_from_host_at silently
-        // fails (zeros). The pre-allocated scratch buffer may have stale CUDA state.
-        // Fresh upload allocates new GPU memory each step (same as working inference path).
+        // PMAT-420 / entrenar#316: Use seq_len-sized fresh buffers (like inference forward).
+        // Pre-allocated max_seq_len buffers cause NaN after 28 layers.
+        // The inference forward works because it uses exactly seq_len-sized buffers.
         training_state.fwd_scratch_a = trainer
             .upload(hidden_slice)
             .map_err(|e| eprintln!("[CUDA] embed upload failed: {e}"))
             .ok()?;
-        // Pad to max buffer size for block.forward compatibility
-        if training_state.fwd_scratch_a.len() < training_state.fwd_scratch_b.len() {
-            let mut padded = vec![0.0f32; training_state.fwd_scratch_b.len()];
-            padded[..hidden_slice.len()].copy_from_slice(hidden_slice);
-            training_state.fwd_scratch_a = trainer
-                .upload(&padded)
-                .map_err(|e| eprintln!("[CUDA] padded upload failed: {e}"))
-                .ok()?;
-        }
+        training_state.fwd_scratch_b = trainer
+            .zeros(seq_len * hidden_size)
+            .map_err(|e| eprintln!("[CUDA] scratch_b alloc failed: {e}"))
+            .ok()?;
 
         // KAIZEN-062: Ping-pong with pre-allocated forward scratch buffers.
         // Eliminates 2× cuMemAlloc + 2× cuMemFree per forward pass.
@@ -2051,19 +2045,11 @@ impl InstructPipeline {
             };
 
             // Save input for backward pass
-            // SAFETY: layer_inputs[i] is a disjoint field from fwd_scratch_a/b.
-            unsafe {
-                if let Err(e) =
-                    training_state.layer_inputs[i].copy_from_buffer_async(gpu_input, stream)
-                {
-                    eprintln!(
-                        "[CUDA] Layer {i} input save failed: {e} (src={}, dst={})",
-                        gpu_input.len(),
-                        training_state.layer_inputs[i].len()
-                    );
-                    return None;
-                }
+            // PMAT-420: Re-allocate layer_input at seq_len if needed (was max_seq_len)
+            if training_state.layer_inputs[i].len() != gpu_input.len() {
+                training_state.layer_inputs[i] = trainer.zeros(gpu_input.len()).ok()?;
             }
+            let _ = training_state.layer_inputs[i].copy_from_buffer(gpu_input);
 
             // Forward uses actual seq_len for attention masking; padded positions
             // produce zeros that don't affect loss (loss only covers actual tokens).
@@ -2159,15 +2145,11 @@ impl InstructPipeline {
         };
 
         // Save blocks output for RMSNorm backward
-        // SAFETY: blocks_output is a disjoint field from fwd_scratch_a/b.
-        unsafe {
-            if let Err(e) =
-                training_state.blocks_output.copy_from_buffer_async(final_output, stream)
-            {
-                eprintln!("[CUDA] blocks_output save failed: {e}");
-                return None;
-            }
+        // PMAT-420: Re-allocate at seq_len if needed
+        if training_state.blocks_output.len() != final_output.len() {
+            training_state.blocks_output = trainer.zeros(final_output.len()).ok()?;
         }
+        let _ = training_state.blocks_output.copy_from_buffer(final_output);
 
         // KAIZEN-066: GPU RMSNorm forward — output goes directly to lm_head_hidden_buf.
         // Eliminates ~5MB D2H download + CPU RMSNorm + ~5MB H2D upload.
