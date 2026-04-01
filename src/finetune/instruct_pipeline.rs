@@ -213,8 +213,8 @@ struct WgpuTrainingState {
     losses_buf: trueno::backends::gpu::wgpu::Buffer,
     logsumexp_buf: trueno::backends::gpu::wgpu::Buffer,
     // Precomputed lm_head GPU buffers (KAIZEN: upload once, not per step)
-    lm_head_gpu: trueno::backends::gpu::wgpu::Buffer,   // [vocab, hidden] — for backward
-    lm_head_t_gpu: trueno::backends::gpu::wgpu::Buffer,  // [hidden, vocab] — for forward
+    lm_head_gpu: trueno::backends::gpu::wgpu::Buffer, // [vocab, hidden] — for backward
+    lm_head_t_gpu: trueno::backends::gpu::wgpu::Buffer, // [hidden, vocab] — for forward
     // Model config needed for forward pass
     num_layers: usize,
     hidden_dim: usize,
@@ -727,13 +727,20 @@ impl InstructPipeline {
         // PMAT-420: If GPU embeddings are minimal (VRAM-constrained), skip the GPU-resident
         // logits path entirely — go straight to CPU-loss path which uses GPU transformer + CPU lm_head.
         // This avoids CUDA context poisoning from attempting GPU lm_head with undersized buffers.
-        let has_gpu_embed = self.gpu_training.as_ref()
+        let has_gpu_embed = self
+            .gpu_training
+            .as_ref()
             .map(|t| t.embed_transposed.len() >= self.model.config().hidden_size * vocab_size)
             .unwrap_or(false);
 
         if !has_gpu_embed {
             return self.cuda_train_step_cpu_loss(
-                full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size,
+                full_ids,
+                loss_start,
+                loss_end,
+                num_loss_tokens,
+                seq_len,
+                vocab_size,
             );
         }
 
@@ -742,7 +749,12 @@ impl InstructPipeline {
         if !self.forward_logits_gpu_resident(full_ids) {
             eprintln!("[CUDA] GPU forward failed, falling back to CPU for this step");
             return self.cuda_train_step_cpu_loss(
-                full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size,
+                full_ids,
+                loss_start,
+                loss_end,
+                num_loss_tokens,
+                seq_len,
+                vocab_size,
             );
         }
 
@@ -901,7 +913,8 @@ impl InstructPipeline {
         {
             let wgpu = self.wgpu_training.as_ref().unwrap();
             wgpu.trainer.queue_ref().write_buffer(
-                &wgpu.logits_buf, 0,
+                &wgpu.logits_buf,
+                0,
                 bytemuck::cast_slice(&logits_data[..seq_len * vocab_size]),
             );
         }
@@ -913,11 +926,7 @@ impl InstructPipeline {
         let labels: Vec<u32> = (0..seq_len)
             .map(|i| if i + 1 < full_ids.len() { full_ids[i + 1] } else { 0 })
             .collect();
-        wgpu.trainer.queue_ref().write_buffer(
-            &wgpu.labels_buf,
-            0,
-            bytemuck::cast_slice(&labels),
-        );
+        wgpu.trainer.queue_ref().write_buffer(&wgpu.labels_buf, 0, bytemuck::cast_slice(&labels));
 
         let avg_loss = wgpu.cross_entropy.forward(
             &wgpu.logits_buf,
@@ -967,7 +976,8 @@ impl InstructPipeline {
         // GPU backward via saved activations is the NEXT optimization.
         let wgpu = self.wgpu_training.as_ref().unwrap();
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
-        logits_tensor.set_grad(ndarray::Array1::from(grad_logits_data[..seq_len * vocab_size].to_vec()));
+        logits_tensor
+            .set_grad(ndarray::Array1::from(grad_logits_data[..seq_len * vocab_size].to_vec()));
         if let Some(op) = logits_tensor.backward_op() {
             op.backward();
         }
@@ -1005,7 +1015,8 @@ impl InstructPipeline {
         // The key win is: NO CPU model.forward() replay.
 
         let t6 = std::time::Instant::now();
-        eprintln!("[PROFILE] total_step: {:.0}ms (embed={:.0} fwd={:.0} lm={:.0} ce={:.0} bwd={:.0})",
+        eprintln!(
+            "[PROFILE] total_step: {:.0}ms (embed={:.0} fwd={:.0} lm={:.0} ce={:.0} bwd={:.0})",
             t6.duration_since(t0).as_millis(),
             t1.duration_since(t0).as_millis(),
             t2.duration_since(t1).as_millis(),
@@ -1035,7 +1046,9 @@ impl InstructPipeline {
     ) -> InstructStepResult {
         // PMAT-420: Check if GPU embeddings are available. If not (VRAM-constrained),
         // skip forward_logits_gpu entirely to avoid CUDA context poisoning.
-        let has_gpu_embed = self.gpu_training.as_ref()
+        let has_gpu_embed = self
+            .gpu_training
+            .as_ref()
             .map(|t| t.embed_transposed.len() >= vocab_size * self.model.config().hidden_size)
             .unwrap_or(false);
 
@@ -1115,7 +1128,8 @@ impl InstructPipeline {
                 // PMAT-420: GPU lm_head backward failed (minimal embed buffer on 8GB).
                 // Compute grad_hidden on CPU: grad_hidden[seq,hidden] = grad_logits[seq,vocab] @ embed[vocab,hidden]
                 let hidden_size = self.model.config().hidden_size;
-                let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
+                let lm_weight =
+                    self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
                 let lm_data = lm_weight.data();
                 let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
                 crate::autograd::ops::matmul::matmul_compute(
@@ -1350,8 +1364,11 @@ impl InstructPipeline {
         let mut fwd = trueno::backends::gpu::WgslForwardPass::new(
             trainer.device_ref().clone(),
             trainer.queue_ref().clone(),
-            hidden as usize, num_heads as usize, num_kv_heads as usize,
-            head_dim as usize, inter as usize,
+            hidden as usize,
+            num_heads as usize,
+            num_kv_heads as usize,
+            head_dim as usize,
+            inter as usize,
         );
 
         // KAIZEN: Only upload norm weights (tiny: 14 KB each, 28 layers = ~800 KB total).
@@ -1399,10 +1416,7 @@ impl InstructPipeline {
             })
         };
 
-        let ce = WgslCrossEntropy::new(
-            trainer.device_ref().clone(),
-            trainer.queue_ref().clone(),
-        );
+        let ce = WgslCrossEntropy::new(trainer.device_ref().clone(), trainer.queue_ref().clone());
 
         // KAIZEN: precompute lm_head + transpose, upload to GPU ONCE
         let lm_head_raw = self.model.lm_head_weight_slice();
@@ -2056,7 +2070,8 @@ impl InstructPipeline {
                 if c == 0 {
                     // Check input for NaN before layer forward (first step only)
                     stream.synchronize().ok();
-                    let mut buf = vec![0.0f32; std::cmp::min(gpu_input.len(), seq_len * hidden_size)];
+                    let mut buf =
+                        vec![0.0f32; std::cmp::min(gpu_input.len(), seq_len * hidden_size)];
                     let _ = gpu_input.copy_to_host(&mut buf);
                     let nan_count = buf.iter().filter(|x| x.is_nan()).count();
                     let inf_count = buf.iter().filter(|x| x.is_infinite()).count();
@@ -2085,7 +2100,8 @@ impl InstructPipeline {
                 let c = FWD_TRACE_COUNT.load(std::sync::atomic::Ordering::Relaxed);
                 if c == 0 {
                     stream.synchronize().ok();
-                    let mut buf = vec![0.0f32; std::cmp::min(gpu_output.len(), seq_len * hidden_size)];
+                    let mut buf =
+                        vec![0.0f32; std::cmp::min(gpu_output.len(), seq_len * hidden_size)];
                     let _ = gpu_output.copy_to_host(&mut buf);
                     let nan_count = buf.iter().filter(|x| x.is_nan()).count();
                     let inf_count = buf.iter().filter(|x| x.is_infinite()).count();
@@ -2184,8 +2200,16 @@ impl InstructPipeline {
             let stream = trainer.stream();
 
             // PMAT-420: Use trainer.upload (fresh alloc) instead of copy_from_host_at
-            // which silently produces zeros on some CUDA driver configurations.
             training_state.grad_upload_buf = trainer.upload(grad_final_hidden).ok()?;
+
+            // PMAT-420: Re-allocate grad buffers at seq_len if forward re-sized layer_inputs
+            let expected_len = seq_len * hidden_size;
+            if training_state.grad_buf_a.len() != expected_len {
+                training_state.grad_buf_a = trainer.zeros(expected_len).ok()?;
+                training_state.grad_buf_b = trainer.zeros(expected_len).ok()?;
+                training_state.output_scratch = trainer.zeros(expected_len).ok()?;
+                training_state.grad_upload_buf = trainer.upload(grad_final_hidden).ok()?;
+            }
 
             // RMSNorm backward on GPU
             crate::autograd::cuda_backward::rms_norm_backward(
@@ -2497,8 +2521,13 @@ impl InstructPipeline {
                 }
             }
 
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream,
-                self.shared_scratch.as_mut()) {
+            if let Err(e) = block.forward(
+                &gpu_input,
+                &mut gpu_output,
+                seq_len,
+                stream,
+                self.shared_scratch.as_mut(),
+            ) {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
@@ -2542,7 +2571,11 @@ impl InstructPipeline {
         let lm_data = lm_weight.data();
         let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
         let logits = crate::autograd::ops::matmul::matmul_nt_compute(
-            normed_slice, lm_slice, seq_len, hidden_size, vocab_size,
+            normed_slice,
+            lm_slice,
+            seq_len,
+            hidden_size,
+            vocab_size,
         );
         Some(logits)
     }
@@ -2587,7 +2620,11 @@ impl InstructPipeline {
         let lm_data = lm_weight.data();
         let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
         let logits = crate::autograd::ops::matmul::matmul_nt_compute(
-            hidden_slice, lm_slice, seq_len, hidden_size, vocab_size,
+            hidden_slice,
+            lm_slice,
+            seq_len,
+            hidden_size,
+            vocab_size,
         );
         Some(logits)
     }
