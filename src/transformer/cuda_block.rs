@@ -108,10 +108,6 @@ pub struct CudaTransformerBlock {
 /// - **Invariant**: NF4 layers run sequentially — one shared scratch is safe
 #[cfg(feature = "cuda")]
 pub(crate) struct CudaBlockScratch {
-    /// C-CAUSAL-001: Causal attention mask [seq_len * seq_len]
-    /// Contains 0.0 for j <= i (attend) and -inf for j > i (mask)
-    /// Precomputed at init, applied additively to attention scores before softmax
-    causal_mask: GpuBuffer<f32>,
     /// After input RMSNorm (seq_len * hidden_size)
     norm1_out: GpuBuffer<f32>,
     /// Q projection output (seq_len * hidden_size)
@@ -162,6 +158,10 @@ pub(crate) struct CudaBlockScratch {
     lora_temp: GpuBuffer<f32>,
     /// Sequential position indices [0, 1, ..., max_seq_len-1] for batched RoPE
     rope_positions: GpuBuffer<u32>,
+    /// PMAT-420: Contiguous causal mask for current seq_len [seq_len * seq_len]
+    causal_mask_contiguous: GpuBuffer<f32>,
+    /// PMAT-420: seq_len that causal_mask_contiguous was generated for (cache key)
+    causal_mask_cached_seq_len: usize,
 }
 
 #[cfg(feature = "cuda")]
@@ -203,10 +203,7 @@ impl CudaBlockScratch {
                 }
             })
             .collect();
-        let causal_mask = GpuBuffer::from_host(ctx, &causal_mask_data)?;
-
         Ok(Self {
-            causal_mask,
             norm1_out: GpuBuffer::new(ctx, max_seq_len * hidden_size)?,
             q: GpuBuffer::new(ctx, max_seq_len * q_dim)?,
             k: GpuBuffer::new(ctx, max_seq_len * kv_hidden_size)?,
@@ -237,7 +234,35 @@ impl CudaBlockScratch {
                 buf.copy_from_host(&positions)?;
                 buf
             },
+            causal_mask_contiguous: GpuBuffer::from_host(ctx, &causal_mask_data)?,
+            causal_mask_cached_seq_len: max_seq_len,
         })
+    }
+
+    /// PMAT-420: Prepare a contiguous [seq_len * seq_len] causal mask. Cached: only regenerates
+    /// when seq_len changes. Cost: O(seq_len^2) CPU + one H2D upload (~0.01ms for seq=256).
+    pub(crate) fn prepare_causal_mask(
+        &mut self,
+        seq_len: usize,
+        ctx: &Arc<CudaContext>,
+    ) -> crate::autograd::cuda_tensor::Result<()> {
+        if seq_len == self.causal_mask_cached_seq_len {
+            return Ok(());
+        }
+        let mask_data: Vec<f32> = (0..seq_len * seq_len)
+            .map(|idx| {
+                let row = idx / seq_len;
+                let col = idx % seq_len;
+                if col <= row {
+                    0.0f32
+                } else {
+                    f32::NEG_INFINITY
+                }
+            })
+            .collect();
+        self.causal_mask_contiguous = GpuBuffer::from_host(ctx, &mask_data)?;
+        self.causal_mask_cached_seq_len = seq_len;
+        Ok(())
     }
 }
 
@@ -492,17 +517,8 @@ impl CudaTransformerBlock {
                 }
             })
             .collect();
-        let causal_mask_data: Vec<f32> = single_mask
-            .iter()
-            .cycle()
-            .take(num_heads * max_seq_len * max_seq_len)
-            .copied()
-            .collect();
-        let causal_mask = GpuBuffer::from_host(&ctx, &causal_mask_data)?;
-
         // Allocate scratch buffers — Q and attn_out need q_dim, not hidden_size
         let scratch = CudaBlockScratch {
-            causal_mask,
             norm1_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             q: GpuBuffer::new(&ctx, max_seq_len * q_dim)?,
             k: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
@@ -538,6 +554,8 @@ impl CudaTransformerBlock {
                 buf.copy_from_host(&positions)?;
                 buf
             },
+            causal_mask_contiguous: GpuBuffer::from_host(&ctx, &single_mask)?,
+            causal_mask_cached_seq_len: max_seq_len,
         };
 
         Ok(Self {
@@ -745,6 +763,9 @@ impl CudaTransformerBlock {
         let nkv = saturating_u32(num_kv_heads);
         let hd = saturating_u32(head_dim);
 
+        // PMAT-420: Ensure causal mask is contiguous for current seq_len.
+        self.scratch.prepare_causal_mask(seq_len, &self.ctx)?;
+
         // ── ENT-270: Apply QK-norm (per-head RMSNorm) on Q and K ──────────
         // SAFETY: In-place GPU operations — CUDA kernels read all input before writing output.
         // Rust borrow checker cannot verify GPU kernel memory access patterns, so we use
@@ -895,10 +916,12 @@ impl CudaTransformerBlock {
 
         // Step 5.5 (C-CAUSAL-001): Apply causal mask — add -inf to future positions
         // Loop over heads, adding [seq, seq] mask to each head's scores slice.
-        // Mask is [seq × seq] (4 MB), NOT tiled — saves 1.5 GB VRAM.
+        // PMAT-420: Use causal_mask_contiguous (correctly strided for seq_len)
+        // instead of causal_mask (strided at max_seq_len, causes row misalignment
+        // when seq_len < max_seq_len, leading to NaN after deep layers).
         {
             let seq_sq = (seq * seq) as usize;
-            let mask_ptr = self.scratch.causal_mask.as_ptr();
+            let mask_ptr = self.scratch.causal_mask_contiguous.as_ptr();
             let scores_base = self.scratch.attn_scores.as_ptr();
             for head in 0..nh as usize {
                 let byte_offset = (head * seq_sq * 4) as u64; // f32 = 4 bytes
@@ -2861,6 +2884,12 @@ impl CudaNf4TransformerBlock {
         let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
         let intermediate_size = self.config.intermediate_size;
 
+        // PMAT-420: Ensure causal mask is contiguous for current seq_len.
+        // When seq_len < max_seq_len, the precomputed mask has stride max_seq_len
+        // which causes row misalignment in the flat element-wise add, leading to
+        // NaN after ~28 layers as corrupted mask values accumulate through softmax.
+        scratch.prepare_causal_mask(seq_len, &self.ctx)?;
+
         // === Pre-attention RMSNorm ===
         rms_norm_forward(
             input,
@@ -2874,29 +2903,6 @@ impl CudaNf4TransformerBlock {
         // === Q, K, V Projections (cuBLAS fp32 GEMM + LoRA) ===
         // ENT-287: Q proj is C[seq,q_dim] = A[seq,hidden] @ W_t_q[hidden,q_dim]
 
-        // CONTRACT: FALSIFY-PARITY-V2-003 — verify buffers are non-zero before GEMM
-        if self.layer_idx == 0 {
-            let mut a_full = vec![0.0f32; scratch.norm1_out.len()];
-            let a_ok = scratch.norm1_out.copy_to_host(&mut a_full).is_ok();
-            let a_check: Vec<f32> = a_full.iter().copied().take(5).collect();
-            let mut w_full = vec![0.0f32; self.w_q_fp32.len()];
-            let w_ok = self.w_q_fp32.copy_to_host(&mut w_full).is_ok();
-            let w_check: Vec<f32> = w_full.iter().copied().take(5).collect();
-            eprintln!(
-                "[TRACE L0] q_proj: a_ok={a_ok} w_ok={w_ok} m={} k={} n={}",
-                seq_len, hidden_size, q_dim,
-            );
-            eprintln!("[TRACE L0] a[:5]={a_check:?} w[:5]={w_check:?}");
-            debug_assert!(
-                a_check.iter().any(|&x| x != 0.0),
-                "CONTRACT VIOLATION: norm1_out is all zeros before q_proj GEMM"
-            );
-            debug_assert!(
-                w_check.iter().any(|&x| x != 0.0),
-                "CONTRACT VIOLATION: w_q_fp32 is all zeros"
-            );
-        }
-
         gemm_forward(
             &scratch.norm1_out,
             &self.w_q_fp32,
@@ -2906,18 +2912,6 @@ impl CudaNf4TransformerBlock {
             saturating_u32(q_dim),
             stream,
         )?;
-
-        // CONTRACT: verify output is non-zero after GEMM
-        if self.layer_idx == 0 {
-            stream.synchronize().ok();
-            let mut c_full = vec![0.0f32; scratch.q.len()];
-            let c_ok = scratch.q.copy_to_host(&mut c_full).is_ok();
-            let c_check: Vec<f32> = c_full.iter().copied().take(5).collect();
-            eprintln!("[TRACE L0] output: ok={c_ok} c[:5]={c_check:?}");
-            if c_check.iter().all(|&x| x == 0.0) {
-                eprintln!("[TRACE L0] *** ALL ZEROS — cuBLAS GEMM produced no output ***");
-            }
-        }
 
         // ENT-153: Q LoRA: q += (norm1_out @ A_q) @ B_q  (B_q pre-scaled by lora_scale)
         if let (Some(a_q), Some(b_q)) = (&self.lora_a_q, &self.lora_b_q) {
@@ -3193,9 +3187,12 @@ impl CudaNf4TransformerBlock {
 
         // Softmax (in-place: input aliased with output via unsafe view)
         // C-CAUSAL-001: Apply causal mask before softmax (NF4 path)
+        // PMAT-420: Use causal_mask_contiguous (correctly strided for seq_len)
+        // instead of causal_mask (strided at max_seq_len, causes row misalignment
+        // when seq_len < max_seq_len, leading to NaN after deep layers).
         {
             let seq_sq = seq_len * seq_len;
-            let mask_ptr = scratch.causal_mask.as_ptr();
+            let mask_ptr = scratch.causal_mask_contiguous.as_ptr();
             let scores_base = scratch.attn_scores.as_ptr();
             for head in 0..num_heads {
                 let byte_offset = (head * seq_sq * 4) as u64;
@@ -3353,18 +3350,14 @@ impl CudaLoraGradWorkspace {
     /// is behind a mutable reference.
     pub(crate) fn clip_gradients(&mut self, max_norm: f32, stream: &CudaStream) {
         // Phase 1: compute global L2 norm
-        let sq_a_q =
-            squared_sum_cuda(&self.grad_lora_a_q, self.grad_lora_a_q.len() as u32, stream)
-                .unwrap_or(0.0);
-        let sq_b_q =
-            squared_sum_cuda(&self.grad_lora_b_q, self.grad_lora_b_q.len() as u32, stream)
-                .unwrap_or(0.0);
-        let sq_a_v =
-            squared_sum_cuda(&self.grad_lora_a_v, self.grad_lora_a_v.len() as u32, stream)
-                .unwrap_or(0.0);
-        let sq_b_v =
-            squared_sum_cuda(&self.grad_lora_b_v, self.grad_lora_b_v.len() as u32, stream)
-                .unwrap_or(0.0);
+        let sq_a_q = squared_sum_cuda(&self.grad_lora_a_q, self.grad_lora_a_q.len() as u32, stream)
+            .unwrap_or(0.0);
+        let sq_b_q = squared_sum_cuda(&self.grad_lora_b_q, self.grad_lora_b_q.len() as u32, stream)
+            .unwrap_or(0.0);
+        let sq_a_v = squared_sum_cuda(&self.grad_lora_a_v, self.grad_lora_a_v.len() as u32, stream)
+            .unwrap_or(0.0);
+        let sq_b_v = squared_sum_cuda(&self.grad_lora_b_v, self.grad_lora_b_v.len() as u32, stream)
+            .unwrap_or(0.0);
         let sq_in =
             squared_sum_cuda(&self.grad_input_norm, self.grad_input_norm.len() as u32, stream)
                 .unwrap_or(0.0);
