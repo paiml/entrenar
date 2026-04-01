@@ -1143,6 +1143,12 @@ impl InstructPipeline {
         };
 
         if self.config.quantize_nf4 {
+            let grad_nz = grad_hidden.iter().filter(|&&x| x != 0.0).count();
+            static BWD_LOG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            if BWD_LOG.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 3 {
+                eprintln!("[PMAT-420] backward: grad_hidden len={} nonzero={grad_nz} first5={:?}",
+                    grad_hidden.len(), &grad_hidden[..5.min(grad_hidden.len())]);
+            }
             self.backward_nf4_gpu_blocks(&grad_hidden, seq_len);
         }
 
@@ -2320,6 +2326,12 @@ impl InstructPipeline {
                     grad_lora,
                 )
                 .ok()?;
+
+            // ENT-265: Clip NF4 LoRA gradients before optimizer step.
+            // Without this, NF4 dequant amplifies gradients causing divergence.
+            if let Some(max_norm) = self.config.gradient_clip_norm {
+                grad_lora.clip_gradients(max_norm, stream);
+            }
 
             // Immediately apply LoRA optimizer step
             blocks[layer_idx]
