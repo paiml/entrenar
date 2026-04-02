@@ -1851,10 +1851,12 @@ impl InstructPipeline {
         let embed_data = model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
-        let embed_bytes = vocab_size * hidden_size * 4 * 2; // both layouts
+        // entrenar#317: single embedding layout (not both orig + transposed).
+        // Halves VRAM from 1780MB to 890MB, fitting 8GB yoga.
+        let embed_bytes = vocab_size * hidden_size * 4; // single layout
         let vram_available_mb = trainer.free_memory_mb().unwrap_or(0);
         let embed_mb = embed_bytes / (1024 * 1024);
-        let use_gpu_embed = vram_available_mb > (embed_mb + 512) as u64; // need 512MB headroom
+        let use_gpu_embed = vram_available_mb > (embed_mb + 256) as u64; // 256MB headroom
 
         let (embed_original, embed_transposed) = if use_gpu_embed {
             eprintln!(
@@ -1864,17 +1866,8 @@ impl InstructPipeline {
                 .upload(embed_slice)
                 .map_err(|e| eprintln!("[CUDA] embed_original upload failed: {e}"))
                 .ok()?;
-
-            let mut embed_t = vec![0.0f32; hidden_size * vocab_size];
-            for v in 0..vocab_size {
-                for k in 0..hidden_size {
-                    embed_t[k * vocab_size + v] = embed_slice[v * hidden_size + k];
-                }
-            }
-            let trans = trainer
-                .upload(&embed_t)
-                .map_err(|e| eprintln!("[CUDA] embed_transposed upload failed: {e}"))
-                .ok()?;
+            // entrenar#317: skip transposed copy to save VRAM. Use CUBLAS_OP_T on orig instead.
+            let trans = trainer.zeros(1).ok()?;
             (orig, trans)
         } else {
             eprintln!(
