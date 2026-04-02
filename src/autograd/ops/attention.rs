@@ -3,7 +3,6 @@
 //! Uses CUDA GEMM for Q@K^T and Attn@V operations when available.
 
 use crate::autograd::{BackwardOp, Tensor};
-use ndarray::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -209,7 +208,6 @@ impl BackwardOp for AttentionBackward {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::Array1;
 
     /// FALSIFY-ATT-001: Weight normalization (indirect) — uniform V → output equals V
     ///

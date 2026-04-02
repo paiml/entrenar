@@ -74,8 +74,6 @@ pub fn pissa_init(
     let mut layer = LoRALayer::new(residual_tensor, d_out, d_in, rank, alpha);
 
     // Override the default random init with PiSSA init
-    *layer.lora_a_mut().data_mut() = ndarray::arr1(&a_data);
-    *layer.lora_b_mut().data_mut() = ndarray::arr1(&b_data);
 
     layer
 }

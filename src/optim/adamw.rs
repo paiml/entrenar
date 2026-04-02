@@ -294,7 +294,6 @@ mod tests {
         let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.1);
 
         // Zero gradient - only weight decay should apply
-        let grad = ndarray::arr1(&[0.0]);
         params[0].set_grad(grad);
 
         let initial_value = params[0].data()[0];
@@ -318,7 +317,6 @@ mod tests {
 
         for _ in 0..10 {
             // Same gradient for both
-            let grad = ndarray::arr1(&[1.0, -1.0]);
 
             params_adamw[0].set_grad(grad.clone());
             params_adam[0].set_grad(grad.clone());
@@ -389,8 +387,6 @@ mod tests {
         let mut optimizer = AdamW::default_params(0.1);
 
         // Set gradients for both
-        params[0].set_grad(ndarray::arr1(&[0.1, 0.2]));
-        params[1].set_grad(ndarray::arr1(&[0.3, 0.4]));
 
         optimizer.step(&mut params);
 
@@ -419,7 +415,6 @@ mod tests {
         let initial = params[0].data()[0];
         // Multiple steps with same gradient should accumulate momentum
         for _ in 0..5 {
-            params[0].set_grad(ndarray::arr1(&[1.0]));
             optimizer.step(&mut params);
         }
 
@@ -453,7 +448,6 @@ mod tests {
         let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.0); // Zero weight decay
 
         // Zero gradient
-        params[0].set_grad(ndarray::arr1(&[0.0]));
         let initial = params[0].data()[0];
         optimizer.step(&mut params);
 
@@ -468,7 +462,6 @@ mod tests {
         let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.0);
 
         // First step should have large bias adjust
-        params[0].set_grad(ndarray::arr1(&[1.0]));
         optimizer.step(&mut params);
         let after_first = params[0].data()[0];
 
@@ -547,7 +540,6 @@ mod tests {
         let mut optimizer = AdamW::new(lr, 0.9, 0.999, 1e-8, wd);
 
         // Set zero gradient
-        params[0].set_grad(ndarray::Array1::zeros(3));
         optimizer.step(&mut params);
 
         // With zero gradient, only weight decay: theta_new ≈ theta * (1 - lr*wd)
@@ -580,12 +572,9 @@ mod tests {
         assert!(opt.first_moments().is_empty());
         assert!(opt.second_moments().is_empty());
         // Set at index 0
-        opt.set_first_moment(0, ndarray::arr1(&[1.0, 2.0]));
-        opt.set_second_moment(0, ndarray::arr1(&[0.5, 0.5]));
         assert_eq!(opt.first_moments().len(), 1);
         assert_eq!(opt.second_moments().len(), 1);
         // Set at index 3 (should resize)
-        opt.set_first_moment(3, ndarray::arr1(&[3.0]));
         assert_eq!(opt.first_moments().len(), 4);
         assert!(opt.first_moments()[1].is_none());
         assert!(opt.first_moments()[3].is_some());
@@ -653,7 +642,6 @@ mod tests {
                 let mut optimizer = AdamW::default_params(0.001);
 
                 let grad_data: Vec<f32> = data.iter().map(|&x| 2.0 * x).collect();
-                params[0].set_grad(ndarray::Array1::from(grad_data));
                 optimizer.step(&mut params);
 
                 for (i, &val) in params[0].data().iter().enumerate() {

@@ -1,7 +1,6 @@
 //! Basic autograd operations: add, mul, scale, sum
 
 use crate::autograd::{BackwardOp, Tensor};
-use ndarray::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -244,7 +243,6 @@ impl BackwardOp for SumBackward {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::Array1;
 
     #[test]
     fn test_add_forward() {

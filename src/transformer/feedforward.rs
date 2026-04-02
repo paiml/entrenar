@@ -544,7 +544,6 @@ mod tests {
         let mut output = ffn.forward(&x, 2);
 
         // Backward pass
-        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All FFN weights should have gradients
@@ -560,7 +559,6 @@ mod tests {
         let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
-        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All gradients should be finite
@@ -587,7 +585,6 @@ mod tests {
             );
             let mut output = ffn.forward(&x, 2);
 
-            let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
             crate::autograd::backward(&mut output, Some(grad_out));
 
             let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
@@ -605,7 +602,6 @@ mod tests {
         let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
-        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Gradients should not be all zero
@@ -623,7 +619,6 @@ mod tests {
             let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
             let mut output = ffn.forward(&x, seq_len);
 
-            let grad_out = ndarray::Array1::ones(seq_len * config.hidden_size);
             crate::autograd::backward(&mut output, Some(grad_out));
 
             let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
@@ -642,14 +637,12 @@ mod tests {
         // First forward-backward
         let x1 = Tensor::from_vec(vec![0.1; 2 * config.hidden_size], true);
         let mut output1 = ffn.forward(&x1, 2);
-        let grad_out1 = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output1, Some(grad_out1));
         let grad1 = ffn.w_gate.grad().expect("gradient should be available").to_vec();
 
         // Second forward-backward should accumulate
         let x2 = Tensor::from_vec(vec![0.2; 2 * config.hidden_size], true);
         let mut output2 = ffn.forward(&x2, 2);
-        let grad_out2 = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output2, Some(grad_out2));
         let grad2 = ffn.w_gate.grad().expect("gradient should be available").to_vec();
 
@@ -667,7 +660,6 @@ mod tests {
         let x = Tensor::from_vec(vec![0.0; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
-        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Should still produce finite gradients
@@ -682,7 +674,6 @@ mod tests {
         let x = Tensor::from_vec(vec![10.0; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
-        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Should still produce finite gradients

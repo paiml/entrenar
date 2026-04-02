@@ -1,7 +1,6 @@
 //! CUDA-accelerated tensor type for GPU training
 //!
 //! This module provides GPU-resident tensors using trueno-gpu's CUDA backend.
-//! It replaces ndarray::Array1<f32> with CUDA-backed storage for 100x speedup.
 //!
 //! # Architecture (SPEC-FT-001 v3.0.0)
 //!

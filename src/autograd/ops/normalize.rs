@@ -1,7 +1,6 @@
 //! Normalization autograd operations: layer_norm
 
 use crate::autograd::{BackwardOp, Tensor};
-use ndarray::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 

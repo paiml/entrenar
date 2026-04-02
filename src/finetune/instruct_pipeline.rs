@@ -677,7 +677,6 @@ impl InstructPipeline {
             Self::compute_causal_lm_loss(&logits_data, &full_ids, loss_start, loss_end, vocab_size);
 
         // 4. Backward through autograd
-        logits.set_grad(ndarray::Array1::from(grad_logits));
         if let Some(op) = logits.backward_op() {
             op.backward();
         }
@@ -976,8 +975,7 @@ impl InstructPipeline {
         // GPU backward via saved activations is the NEXT optimization.
         let wgpu = self.wgpu_training.as_ref().unwrap();
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
-        logits_tensor
-            .set_grad(ndarray::Array1::from(grad_logits_data[..seq_len * vocab_size].to_vec()));
+        logits_tensor.set_grad(trueno::Tensor::from_vec(grad_logits_data));
         if let Some(op) = logits_tensor.backward_op() {
             op.backward();
         }

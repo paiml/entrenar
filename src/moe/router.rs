@@ -235,6 +235,5 @@ pub(crate) fn expert_load_fractions(routing_probs: &Array2<f32>) -> Array1<f32> 
     if batch_size == 0 {
         return Array1::zeros(num_experts);
     }
-    let col_sums = routing_probs.sum_axis(ndarray::Axis(0));
     col_sums / batch_size as f32
 }

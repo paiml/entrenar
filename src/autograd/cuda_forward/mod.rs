@@ -1,7 +1,6 @@
 //! CUDA-accelerated forward kernels for autograd
 //!
 //! This module wraps trueno-gpu forward kernels for GPU-accelerated forward passes.
-//! Provides 10-100x speedup over CPU ndarray implementations.
 //!
 //! # Architecture (SPEC-FT-001 v3.0.0)
 //!

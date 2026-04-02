@@ -1,7 +1,6 @@
 //! CUDA-accelerated backward kernels for autograd
 //!
 //! This module wraps trueno-gpu backward kernels for GPU-accelerated gradient computation.
-//! Provides 10-100x speedup over CPU ndarray implementations.
 //!
 //! # Safety
 //!

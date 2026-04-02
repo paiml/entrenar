@@ -352,7 +352,6 @@ mod tests {
         let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
         let mut output = norm.forward(&x);
 
-        let grad_out = ndarray::Array1::ones(8);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         assert!(norm.weight.grad().is_some());
@@ -367,7 +366,6 @@ mod tests {
         let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
         let mut output = norm.forward_batched(&x, 2, 4);
 
-        let grad_out = ndarray::Array1::ones(8);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Weight must receive gradient (was broken before ALB-038 fix)
@@ -398,14 +396,12 @@ mod tests {
         let norm1 = RMSNorm::new(hidden, 1e-6);
         let x1 = Tensor::from_vec(data.clone(), true);
         let mut out1 = norm1.forward(&x1);
-        crate::autograd::backward(&mut out1, Some(ndarray::Array1::ones(hidden)));
         let wgrad1 = norm1.weight.grad().expect("gradient available");
 
         // Batched path (new backward op)
         let norm2 = RMSNorm::new(hidden, 1e-6);
         let x2 = Tensor::from_vec(data, true);
         let mut out2 = norm2.forward_batched(&x2, 1, hidden);
-        crate::autograd::backward(&mut out2, Some(ndarray::Array1::ones(hidden)));
         let wgrad2 = norm2.weight.grad().expect("gradient available");
 
         // Weight gradients should match exactly (dw = go * x / rms)

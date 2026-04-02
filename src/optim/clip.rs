@@ -103,8 +103,6 @@ mod tests {
             vec![Tensor::from_vec(vec![1.0, 2.0], true), Tensor::from_vec(vec![3.0], true)];
 
         // Set small gradients
-        params[0].set_grad(ndarray::arr1(&[0.1, 0.2]));
-        params[1].set_grad(ndarray::arr1(&[0.1]));
 
         // Global norm = sqrt(0.1^2 + 0.2^2 + 0.1^2) = sqrt(0.06) ≈ 0.245
         let global_norm = clip_grad_norm(&mut params, 1.0);
@@ -136,8 +134,6 @@ mod tests {
             vec![Tensor::from_vec(vec![1.0, 2.0], true), Tensor::from_vec(vec![3.0], true)];
 
         // Set large gradients
-        params[0].set_grad(ndarray::arr1(&[3.0, 4.0]));
-        params[1].set_grad(ndarray::arr1(&[0.0]));
 
         // Global norm = sqrt(3^2 + 4^2 + 0^2) = sqrt(25) = 5.0
         let global_norm = clip_grad_norm(&mut params, 1.0);
@@ -167,7 +163,6 @@ mod tests {
         let mut params = vec![Tensor::from_vec(vec![3.0, 4.0], true)];
 
         // Set gradients with norm exactly equal to max_norm
-        params[0].set_grad(ndarray::arr1(&[3.0, 4.0])); // norm = 5.0
 
         let global_norm = clip_grad_norm(&mut params, 5.0);
 
@@ -191,8 +186,6 @@ mod tests {
         let mut params = vec![Tensor::from_vec(vec![1.0], true), Tensor::from_vec(vec![1.0], true)];
 
         // Set gradients with different magnitudes
-        params[0].set_grad(ndarray::arr1(&[10.0]));
-        params[1].set_grad(ndarray::arr1(&[5.0]));
 
         // Global norm = sqrt(10^2 + 5^2) = sqrt(125) ≈ 11.18
         let _global_norm = clip_grad_norm(&mut params, 1.0);
@@ -223,7 +216,6 @@ mod tests {
         // Some params have gradients, others don't
         let mut params = vec![Tensor::from_vec(vec![1.0], true), Tensor::from_vec(vec![1.0], true)];
 
-        params[0].set_grad(ndarray::arr1(&[3.0]));
         // params[1] has no gradient set
 
         // Global norm = sqrt(3^2) = 3.0
@@ -243,7 +235,6 @@ mod tests {
     #[test]
     fn test_clip_grad_norm_zero_max_norm() {
         let mut params = vec![Tensor::from_vec(vec![1.0], true)];
-        params[0].set_grad(ndarray::arr1(&[5.0]));
 
         let global_norm = clip_grad_norm(&mut params, 0.0);
 
@@ -263,8 +254,6 @@ mod tests {
     fn test_clip_grad_norm_refs_no_clipping() {
         let mut p0 = Tensor::from_vec(vec![1.0, 2.0], true);
         let mut p1 = Tensor::from_vec(vec![3.0], true);
-        p0.set_grad(ndarray::arr1(&[0.1, 0.2]));
-        p1.set_grad(ndarray::arr1(&[0.1]));
 
         let global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
         assert_abs_diff_eq!(global_norm, 0.245, epsilon = 1e-3);
@@ -290,8 +279,6 @@ mod tests {
     fn test_clip_grad_norm_refs_with_clipping() {
         let mut p0 = Tensor::from_vec(vec![1.0, 2.0], true);
         let mut p1 = Tensor::from_vec(vec![3.0], true);
-        p0.set_grad(ndarray::arr1(&[3.0, 4.0]));
-        p1.set_grad(ndarray::arr1(&[0.0]));
 
         let global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
         assert_abs_diff_eq!(global_norm, 5.0, epsilon = 1e-6);
@@ -317,8 +304,6 @@ mod tests {
     fn test_clip_grad_norm_refs_preserves_relative_magnitudes() {
         let mut p0 = Tensor::from_vec(vec![1.0], true);
         let mut p1 = Tensor::from_vec(vec![1.0], true);
-        p0.set_grad(ndarray::arr1(&[10.0]));
-        p1.set_grad(ndarray::arr1(&[5.0]));
 
         let _global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
 

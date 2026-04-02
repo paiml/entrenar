@@ -1093,7 +1093,6 @@ mod tests {
 
         // Test Q projection
         let mut q = crate::autograd::matmul(&x, &attn.w_q, seq_len, hidden_size, hidden_size);
-        let grad_out = ndarray::Array1::ones(seq_len * hidden_size);
         crate::autograd::backward(&mut q, Some(grad_out));
 
         assert!(attn.w_q.grad().is_some());
@@ -1116,7 +1115,6 @@ mod tests {
         let mut output =
             crate::autograd::matmul(&concat_out, &attn.w_o, seq_len, hidden_size, hidden_size);
 
-        let grad_out = ndarray::Array1::ones(seq_len * hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         assert!(attn.w_o.grad().is_some());
@@ -1146,7 +1144,6 @@ mod tests {
         let x = Tensor::from_vec(x_data, true);
         let mut output = attn.forward(&x, seq_len);
 
-        let grad_out = ndarray::Array1::ones(seq_len * hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All four projection weights must receive gradients

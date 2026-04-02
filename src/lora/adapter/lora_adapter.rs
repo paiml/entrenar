@@ -98,8 +98,6 @@ impl LoRAAdapter {
         let mut layer = LoRALayer::new(base_weight, self.d_out, self.d_in, self.rank, self.alpha);
 
         // Replace LoRA weights with loaded values
-        *layer.lora_a_mut().data_mut() = ndarray::arr1(&self.lora_a);
-        *layer.lora_b_mut().data_mut() = ndarray::arr1(&self.lora_b);
 
         Ok(layer)
     }

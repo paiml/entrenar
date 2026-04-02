@@ -2843,7 +2843,7 @@ impl CudaNf4TransformerBlock {
             w_up_scales,
             w_down_nf4,
             w_down_scales,
-            w_q_fp32,
+            w_q_fp32: { eprintln!("[PTR-NEW] L{layer_idx} w_q_fp32 ptr={:?} len={}", w_q_fp32.as_ptr(), w_q_fp32.len()); w_q_fp32 },
             w_k_fp32,
             w_v_fp32,
             w_o_fp32,
@@ -2878,6 +2878,8 @@ impl CudaNf4TransformerBlock {
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
         use crate::autograd::cuda_forward::gemm_forward;
+        self.ctx.make_current().map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::KernelError(format!("ctx: {e:?}")))?;
+        if self.layer_idx == 0 { static T: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0); if T.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0 { eprintln!("[PTR-FWD] L0 w_q_fp32 ptr={:?} len={} input_ptr={:?} input_len={}", self.w_q_fp32.as_ptr(), self.w_q_fp32.len(), input.as_ptr(), input.len()); } }
 
         let hidden_size = self.config.hidden_size;
         let q_dim = self.config.q_dim();

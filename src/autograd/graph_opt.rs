@@ -13,7 +13,6 @@
 //! 4. Shape tracking enables early validation of dimension mismatches
 //! 5. Graph optimization passes (DCE, CSE) run at construction time
 
-use ndarray::Array1;
 use std::collections::{HashMap, HashSet};
 
 /// Unique identifier for a node in the computation graph

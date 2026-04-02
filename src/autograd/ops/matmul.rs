@@ -6,7 +6,6 @@
 
 use crate::autograd::{BackwardOp, Tensor};
 use crate::trace::{TraceStep, TRACER};
-use ndarray::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 

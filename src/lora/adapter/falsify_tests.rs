@@ -28,8 +28,6 @@ fn make_layer_with_weights(d_out: usize, d_in: usize, rank: usize, alpha: f32) -
     // Set non-trivial LoRA weights so forward produces non-zero adaptation
     let a_data: Vec<f32> = (0..rank * d_in).map(|i| 0.1 * (i as f32 + 1.0)).collect();
     let b_data: Vec<f32> = (0..d_out * rank).map(|i| 0.05 * (i as f32 + 1.0)).collect();
-    *layer.lora_a_mut().data_mut() = ndarray::Array1::from_vec(a_data);
-    *layer.lora_b_mut().data_mut() = ndarray::Array1::from_vec(b_data);
 
     layer
 }
@@ -281,7 +279,6 @@ fn test_falsify_f_ckpt_005_resume_continues_training() {
             .collect();
         let b_data = layer.lora_b().data().to_vec();
         let updated: Vec<f32> = b_data.iter().zip(&grad).map(|(w, g)| w - g).collect();
-        *layer.lora_b_mut().data_mut() = ndarray::Array1::from_vec(updated);
     }
 
     // Capture output at step N
@@ -314,7 +311,6 @@ fn test_falsify_f_ckpt_005_resume_continues_training() {
             .collect();
         let b_data = resumed_layer.lora_b().data().to_vec();
         let updated: Vec<f32> = b_data.iter().zip(&grad).map(|(w, g)| w - g).collect();
-        *resumed_layer.lora_b_mut().data_mut() = ndarray::Array1::from_vec(updated);
     }
 
     // Also continue training the original layer for 5 more steps
@@ -329,7 +325,6 @@ fn test_falsify_f_ckpt_005_resume_continues_training() {
             .collect();
         let b_data = layer.lora_b().data().to_vec();
         let updated: Vec<f32> = b_data.iter().zip(&grad).map(|(w, g)| w - g).collect();
-        *layer.lora_b_mut().data_mut() = ndarray::Array1::from_vec(updated);
     }
 
     // Loss trajectory must be continuous: original and resumed must converge identically
@@ -353,7 +348,6 @@ fn test_falsify_f_ckpt_005_resumed_weights_not_reinitialized() {
 
     // Modify weights to simulate training progress
     let trained_b: Vec<f32> = (0..d_out * rank).map(|i| 0.5 + i as f32 * 0.1).collect();
-    *layer.lora_b_mut().data_mut() = ndarray::Array1::from_vec(trained_b.clone());
 
     // Save and reload
     let tmp = TempDir::new().unwrap();

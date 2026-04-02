@@ -1353,8 +1353,6 @@ impl ClassifyTrainer {
 
             match (m_exists, v_exists) {
                 (Ok(m_data), Ok(v_data)) => {
-                    optimizer.set_first_moment(i, ndarray::Array1::from_vec(m_data));
-                    optimizer.set_second_moment(i, ndarray::Array1::from_vec(v_data));
                 }
                 _ => break, // No more moment buffers
             }

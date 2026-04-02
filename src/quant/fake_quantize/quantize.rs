@@ -75,7 +75,6 @@ impl FakeQuantize {
     pub fn forward(&self, input: &Tensor) -> Tensor {
         let data: Vec<f32> = input.data().iter().map(|&x| self.fake_quantize_value(x)).collect();
 
-        Tensor::new(ndarray::arr1(&data), input.requires_grad())
     }
 
     /// Forward pass with auto-calibration
@@ -122,7 +121,6 @@ impl FakeQuantize {
             })
             .collect();
 
-        Tensor::new(ndarray::arr1(&data), grad_output.requires_grad())
     }
 
     /// Fake quantize a single value

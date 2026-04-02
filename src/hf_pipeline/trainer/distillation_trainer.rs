@@ -43,13 +43,7 @@ impl<T: TeacherModel> DistillationTrainer<T> {
     #[allow(clippy::too_many_arguments)]
     pub fn compute_loss(
         &self,
-        student_logits: &ndarray::Array2<f32>,
-        teacher_logits: &ndarray::Array2<f32>,
         targets: &[usize],
-        student_hidden: Option<&[ndarray::Array2<f32>]>,
-        teacher_hidden: Option<&[ndarray::Array2<f32>]>,
-        student_attention: Option<&[ndarray::Array2<f32>]>,
-        teacher_attention: Option<&[ndarray::Array2<f32>]>,
     ) -> f32 {
         // Contract: cross-entropy-kernel-v1.yaml precondition (pv codegen)
         // contract_pre_cross_entropy!(student_logits.as_slice().unwrap_or(&[])); // TODO: macro not generated

@@ -25,7 +25,6 @@ fn test_moe_config_defaults() {
 #[test]
 fn test_expert_output_shape() {
     let expert = Expert::new(16, 32);
-    let input = ndarray::Array1::from(vec![1.0; 16]);
     let output = expert.forward(&input);
     assert_eq!(output.len(), 16, "Expert output dim must match input dim");
 }
@@ -46,11 +45,8 @@ fn test_expert_relu_activation() {
     let mut expert = Expert::new(4, 8);
     // Set W1 so that input @ W1 + b1 is all negative
     expert.w1 = Array2::from_elem((4, 8), -10.0);
-    expert.b1 = ndarray::Array1::from(vec![-1.0; 8]);
     // After ReLU, hidden = 0, so output = 0 @ W2 + b2 = b2
-    expert.b2 = ndarray::Array1::from(vec![42.0; 4]);
 
-    let input = ndarray::Array1::ones(4);
     let output = expert.forward(&input);
     for &v in &output {
         assert!((v - 42.0).abs() < 1e-5, "Output should equal b2 when ReLU zeros hidden layer");
@@ -60,7 +56,6 @@ fn test_expert_relu_activation() {
 #[test]
 fn test_expert_deterministic() {
     let expert = Expert::new(8, 16);
-    let input = ndarray::Array1::from(vec![0.5; 8]);
     let out1 = expert.forward(&input);
     let out2 = expert.forward(&input);
     assert_eq!(out1, out2, "Expert forward must be deterministic");

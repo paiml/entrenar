@@ -37,7 +37,6 @@ mod tests {
 
         for _ in 0..50 {
             // Same small gradient for both
-            let grad = ndarray::arr1(&[0.1, 0.1]);
             params_adamw[0].set_grad(grad.clone());
             params_adam[0].set_grad(grad);
 
@@ -93,7 +92,6 @@ mod tests {
 
         for _ in 0..100 {
             // Constant small gradient
-            let grad = ndarray::arr1(&[0.01, 0.01]);
             params_high[0].set_grad(grad.clone());
             params_low[0].set_grad(grad);
             opt_high.step(&mut params_high);

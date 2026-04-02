@@ -2095,7 +2095,6 @@ impl CudaTransformerTrainer {
         let grad_cell = embed_weight.grad_cell();
         let mut grad_ref = grad_cell.borrow_mut();
         if grad_ref.is_none() {
-            *grad_ref = Some(ndarray::Array1::zeros(embed_weight.len()));
         }
         if let Some(grad) = grad_ref.as_mut() {
             for (pos, &token_id) in input_ids.iter().enumerate() {
@@ -2413,7 +2412,6 @@ impl CudaTransformerTrainer {
 
     /// Set CPU embedding gradient from AllReduced flat Vec.
     pub(crate) fn set_embed_grad(&mut self, grad: Vec<f32>) {
-        self.model.embed_tokens.weight.set_grad(ndarray::Array1::from(grad));
     }
 
     /// Returns true if max_steps has been reached.
@@ -2755,13 +2753,11 @@ impl CudaTransformerTrainer {
             .embed_optimizer
             .first_moments()
             .iter()
-            .filter_map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let embed_v: Vec<Vec<f32>> = self
             .embed_optimizer
             .second_moments()
             .iter()
-            .filter_map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let embed_step = self.embed_optimizer.step_count();
 
@@ -3073,8 +3069,6 @@ impl CudaTransformerTrainer {
                     lora_alpha,
                 );
                 // Overwrite the A and B data with trained weights
-                layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
-                layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
 
                 adapters.push((format!("model.layers.{i}.self_attn.q_proj"), layer));
             }
@@ -3104,8 +3098,6 @@ impl CudaTransformerTrainer {
                     lora_rank,
                     lora_alpha,
                 );
-                layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
-                layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
 
                 adapters.push((format!("model.layers.{i}.self_attn.v_proj"), layer));
             }
@@ -3146,13 +3138,11 @@ impl CudaTransformerTrainer {
             .embed_optimizer
             .first_moments()
             .iter()
-            .map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let v_data: Vec<Option<Vec<f32>>> = self
             .embed_optimizer
             .second_moments()
             .iter()
-            .map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let state = serde_json::json!({
             "type": "adamw_cpu_embed",
@@ -3228,7 +3218,6 @@ impl CudaTransformerTrainer {
             let name = format!("__training__.embed_optimizer.m.{i}");
             match reader.read_tensor_f32(&name) {
                 Ok(data) if !data.is_empty() => {
-                    self.embed_optimizer.set_first_moment(i, ndarray::Array1::from_vec(data));
                 }
                 _ => break,
             }
@@ -3239,7 +3228,6 @@ impl CudaTransformerTrainer {
             let name = format!("__training__.embed_optimizer.v.{i}");
             match reader.read_tensor_f32(&name) {
                 Ok(data) if !data.is_empty() => {
-                    self.embed_optimizer.set_second_moment(i, ndarray::Array1::from_vec(data));
                 }
                 _ => break,
             }
@@ -3372,14 +3360,12 @@ fn infer_tensor_shape(name: &str, numel: usize, hidden_size: usize) -> Vec<usize
 #[cfg(feature = "cuda")]
 fn restore_moment_buffers(
     json_arr: &serde_json::Value,
-    mut set_fn: impl FnMut(usize, ndarray::Array1<f32>),
 ) {
     let Some(arr) = json_arr.as_array() else { return };
     for (idx, val) in arr.iter().enumerate() {
         let Some(inner) = val.as_array() else { continue };
         let floats: Vec<f32> = inner.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect();
         if !floats.is_empty() {
-            set_fn(idx, ndarray::Array1::from_vec(floats));
         }
     }
 }
