@@ -1,7 +1,7 @@
 //! Activation function autograd operations: relu, gelu, swish, softmax
 
 use crate::autograd::{BackwardOp, Tensor};
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 use provable_contracts_macros::contract;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -469,7 +469,7 @@ mod swiglu_contract_tests {
 #[cfg(test)]
 mod gelu_contract_tests {
     use super::*;
-    use crate::sovereign_array::Array1;
+    use ndarray::Array1;
 
     /// FALSIFY-GE-001: Non-negativity — gelu(x) >= 0 for positive x
     #[test]
@@ -542,7 +542,7 @@ mod gelu_contract_tests {
 
     mod ge_proptest_falsify {
         use super::*;
-        use crate::sovereign_array::Array1;
+        use ndarray::Array1;
         use proptest::prelude::*;
 
         proptest! {

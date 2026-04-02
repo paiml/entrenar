@@ -2561,7 +2561,7 @@ pub struct CudaNf4TransformerBlock {
     w_down_nf4: GpuBuffer<u8>,
     w_down_scales: GpuBuffer<f32>,
     // ENT-287: Pre-dequantized fp32 weights for cuBLAS GEMM (correct weight layout)
-    pub(crate) w_q_fp32: GpuBuffer<f32>,
+    w_q_fp32: GpuBuffer<f32>,
     w_k_fp32: GpuBuffer<f32>,
     w_v_fp32: GpuBuffer<f32>,
     w_o_fp32: GpuBuffer<f32>,

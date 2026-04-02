@@ -1,7 +1,7 @@
 //! Tests for dataset module
 
 use super::*;
-use crate::sovereign_array::Array2;
+use ndarray::Array2;
 
 // =========================================================================
 // Split Tests

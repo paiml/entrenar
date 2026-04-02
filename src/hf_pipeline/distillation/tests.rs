@@ -1,6 +1,6 @@
 //! Tests for distillation module.
 
-use crate::sovereign_array::{Array1, Array2};
+use ndarray::{array, Array1, Array2};
 
 use super::utils::{cross_entropy_loss, kl_divergence, l2_normalize, log_softmax, softmax};
 use super::{AttentionTransfer, DistillationLoss, ProgressiveDistillation};

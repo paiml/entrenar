@@ -36,7 +36,7 @@ proptest! {
         let mut c = matmul(&a, &b, m, k, n);
 
         let c_len = c.len();
-        backward(&mut c, Some(crate::sovereign_array::Array1::ones(c_len)));
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
         let analytical_a = a.grad().expect("gradient should be available");
 

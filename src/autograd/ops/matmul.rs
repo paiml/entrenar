@@ -6,7 +6,7 @@
 
 use crate::autograd::{BackwardOp, Tensor};
 use crate::trace::{TraceStep, TRACER};
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -77,7 +77,7 @@ pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
 /// - **Invariant**: `original.grad()` receives the correctly transposed gradient
 pub fn transpose_tracked(tensor: &Tensor, rows: usize, cols: usize) -> Tensor {
     let data = tensor.data();
-    let slice = data.as_slice();
+    let slice = data.as_slice().expect("transpose_tracked: tensor must be contiguous");
     let transposed_data = transpose(slice, rows, cols);
     let mut result = Tensor::from_vec(transposed_data, tensor.requires_grad());
 
@@ -109,7 +109,7 @@ struct TransposeBackward {
 impl BackwardOp for TransposeBackward {
     fn backward(&self) {
         if let Some(grad) = self.result_grad.borrow().as_ref() {
-            let grad_slice = grad.as_slice();
+            let grad_slice = grad.as_slice().expect("gradient must be contiguous");
             // Inverse transpose: (cols, rows) → (rows, cols)
             let grad_original = transpose(grad_slice, self.cols, self.rows);
             self.original.accumulate_grad(Array1::from(grad_original));
@@ -447,8 +447,8 @@ pub fn matmul(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor {
 
     // Compute C = A @ B using GPU if available
     let result_data = matmul_compute(
-        a.data().as_slice(),
-        b.data().as_slice(),
+        a.data().as_slice().expect("matrix A must be contiguous"),
+        b.data().as_slice().expect("matrix B must be contiguous"),
         m,
         k,
         n,
@@ -489,11 +489,11 @@ impl BackwardOp for MatmulBackward {
             // ∂L/∂A = ∂L/∂C @ B^T  (m×n) @ (n×k) = (m×k)
             // ∂L/∂B = A^T @ ∂L/∂C  (k×m) @ (m×n) = (k×n)
 
-            let grad_c = grad_output.as_slice();
+            let grad_c = grad_output.as_slice().expect("gradient output must be contiguous");
             let a_data = self.a.data();
             let b_data = self.b.data();
-            let a_slice = a_data.as_slice();
-            let b_slice = b_data.as_slice();
+            let a_slice = a_data.as_slice().expect("matrix A must be contiguous");
+            let b_slice = b_data.as_slice().expect("matrix B must be contiguous");
 
             if self.a.requires_grad() {
                 // grad_A = grad_C @ B^T
@@ -562,8 +562,8 @@ pub fn matmul_nt(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor
 
     let a_slice = a.data();
     let b_slice = b.data();
-    let a_data = a_slice.as_slice();
-    let b_data = b_slice.as_slice();
+    let a_data = a_slice.as_slice().expect("matrix A must be contiguous");
+    let b_data = b_slice.as_slice().expect("matrix B must be contiguous");
 
     // C = A @ B^T: C(i,j) = Σ_k A(i,k) * B(j,k)
     let result_data = matmul_nt_compute(a_data, b_data, m, k, n);
@@ -614,12 +614,12 @@ impl BackwardOp for MatmulNtBackward {
             // ∂L/∂A = ∂L/∂C @ B     (M,N) @ (N,K) = (M,K)
             // ∂L/∂B = ∂L/∂C^T @ A   (N,M) @ (M,K) = (N,K)
 
-            let grad_c = grad_output.as_slice();
+            let grad_c = grad_output.as_slice().expect("gradient output must be contiguous");
 
             if self.a.requires_grad() {
                 // grad_A = grad_C @ B  (standard matmul)
                 let b_data = self.b.data();
-                let b_slice = b_data.as_slice();
+                let b_slice = b_data.as_slice().expect("matrix B must be contiguous");
                 let grad_a = matmul_compute(grad_c, b_slice, self.m, self.n, self.k);
                 self.a.accumulate_grad(Array1::from(grad_a));
             }
@@ -627,7 +627,7 @@ impl BackwardOp for MatmulNtBackward {
             if self.b.requires_grad() {
                 // grad_B = grad_C^T @ A
                 let a_data = self.a.data();
-                let a_slice = a_data.as_slice();
+                let a_slice = a_data.as_slice().expect("matrix A must be contiguous");
                 let grad_c_t = transpose(grad_c, self.m, self.n);
                 let grad_b = matmul_compute(&grad_c_t, a_slice, self.n, self.m, self.k);
                 self.b.accumulate_grad(Array1::from(grad_b));
@@ -710,7 +710,7 @@ mod tests {
         let c = matmul(&a, &b, 2, 2, 2);
         assert!(!c.requires_grad());
         assert_eq!(
-            c.data().as_slice(),
+            c.data().as_slice().expect("operation should succeed"),
             &[19.0, 22.0, 43.0, 50.0]
         );
     }
@@ -1057,7 +1057,7 @@ mod tests {
 
         // Verify transposed data is correct
         let at_data = a_t.data();
-        let at_slice = at_data.as_slice();
+        let at_slice = at_data.as_slice().expect("contiguous");
         assert_eq!(at_slice, &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
 
         // Set gradient on transposed tensor (as if backward computed it)
@@ -1071,7 +1071,7 @@ mod tests {
 
         // Check that the original tensor has the correctly transposed gradient
         let grad = a.grad().expect("original tensor should have gradient");
-        let grad_slice = grad.as_slice();
+        let grad_slice = grad.as_slice().expect("contiguous");
         // Transpose of 3×2 [10,40,20,50,30,60] = 2×3 [10,20,30,40,50,60]
         assert_eq!(grad_slice, &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
     }
@@ -1104,7 +1104,7 @@ mod tests {
         assert_eq!(grad.len(), 6);
 
         // Verify gradient is finite and non-zero
-        for (i, &val) in grad.as_slice().iter().enumerate() {
+        for (i, &val) in grad.as_slice().expect("contiguous").iter().enumerate() {
             assert!(val.is_finite(), "Gradient element {i} is not finite: {val}");
         }
         let grad_sum: f32 = grad.iter().sum();

@@ -72,12 +72,12 @@ pub use precision::{
 pub use tensor::Tensor;
 
 /// Perform backward pass on a tensor
-pub fn backward(tensor: &mut Tensor, grad_output: Option<crate::sovereign_array::Array1<f32>>) {
+pub fn backward(tensor: &mut Tensor, grad_output: Option<ndarray::Array1<f32>>) {
     if let Some(grad) = grad_output {
         tensor.set_grad(grad);
     } else {
         // Initialize with ones for scalar loss
-        let ones = crate::sovereign_array::Array1::ones(tensor.data().len());
+        let ones = ndarray::Array1::ones(tensor.data().len());
         tensor.set_grad(ones);
     }
 

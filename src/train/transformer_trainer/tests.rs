@@ -623,7 +623,7 @@ fn test_gradient_accumulation_produces_different_weights_than_no_accum() {
     trainer1.train_batch(&batch);
     trainer1.train_batch(&batch);
     let weights1: Vec<f32> =
-        trainer1.model().embed_tokens.weight.data().as_slice().to_vec();
+        trainer1.model().embed_tokens.weight.data().as_slice().unwrap().to_vec();
 
     // Train with accum=2 (deferred optimizer step)
     let config_accum = TransformerTrainConfig::new(model_config.clone())
@@ -635,7 +635,7 @@ fn test_gradient_accumulation_produces_different_weights_than_no_accum() {
     trainer2.train_batch(&batch);
     trainer2.train_batch(&batch);
     let weights2: Vec<f32> =
-        trainer2.model().embed_tokens.weight.data().as_slice().to_vec();
+        trainer2.model().embed_tokens.weight.data().as_slice().unwrap().to_vec();
 
     // Weights should differ (different optimizer dynamics)
     let diff: f64 =

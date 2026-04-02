@@ -7,7 +7,7 @@
 //! matrix W such that `fix_features ≈ W * error_features`. Prediction
 //! for new errors is a simple matrix-vector multiply.
 
-use crate::sovereign_array::{Array1, Array2};
+use ndarray::{Array1, Array2};
 use serde::{Deserialize, Serialize};
 
 /// An error-fix training pair for CITL.
@@ -163,7 +163,7 @@ impl CitlTrainer {
         }
 
         let x = Array1::from_vec(error_features.to_vec());
-        let y = self.weights.dot_vec(&x);
+        let y = self.weights.dot(&x);
         y.to_vec()
     }
 

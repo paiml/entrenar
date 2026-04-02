@@ -59,7 +59,7 @@ fn test_mean_pool() {
     let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], false);
     let pooled = head.mean_pool(&hidden, 2);
     let data = pooled.data();
-    let slice = data.as_slice();
+    let slice = data.as_slice().expect("contiguous");
     assert_eq!(slice.len(), 4);
     assert!((slice[0] - 3.0).abs() < 1e-6);
     assert!((slice[1] - 4.0).abs() < 1e-6);
@@ -585,7 +585,7 @@ fn test_mean_pool_single_token() {
     let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], false);
     let pooled = head.mean_pool(&hidden, 1);
     let data = pooled.data();
-    let slice = data.as_slice();
+    let slice = data.as_slice().expect("contiguous");
     assert_eq!(slice.len(), 4);
     assert!((slice[0] - 1.0).abs() < 1e-6);
     assert!((slice[1] - 2.0).abs() < 1e-6);

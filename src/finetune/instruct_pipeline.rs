@@ -511,7 +511,7 @@ impl InstructPipeline {
             // Q projection LoRA
             let q_dim = model_config.num_attention_heads * head_dim;
             let q_weight = Tensor::from_vec(
-                attn.w_q.data().as_slice().to_vec(),
+                attn.w_q.data().as_slice().expect("contiguous w_q").to_vec(),
                 false,
             );
             lora_layers.push(LoRALayer::new(
@@ -525,7 +525,7 @@ impl InstructPipeline {
             // V projection LoRA
             let v_dim = model_config.num_kv_heads * head_dim;
             let v_weight = Tensor::from_vec(
-                attn.w_v.data().as_slice().to_vec(),
+                attn.w_v.data().as_slice().expect("contiguous w_v").to_vec(),
                 false,
             );
             lora_layers.push(LoRALayer::new(
@@ -662,7 +662,7 @@ impl InstructPipeline {
 
         // 2. Forward pass → logits [seq_len, vocab_size]
         let logits = self.model.forward(&full_ids);
-        let logits_data = logits.data().as_slice().to_vec();
+        let logits_data = logits.data().as_slice().expect("contiguous logits").to_vec();
 
         // 3. Causal LM loss on response tokens only
         let loss_start = prompt_len.saturating_sub(1);
@@ -677,7 +677,7 @@ impl InstructPipeline {
             Self::compute_causal_lm_loss(&logits_data, &full_ids, loss_start, loss_end, vocab_size);
 
         // 4. Backward through autograd
-        logits.set_grad(crate::sovereign_array::Array1::from(grad_logits));
+        logits.set_grad(ndarray::Array1::from(grad_logits));
         if let Some(op) = logits.backward_op() {
             op.backward();
         }
@@ -901,7 +901,7 @@ impl InstructPipeline {
         let hidden_dim = self.wgpu_training.as_ref().unwrap().hidden_dim;
 
         let logits_tensor = self.model.forward(full_ids);
-        let logits_data = logits_tensor.data().as_slice().to_vec();
+        let logits_data = logits_tensor.data().as_slice().expect("contiguous").to_vec();
 
         let t1 = std::time::Instant::now();
         eprintln!("[PROFILE] cpu_forward: {:.0}ms", t1.duration_since(t0).as_millis());
@@ -977,7 +977,7 @@ impl InstructPipeline {
         let wgpu = self.wgpu_training.as_ref().unwrap();
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
         logits_tensor
-            .set_grad(crate::sovereign_array::Array1::from(grad_logits_data[..seq_len * vocab_size].to_vec()));
+            .set_grad(ndarray::Array1::from(grad_logits_data[..seq_len * vocab_size].to_vec()));
         if let Some(op) = logits_tensor.backward_op() {
             op.backward();
         }
@@ -1057,7 +1057,7 @@ impl InstructPipeline {
                 Some(data) => data,
                 None => {
                     let logits = self.model.forward(full_ids);
-                    logits.data().as_slice().to_vec()
+                    logits.data().as_slice().expect("contiguous logits").to_vec()
                 }
             }
         } else {
@@ -1066,7 +1066,7 @@ impl InstructPipeline {
                 Some(data) => data,
                 None => {
                     let logits = self.model.forward(full_ids);
-                    logits.data().as_slice().to_vec()
+                    logits.data().as_slice().expect("contiguous logits").to_vec()
                 }
             }
         };
@@ -1131,7 +1131,7 @@ impl InstructPipeline {
                 let lm_weight =
                     self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
                 let lm_data = lm_weight.data();
-                let lm_slice = lm_data.as_slice();
+                let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
                 crate::autograd::ops::matmul::matmul_compute(
                     &grad_logits[..seq_len * vocab_size],
                     lm_slice, // embed[vocab, hidden]
@@ -1190,7 +1190,7 @@ impl InstructPipeline {
             let prompt_len = prompt_len.min(seq_len);
 
             let logits = self.model.forward(&full_ids);
-            let logits_data = logits.data().as_slice().to_vec();
+            let logits_data = logits.data().as_slice().expect("contiguous logits").to_vec();
 
             let loss_start = prompt_len.saturating_sub(1);
             let loss_end = seq_len - 1;
@@ -1385,7 +1385,10 @@ impl InstructPipeline {
         // Uploading all projections as F32 was 28 GB = 30 min init. This is < 1 second.
         let mut uploaded = 0usize;
         for (name, tensor) in self.model.named_parameters() {
-            let data = tensor.data().as_slice();
+            let data = match tensor.data().as_slice() {
+                Some(s) => s,
+                None => continue,
+            };
 
             let gpu_name = name
                 .replace("model.layers.", "layer.")
@@ -1651,23 +1654,23 @@ impl InstructPipeline {
 
         for (i, layer) in model.layers.iter().enumerate() {
             let input_norm = layer.input_norm.weight.data();
-            let input_norm = input_norm.as_slice();
+            let input_norm = input_norm.as_slice().expect("contiguous input_norm");
             let post_attn_norm = layer.post_attn_norm.weight.data();
-            let post_attn_norm = post_attn_norm.as_slice();
+            let post_attn_norm = post_attn_norm.as_slice().expect("contiguous post_attn_norm");
             let w_q = layer.self_attn.w_q.data();
-            let w_q = w_q.as_slice();
+            let w_q = w_q.as_slice().expect("contiguous w_q");
             let w_k = layer.self_attn.w_k.data();
-            let w_k = w_k.as_slice();
+            let w_k = w_k.as_slice().expect("contiguous w_k");
             let w_v = layer.self_attn.w_v.data();
-            let w_v = w_v.as_slice();
+            let w_v = w_v.as_slice().expect("contiguous w_v");
             let w_o = layer.self_attn.w_o.data();
-            let w_o = w_o.as_slice();
+            let w_o = w_o.as_slice().expect("contiguous w_o");
             let w_gate = layer.ffn.w_gate.data();
-            let w_gate = w_gate.as_slice();
+            let w_gate = w_gate.as_slice().expect("contiguous w_gate");
             let w_up = layer.ffn.w_up.data();
-            let w_up = w_up.as_slice();
+            let w_up = w_up.as_slice().expect("contiguous w_up");
             let w_down = layer.ffn.w_down.data();
-            let w_down = w_down.as_slice();
+            let w_down = w_down.as_slice().expect("contiguous w_down");
 
             let result = if quantize_nf4 {
                 let lora_scale = config.lora_alpha / config.lora_rank as f32;
@@ -1682,8 +1685,8 @@ impl InstructPipeline {
                     q_a_data = lora_layers[q_lora_idx].lora_a().data();
                     q_b_data = lora_layers[q_lora_idx].lora_b().data();
                     Some((
-                        q_a_data.as_slice(),
-                        q_b_data.as_slice(),
+                        q_a_data.as_slice().expect("contiguous lora_a_q"),
+                        q_b_data.as_slice().expect("contiguous lora_b_q"),
                     ))
                 } else {
                     None
@@ -1696,8 +1699,8 @@ impl InstructPipeline {
                     v_a_data = lora_layers[v_lora_idx].lora_a().data();
                     v_b_data = lora_layers[v_lora_idx].lora_b().data();
                     Some((
-                        v_a_data.as_slice(),
-                        v_b_data.as_slice(),
+                        v_a_data.as_slice().expect("contiguous lora_a_v"),
+                        v_b_data.as_slice().expect("contiguous lora_b_v"),
                     ))
                 } else {
                     None
@@ -1708,12 +1711,12 @@ impl InstructPipeline {
                     .self_attn
                     .q_norm
                     .as_ref()
-                    .map(|t| t.data().as_slice().to_vec());
+                    .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
                 let k_norm_data = layer
                     .self_attn
                     .k_norm
                     .as_ref()
-                    .map(|t| t.data().as_slice().to_vec());
+                    .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
 
                 crate::transformer::CudaNf4TransformerBlock::new(
                     model_config,
@@ -1776,7 +1779,6 @@ impl InstructPipeline {
         assert_eq!(blocks.len(), model.config.num_hidden_layers);
 
         // C-SCRATCH-001: Shared scratch for NF4
-        if let Some(crate::transformer::CudaBlock::Nf4(ref b)) = blocks.first() { let n = b.w_q_fp32.len(); let mut v = vec![0.0f32; n]; if b.w_q_fp32.copy_to_host(&mut v).is_ok() { let nz = v.iter().filter(|x| **x != 0.0).count(); eprintln!("[DIAG-FULL] L0 w_q len={n} nonzero={nz} first4={:?}", &v[..4]); } else { eprintln!("[DIAG-FULL] copy_to_host FAILED"); } }
         let shared_scratch = if quantize_nf4 {
             match CudaBlockScratch::new(model_config, max_seq_len, &ctx, config.lora_rank) {
                 Ok(s) => Some(s),
@@ -1822,7 +1824,7 @@ impl InstructPipeline {
 
         // Upload final RMSNorm weight
         let norm_data = model.norm.weight.data();
-        let norm_slice = norm_data.as_slice();
+        let norm_slice = norm_data.as_slice().expect("contiguous final norm weight");
         let final_norm_weight = match trainer.upload(norm_slice) {
             Ok(buf) => buf,
             Err(e) => {
@@ -1847,7 +1849,7 @@ impl InstructPipeline {
         // Without embeddings: model=1.1GB + blocks=~4GB = fits.
         let vocab_size = model_config.vocab_size;
         let embed_data = model.embed_tokens.weight.data();
-        let embed_slice = embed_data.as_slice();
+        let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
         // entrenar#317: single embedding layout (not both orig + transposed).
         // Halves VRAM from 1780MB to 890MB, fitting 8GB yoga.
@@ -2000,7 +2002,7 @@ impl InstructPipeline {
         // copy_from_buffer_async requires exact size match.
         let hidden = model.embed_tokens.forward(token_ids);
         let hidden_data = hidden.data();
-        let hidden_slice = hidden_data.as_slice();
+        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
 
         // PMAT-420 / entrenar#316: Use seq_len-sized fresh buffers (like inference forward).
         // Pre-allocated max_seq_len buffers cause NaN after 28 layers.
@@ -2343,7 +2345,7 @@ impl InstructPipeline {
 
         let hidden = model.embed_tokens.forward(token_ids);
         let hidden_data = hidden.data();
-        let hidden_slice = hidden_data.as_slice();
+        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
 
         let mut gpu_input = trainer.upload(hidden_slice).ok()?;
         let mut gpu_output = trainer.zeros(seq_len * hidden_size).ok()?;
@@ -2373,7 +2375,7 @@ impl InstructPipeline {
         let result_tensor = crate::Tensor::from_vec(result_data, false);
         let normed = model.norm.forward_batched(&result_tensor, seq_len, hidden_size);
         let normed_data = normed.data();
-        let normed_slice = normed_data.as_slice();
+        let normed_slice = normed_data.as_slice().expect("contiguous normed");
         Some(normed_slice.to_vec())
     }
 
@@ -2487,7 +2489,7 @@ impl InstructPipeline {
         // Embed on CPU, upload to GPU (fresh buffer, seq_len-sized)
         let hidden = self.model.embed_tokens.forward(token_ids);
         let hidden_data = hidden.data();
-        let hidden_slice = hidden_data.as_slice();
+        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
 
         let mut gpu_input = trainer.upload(hidden_slice).ok()?;
         let mut gpu_output = trainer.zeros(seq_len * hidden_size).ok()?;
@@ -2542,7 +2544,7 @@ impl InstructPipeline {
         let result_tensor = crate::autograd::Tensor::from_vec(result, false);
         let normed = self.model.norm.forward_batched(&result_tensor, seq_len, hidden_size);
         let normed_data = normed.data();
-        let normed_slice = normed_data.as_slice();
+        let normed_slice = normed_data.as_slice().expect("contiguous normed");
 
         // Save normed hidden for lm_head backward
         if let Some(ref mut training) = self.gpu_training {
@@ -2554,7 +2556,7 @@ impl InstructPipeline {
         // CPU lm_head
         let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
         let lm_data = lm_weight.data();
-        let lm_slice = lm_data.as_slice();
+        let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
         let logits = crate::autograd::ops::matmul::matmul_nt_compute(
             normed_slice,
             lm_slice,
@@ -2603,7 +2605,7 @@ impl InstructPipeline {
         let vocab_size = self.model.config().vocab_size;
         let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
         let lm_data = lm_weight.data();
-        let lm_slice = lm_data.as_slice();
+        let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
         let logits = crate::autograd::ops::matmul::matmul_nt_compute(
             hidden_slice,
             lm_slice,
@@ -2837,7 +2839,7 @@ impl InstructPipeline {
 
             // Extract logits for last position
             let logits_data = logits.data();
-            let logits_slice = logits_data.as_slice();
+            let logits_slice = logits_data.as_slice().unwrap_or(&[]);
             let last_pos_start = (seq_len - 1) * vocab_size;
             let last_pos_logits = &logits_slice[last_pos_start..last_pos_start + vocab_size];
 

@@ -2,7 +2,7 @@
 
 use super::Optimizer;
 use crate::Tensor;
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 
 /// Adam optimizer (Adaptive Moment Estimation)
 pub struct Adam {
@@ -59,11 +59,11 @@ impl Optimizer for Adam {
                     let v = self.v[i].as_mut().expect("velocity buffer initialized above");
 
                     // Get mutable slices (arrays are always contiguous)
-                    let grad_slice = grad.as_slice();
-                    let m_slice = m.as_slice_mut();
-                    let v_slice = v.as_slice_mut();
+                    let grad_slice = grad.as_slice().expect("grad array is contiguous");
+                    let m_slice = m.as_slice_mut().expect("momentum array is contiguous");
+                    let v_slice = v.as_slice_mut().expect("velocity array is contiguous");
                     let param_slice =
-                        param.data_mut().as_slice_mut();
+                        param.data_mut().as_slice_mut().expect("param array is contiguous");
 
                     // Use SIMD-accelerated update
                     super::simd::simd_adam_update(

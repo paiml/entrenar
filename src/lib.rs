@@ -52,8 +52,6 @@ macro_rules! contract_post_embedding_lookup {
 }
 
 pub mod aprender_compat;
-#[macro_use]
-pub mod sovereign_array;
 pub mod autograd;
 #[cfg(feature = "citl")]
 pub mod citl;

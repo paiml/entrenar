@@ -1,6 +1,6 @@
 //! Teacher cache for distillation
 
-use crate::sovereign_array::Array2;
+use ndarray::Array2;
 use std::collections::HashMap;
 
 /// Cached teacher outputs for distillation

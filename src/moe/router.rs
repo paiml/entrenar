@@ -3,7 +3,7 @@
 //! Provides `TopKRouter` (deterministic) and `NoisyTopKRouter` (with exploration noise)
 //! for selecting which experts process each input token.
 
-use crate::sovereign_array::{Array1, Array2};
+use ndarray::{Array1, Array2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -106,11 +106,9 @@ impl NoisyTopKRouter {
 
         // Add Gaussian noise
         let mut rng = rand::rng();
-        for row in logits.rows_mut() {
-            for val in row.iter_mut() {
-                let noise: f32 = rng.random::<f32>() * 2.0 - 1.0;
-                *val += noise * self.noise_std;
-            }
+        for val in &mut logits {
+            let noise: f32 = rng.random::<f32>() * 2.0 - 1.0; // Uniform approximation
+            *val += noise * self.noise_std;
         }
 
         let routing_probs = softmax_rows(&logits);
@@ -126,16 +124,12 @@ impl NoisyTopKRouter {
 /// Compute row-wise softmax of a 2D array.
 pub(crate) fn softmax_rows(logits: &Array2<f32>) -> Array2<f32> {
     let mut result = logits.clone();
-    for row in result.rows_mut() {
+    for mut row in result.rows_mut() {
         let max_val = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        for v in row.iter_mut() {
-            *v = (*v - max_val).exp();
-        }
+        row.mapv_inplace(|v| (v - max_val).exp());
         let sum: f32 = row.iter().sum();
         if sum > 0.0 {
-            for v in row.iter_mut() {
-                *v /= sum;
-            }
+            row.mapv_inplace(|v| v / sum);
         }
     }
     result
@@ -242,6 +236,6 @@ pub(crate) fn expert_load_fractions(routing_probs: &Array2<f32>) -> Array1<f32> 
     if batch_size == 0 {
         return Array1::zeros(num_experts);
     }
-    let col_sums = routing_probs.sum_axis(crate::sovereign_array::Axis(0));
+    let col_sums = routing_probs.sum_axis(ndarray::Axis(0));
     col_sums / batch_size as f32
 }

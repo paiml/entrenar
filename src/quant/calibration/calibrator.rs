@@ -109,8 +109,9 @@ impl Calibrator {
 
     /// Observe a tensor for calibration
     pub fn observe_tensor(&mut self, tensor: &Tensor) {
-        let slice = tensor.data().as_slice();
-        self.observe(slice);
+        if let Some(slice) = tensor.data().as_slice() {
+            self.observe(slice);
+        }
     }
 
     /// Observe multiple tensors

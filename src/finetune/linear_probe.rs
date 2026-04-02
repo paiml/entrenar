@@ -99,9 +99,9 @@ impl LinearProbe {
     pub fn forward(&self, embedding: &Tensor) -> Tensor {
         let logits = matmul(embedding, &self.weight, 1, self.hidden_size, self.num_classes);
         let logits_data = logits.data();
-        let logits_slice = logits_data.as_slice();
+        let logits_slice = logits_data.as_slice().expect("contiguous logits");
         let bias_data = self.bias.data();
-        let bias_slice = bias_data.as_slice();
+        let bias_slice = bias_data.as_slice().expect("contiguous bias");
 
         let output: Vec<f32> =
             logits_slice.iter().zip(bias_slice.iter()).map(|(&l, &b)| l + b).collect();
@@ -118,7 +118,7 @@ impl LinearProbe {
     pub fn predict(&self, embedding: &Tensor) -> usize {
         let logits = self.forward(embedding);
         let data = logits.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().expect("contiguous");
         slice
             .iter()
             .enumerate()
@@ -177,7 +177,7 @@ impl LinearProbe {
 
                 // Update weight: grad_W = emb^T @ grad_logits
                 let w_data = self.weight.data();
-                let mut w_slice = w_data.as_slice().to_vec();
+                let mut w_slice = w_data.as_slice().expect("contiguous").to_vec();
                 for i in 0..self.hidden_size {
                     for j in 0..self.num_classes {
                         w_slice[i * self.num_classes + j] -=
@@ -188,7 +188,7 @@ impl LinearProbe {
 
                 // Update bias: grad_b = grad_logits
                 let b_data = self.bias.data();
-                let mut b_slice = b_data.as_slice().to_vec();
+                let mut b_slice = b_data.as_slice().expect("contiguous").to_vec();
                 for j in 0..self.num_classes {
                     b_slice[j] -= learning_rate * grad_logits[j];
                 }
@@ -437,7 +437,7 @@ fn softmax_slice(logits: &[f32]) -> Vec<f32> {
 /// Compute softmax probabilities from a tensor.
 fn softmax_vec(logits: &Tensor) -> Vec<f32> {
     let data = logits.data();
-    let slice = data.as_slice();
+    let slice = data.as_slice().expect("contiguous logits");
     let max_val = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let exp_vals: Vec<f32> = slice.iter().map(|&x| (x - max_val).exp()).collect();
     let sum: f32 = exp_vals.iter().sum();

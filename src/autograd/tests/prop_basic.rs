@@ -18,7 +18,7 @@ proptest! {
         let mut c = add(&a, &b);
 
         let c_len = c.len();
-        backward(&mut c, Some(crate::sovereign_array::Array1::ones(c_len)));
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
         let analytical_a = a.grad().expect("gradient should be available");
 
@@ -53,7 +53,7 @@ proptest! {
         let mut c = mul(&a, &b);
 
         let c_len = c.len();
-        backward(&mut c, Some(crate::sovereign_array::Array1::ones(c_len)));
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
         let analytical_a = a.grad().expect("gradient should be available");
 
@@ -87,7 +87,7 @@ proptest! {
         let mut c = relu(&a);
 
         let c_len = c.len();
-        backward(&mut c, Some(crate::sovereign_array::Array1::ones(c_len)));
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
         let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
@@ -117,7 +117,7 @@ proptest! {
         let mut c = gelu(&a);
 
         let c_len = c.len();
-        backward(&mut c, Some(crate::sovereign_array::Array1::ones(c_len)));
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
         let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
@@ -146,7 +146,7 @@ proptest! {
         let mut c = swish(&a);
 
         let c_len = c.len();
-        backward(&mut c, Some(crate::sovereign_array::Array1::ones(c_len)));
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
         let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(

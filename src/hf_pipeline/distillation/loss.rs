@@ -2,7 +2,7 @@
 //!
 //! Implements Hinton et al. (2015) distillation loss.
 
-use crate::sovereign_array::{Array1, Array2};
+use ndarray::{Array1, Array2};
 
 use super::utils::{cross_entropy_loss, kl_divergence, log_softmax, softmax};
 

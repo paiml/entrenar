@@ -35,7 +35,7 @@ proptest! {
 
         let mut output = attention(&q_tensor, &k_tensor, &v_tensor, seq_len, d_k, seq_len, d_v);
 
-        backward(&mut output, Some(crate::sovereign_array::Array1::ones(seq_len * d_v)));
+        backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
 
         let analytical = q_tensor.grad().expect("gradient should be available");
         let numerical = finite_difference(
@@ -84,7 +84,7 @@ proptest! {
 
         let mut output = attention(&q_tensor, &k_tensor, &v_tensor, seq_len, d_k, seq_len, d_v);
 
-        backward(&mut output, Some(crate::sovereign_array::Array1::ones(seq_len * d_v)));
+        backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
 
         let analytical = k_tensor.grad().expect("gradient should be available");
         let numerical = finite_difference(
@@ -133,7 +133,7 @@ proptest! {
 
         let mut output = attention(&q_tensor, &k_tensor, &v_tensor, seq_len, d_k, seq_len, d_v);
 
-        backward(&mut output, Some(crate::sovereign_array::Array1::ones(seq_len * d_v)));
+        backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
 
         let analytical = v_tensor.grad().expect("gradient should be available");
         let numerical = finite_difference(

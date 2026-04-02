@@ -38,8 +38,9 @@ impl ClassifyPipeline {
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits")
             .iter()
-            .zip(self.classifier.bias.data().as_slice().iter())
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -65,13 +66,13 @@ impl ClassifyPipeline {
         // ── 4. Backward through matmul (autograd) ─────────────────────
         // Set loss gradient on the matmul output, then call backward
         let logits_tensor = logits;
-        logits_tensor.set_grad(crate::sovereign_array::Array1::from(grad_logits.clone()));
+        logits_tensor.set_grad(ndarray::Array1::from(grad_logits.clone()));
         if let Some(op) = logits_tensor.backward_op() {
             op.backward();
         }
 
         // Manually set bias gradient (∂L/∂bias = ∂L/∂logits)
-        self.classifier.bias.set_grad(crate::sovereign_array::Array1::from(grad_logits.clone()));
+        self.classifier.bias.set_grad(ndarray::Array1::from(grad_logits.clone()));
 
         // GPU backward through transformer blocks (F-CUDA-014 / ENT-153)
         #[cfg(feature = "cuda")]
@@ -431,8 +432,9 @@ impl ClassifyPipeline {
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits")
             .iter()
-            .zip(self.classifier.bias.data().as_slice().iter())
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -478,13 +480,13 @@ impl ClassifyPipeline {
         grad_logits[label] -= w;
 
         // CPU autograd backward for classifier head (LoRA + classifier.weight)
-        logits.set_grad(crate::sovereign_array::Array1::from(grad_logits.clone()));
+        logits.set_grad(ndarray::Array1::from(grad_logits.clone()));
         if let Some(op) = logits.backward_op() {
             op.backward();
         }
 
         // Accumulate bias gradient (not set — accumulate)
-        self.classifier.bias.accumulate_grad(crate::sovereign_array::Array1::from(grad_logits.clone()));
+        self.classifier.bias.accumulate_grad(ndarray::Array1::from(grad_logits.clone()));
 
         // GPU backward through all transformer blocks (F-CUDA-014 / ENT-153)
         #[cfg(feature = "cuda")]
@@ -533,8 +535,9 @@ impl ClassifyPipeline {
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits")
             .iter()
-            .zip(self.classifier.bias.data().as_slice().iter())
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -570,12 +573,12 @@ impl ClassifyPipeline {
         let mut grad_logits: Vec<f32> = probs.iter().map(|&p| w * p).collect();
         grad_logits[label] -= w;
 
-        logits.set_grad(crate::sovereign_array::Array1::from(grad_logits.clone()));
+        logits.set_grad(ndarray::Array1::from(grad_logits.clone()));
         if let Some(op) = logits.backward_op() {
             op.backward();
         }
 
-        self.classifier.bias.accumulate_grad(crate::sovereign_array::Array1::from(grad_logits));
+        self.classifier.bias.accumulate_grad(ndarray::Array1::from(grad_logits));
 
         (loss_val, predicted)
     }
@@ -667,8 +670,9 @@ impl ClassifyPipeline {
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits")
             .iter()
-            .zip(self.classifier.bias.data().as_slice().iter())
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -716,8 +720,9 @@ impl ClassifyPipeline {
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits")
             .iter()
-            .zip(self.classifier.bias.data().as_slice().iter())
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -775,8 +780,9 @@ impl ClassifyPipeline {
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits")
             .iter()
-            .zip(self.classifier.bias.data().as_slice().iter())
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -811,13 +817,13 @@ impl ClassifyPipeline {
 
         // ── 4. Backward through matmul (autograd) ─────────────────────
         let logits_tensor = logits;
-        logits_tensor.set_grad(crate::sovereign_array::Array1::from(grad_logits.clone()));
+        logits_tensor.set_grad(ndarray::Array1::from(grad_logits.clone()));
         if let Some(op) = logits_tensor.backward_op() {
             op.backward();
         }
 
         // Manually set bias gradient
-        self.classifier.bias.set_grad(crate::sovereign_array::Array1::from(grad_logits));
+        self.classifier.bias.set_grad(ndarray::Array1::from(grad_logits));
 
         // ── 5. Optimizer step ─────────────────────────────────────────
         let mut params: Vec<&mut Tensor> = Vec::new();
@@ -982,7 +988,7 @@ impl ClassifyPipeline {
         for lora in &self.lora_layers {
             let a_len = lora.lora_a().data().len();
             if offset + a_len <= averaged_grads.len() {
-                lora.lora_a().set_grad(crate::sovereign_array::Array1::from_vec(
+                lora.lora_a().set_grad(ndarray::Array1::from_vec(
                     averaged_grads[offset..offset + a_len].to_vec(),
                 ));
             }
@@ -990,7 +996,7 @@ impl ClassifyPipeline {
 
             let b_len = lora.lora_b().data().len();
             if offset + b_len <= averaged_grads.len() {
-                lora.lora_b().set_grad(crate::sovereign_array::Array1::from_vec(
+                lora.lora_b().set_grad(ndarray::Array1::from_vec(
                     averaged_grads[offset..offset + b_len].to_vec(),
                 ));
             }
@@ -999,7 +1005,7 @@ impl ClassifyPipeline {
 
         let w_len = self.classifier.weight.data().len();
         if offset + w_len <= averaged_grads.len() {
-            self.classifier.weight.set_grad(crate::sovereign_array::Array1::from_vec(
+            self.classifier.weight.set_grad(ndarray::Array1::from_vec(
                 averaged_grads[offset..offset + w_len].to_vec(),
             ));
         }
@@ -1007,7 +1013,7 @@ impl ClassifyPipeline {
 
         let b_len = self.classifier.bias.data().len();
         if offset + b_len <= averaged_grads.len() {
-            self.classifier.bias.set_grad(crate::sovereign_array::Array1::from_vec(
+            self.classifier.bias.set_grad(ndarray::Array1::from_vec(
                 averaged_grads[offset..offset + b_len].to_vec(),
             ));
         }

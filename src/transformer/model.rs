@@ -407,7 +407,7 @@ impl Transformer {
         let start = (seq_len - 1) * vocab_size;
         let end = start + vocab_size;
         let last_logits: Vec<f32> =
-            logits.data().as_slice()[start..end].to_vec();
+            logits.data().as_slice().expect("logits must be contiguous")[start..end].to_vec();
 
         Tensor::from_vec(last_logits, logits.requires_grad())
     }
@@ -446,7 +446,7 @@ impl Transformer {
     /// Embed a single token, returning hidden_size floats.
     pub fn embed_token(&self, token_id: u32) -> Vec<f32> {
         let w = self.embed_tokens.weight.data();
-        let data = w.as_slice();
+        let data = w.as_slice().expect("contiguous embedding");
         let h = self.config.hidden_size;
         let offset = (token_id as usize) * h;
         data[offset..offset + h].to_vec()
@@ -454,13 +454,13 @@ impl Transformer {
 
     /// Get the output norm weight as a slice.
     pub fn output_norm_weight_slice(&self) -> &[f32] {
-        self.norm.weight.data().as_slice()
+        self.norm.weight.data().as_slice().expect("contiguous norm weight")
     }
 
     /// Get the lm_head weight as a slice (vocab_size × hidden_size, row-major).
     pub fn lm_head_weight_slice(&self) -> &[f32] {
         let w = self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight);
-        w.data().as_slice()
+        w.data().as_slice().expect("contiguous lm_head")
     }
 
     /// Get the language model head weight tensor.
@@ -1282,7 +1282,7 @@ mod tests {
         }
 
         // Stage 2: Apply softmax per row (the sampling step)
-        let logits_slice = logits_data.as_slice();
+        let logits_slice = logits_data.as_slice().expect("operation should succeed");
         for row in 0..seq_len {
             let start = row * vocab_size;
             let end = start + vocab_size;

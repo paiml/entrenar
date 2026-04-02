@@ -5,7 +5,7 @@
 
 use super::{compute_deltas, merge_with_base, validate_models, MergeError, Model};
 use crate::autograd::Tensor;
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 use rand::Rng;
 use std::collections::HashMap;
 

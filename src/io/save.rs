@@ -121,7 +121,7 @@ fn save_safetensors(model: &Model, path: &Path) -> Result<()> {
         .map(|(name, tensor)| {
             let data = tensor.data();
             let bytes: Vec<u8> =
-                bytemuck::cast_slice(data.as_slice())
+                bytemuck::cast_slice(data.as_slice().expect("tensor data must be contiguous"))
                     .to_vec();
             let shape = shapes.get(name).cloned().unwrap_or_else(|| vec![tensor.len()]);
             (name.clone(), bytes, shape)
@@ -175,7 +175,7 @@ fn save_apr(model: &Model, path: &Path) -> Result<()> {
 
     for (name, tensor) in &model.parameters {
         let data = tensor.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().expect("tensor data must be contiguous");
         let shape = shapes.get(name).cloned().unwrap_or_else(|| vec![tensor.len()]);
         writer.add_tensor_f32(name, shape, slice);
     }

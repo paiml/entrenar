@@ -174,7 +174,7 @@ impl EncoderModel {
         let hidden = self.forward(token_ids);
         let h = self.config.hidden_size;
         let data = hidden.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().expect("hidden contiguous");
         Tensor::from_vec(slice[..h].to_vec(), false)
     }
 
@@ -232,7 +232,7 @@ mod tests {
         let token_ids = vec![10, 20, 30];
         let output = model.forward(&token_ids);
         let data = output.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().unwrap();
         assert!(slice.iter().all(|v| v.is_finite()));
     }
 
@@ -254,8 +254,8 @@ mod tests {
         let cls2 = model.cls_embedding(&token_ids);
         let d1 = cls1.data();
         let d2 = cls2.data();
-        let s1 = d1.as_slice();
-        let s2 = d2.as_slice();
+        let s1 = d1.as_slice().unwrap();
+        let s2 = d2.as_slice().unwrap();
         assert_eq!(s1, s2, "CLS embedding must be deterministic");
     }
 
@@ -275,7 +275,7 @@ mod tests {
         let output = model.forward(&[42]);
         assert_eq!(output.len(), config.hidden_size);
         let data = output.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().unwrap();
         assert!(slice.iter().all(|v| v.is_finite()));
     }
 
@@ -285,7 +285,7 @@ mod tests {
         let model = EncoderModel::new(&config);
         let cls = model.cls_embedding(&[1, 2, 3, 4, 5]);
         let data = cls.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().unwrap();
         assert!(slice.iter().all(|v| v.is_finite()));
     }
 
@@ -385,8 +385,8 @@ mod tests {
 
         let d1 = out1.data();
         let d2 = out2.data();
-        let s1 = d1.as_slice();
-        let s2 = d2.as_slice();
+        let s1 = d1.as_slice().unwrap();
+        let s2 = d2.as_slice().unwrap();
         assert_eq!(s1, s2);
     }
 
@@ -401,7 +401,7 @@ mod tests {
         let output = model.forward(&ids);
         assert_eq!(output.len(), 20 * config.hidden_size);
         let data = output.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().unwrap();
         assert!(slice.iter().all(|v| v.is_finite()));
     }
 
@@ -429,8 +429,8 @@ mod tests {
         let cls2 = model.cls_embedding(&[10, 20, 30]);
         let d1 = cls1.data();
         let d2 = cls2.data();
-        let s1 = d1.as_slice();
-        let s2 = d2.as_slice();
+        let s1 = d1.as_slice().unwrap();
+        let s2 = d2.as_slice().unwrap();
         // Different inputs should (with overwhelming probability) produce different embeddings
         assert_ne!(s1, s2);
     }
@@ -502,7 +502,7 @@ mod tests {
         let output = model.forward(&[1, 2, 3]);
         assert_eq!(output.len(), 3 * config.hidden_size);
         let data = output.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().unwrap();
         assert!(slice.iter().all(|v| v.is_finite()));
     }
 

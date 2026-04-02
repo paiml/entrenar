@@ -1,6 +1,6 @@
 //! Multi-teacher ensemble distillation
 
-use crate::sovereign_array::{Array2, Axis};
+use ndarray::{Array2, Axis};
 
 /// Multi-Teacher Ensemble Distillation
 ///
@@ -16,7 +16,7 @@ use crate::sovereign_array::{Array2, Axis};
 ///
 /// ```
 /// use entrenar::distill::EnsembleDistiller;
-/// // ndarray::array -> crate::array!
+/// use ndarray::array;
 ///
 /// let distiller = EnsembleDistiller::new(vec![1.0, 1.0], 2.0);
 /// let teachers = vec![
@@ -166,7 +166,7 @@ fn softmax_2d(x: &Array2<f32>) -> Array2<f32> {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    // ndarray::array -> crate::array!
+    use ndarray::array;
 
     #[test]
     fn test_uniform_ensemble() {

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::hf_pipeline::error::FetchError;
-use crate::sovereign_array::Array2;
+use ndarray::Array2;
 use std::path::Path;
 
 // =========================================================================

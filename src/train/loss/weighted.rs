@@ -1,7 +1,7 @@
 //! Weighted loss wrappers for sample reweighting
 
 use crate::Tensor;
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 
 use super::LossFn;
 

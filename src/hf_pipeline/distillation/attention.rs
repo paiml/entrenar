@@ -3,7 +3,7 @@
 //! Transfers attention maps from teacher to student.
 //! Based on Zagoruyko & Komodakis (2017).
 
-use crate::sovereign_array::Array2;
+use ndarray::Array2;
 
 use super::utils::l2_normalize;
 

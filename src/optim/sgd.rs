@@ -2,7 +2,7 @@
 
 use super::Optimizer;
 use crate::Tensor;
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 
 /// SGD optimizer with optional momentum
 pub struct SGD {
@@ -33,9 +33,9 @@ impl Optimizer for SGD {
             if let Some(grad) = param.grad() {
                 // Use SIMD for large tensors (>= 16 elements for meaningful speedup)
                 if grad.len() >= 16 {
-                    let grad_slice = grad.as_slice();
+                    let grad_slice = grad.as_slice().expect("grad array is contiguous");
                     let param_slice =
-                        param.data_mut().as_slice_mut();
+                        param.data_mut().as_slice_mut().expect("param array is contiguous");
 
                     if self.momentum > 0.0 {
                         // Initialize velocity if needed
@@ -46,7 +46,7 @@ impl Optimizer for SGD {
                         let velocity =
                             self.velocities[i].as_mut().expect("velocity buffer initialized above");
                         let velocity_slice =
-                            velocity.as_slice_mut();
+                            velocity.as_slice_mut().expect("velocity array is contiguous");
 
                         // v = momentum * v - lr * grad (using SIMD)
                         // First scale velocity by momentum

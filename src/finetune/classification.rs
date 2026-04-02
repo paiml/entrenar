@@ -117,8 +117,9 @@ impl ClassificationHead {
         let logits_data: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits data")
             .iter()
-            .zip(self.bias.data().as_slice().iter())
+            .zip(self.bias.data().as_slice().expect("contiguous bias data").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -130,7 +131,7 @@ impl ClassificationHead {
     /// hidden_states: [seq_len * hidden_size] → [hidden_size]
     pub fn mean_pool(&self, hidden_states: &Tensor, seq_len: usize) -> Tensor {
         let data = hidden_states.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().expect("contiguous hidden states");
         let h = self.hidden_size;
 
         let mut pooled = vec![0.0f32; h];
@@ -157,7 +158,7 @@ impl ClassificationHead {
     /// Output has exactly hidden_size elements (first position of input).
     pub fn cls_pool(&self, hidden_states: &Tensor) -> Tensor {
         let data = hidden_states.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().expect("contiguous hidden states");
         let h = self.hidden_size;
         Tensor::from_vec(slice[..h].to_vec(), hidden_states.requires_grad())
     }
@@ -168,7 +169,7 @@ impl ClassificationHead {
     /// causal attention, making it suitable for classification.
     pub fn last_token_pool(&self, hidden_states: &Tensor, seq_len: usize) -> Tensor {
         let data = hidden_states.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().expect("contiguous hidden states");
         let h = self.hidden_size;
         let start = (seq_len - 1) * h;
         Tensor::from_vec(slice[start..start + h].to_vec(), hidden_states.requires_grad())
@@ -202,8 +203,9 @@ impl ClassificationHead {
         let logits_data: Vec<f32> = logits
             .data()
             .as_slice()
+            .expect("contiguous logits data")
             .iter()
-            .zip(self.bias.data().as_slice().iter())
+            .zip(self.bias.data().as_slice().expect("contiguous bias data").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -451,7 +453,7 @@ fn parse_multi_label_line(
 /// Output is finite (no NaN/Inf).
 pub fn bce_with_logits_loss(logits: &Tensor, targets: &[f32], num_classes: usize) -> Tensor {
     let data = logits.data();
-    let slice = data.as_slice();
+    let slice = data.as_slice().expect("contiguous logits");
     assert_eq!(slice.len(), num_classes, "F-CLASS-001: logit shape mismatch");
     assert_eq!(targets.len(), num_classes, "F-CLASS-001: target shape mismatch");
 
@@ -574,7 +576,7 @@ pub fn compute_class_weights(
 /// Output is finite (no NaN/Inf).
 pub fn cross_entropy_loss(logits: &Tensor, target: usize, num_classes: usize) -> Tensor {
     let data = logits.data();
-    let slice = data.as_slice();
+    let slice = data.as_slice().expect("contiguous logits");
     assert_eq!(slice.len(), num_classes, "F-CLASS-001: logit shape mismatch");
     assert!(target < num_classes, "F-CLASS-002: label out of range");
 

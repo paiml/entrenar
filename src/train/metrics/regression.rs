@@ -11,7 +11,7 @@ use super::Metric;
 
 /// Convert a Tensor's data to an aprender Vector for delegation.
 fn tensor_to_vector(t: &Tensor) -> Vector<f32> {
-    Vector::from_slice(t.data().as_slice())
+    Vector::from_slice(t.data().as_slice().expect("contiguous tensor data"))
 }
 
 /// R² (coefficient of determination) for regression

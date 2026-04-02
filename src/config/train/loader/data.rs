@@ -107,7 +107,7 @@ fn try_load_safetensors_dir(
             if let Some(transformer) = Transformer::from_params(config, &weights) {
                 let embed = &transformer.embed_tokens.weight;
                 let embed_data = embed.data();
-                let embed_slice = embed_data.as_slice();
+                let embed_slice = embed_data.as_slice().unwrap_or(&[]);
                 let (emin, emax, emean) = if embed_slice.is_empty() {
                     (0.0, 0.0, 0.0)
                 } else {
@@ -256,7 +256,7 @@ fn try_load_apr(
 
     let embed = &transformer.embed_tokens.weight;
     let embed_data = embed.data();
-    let embed_slice = embed_data.as_slice();
+    let embed_slice = embed_data.as_slice().unwrap_or(&[]);
     let (emin, emax, emean) = if embed_slice.is_empty() {
         (0.0, 0.0, 0.0)
     } else {

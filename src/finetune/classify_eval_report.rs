@@ -1206,6 +1206,7 @@ pub fn evaluate_checkpoint(
                 .weight
                 .data_mut()
                 .as_slice_mut()
+                .expect("contiguous classifier.weight")
                 .copy_from_slice(w_data);
         }
         if let Ok(b) = tensors.tensor("classifier.bias") {
@@ -1214,6 +1215,7 @@ pub fn evaluate_checkpoint(
                 .bias
                 .data_mut()
                 .as_slice_mut()
+                .expect("contiguous classifier.bias")
                 .copy_from_slice(b_data);
         }
 
@@ -1227,6 +1229,7 @@ pub fn evaluate_checkpoint(
                 lora.lora_a_mut()
                     .data_mut()
                     .as_slice_mut()
+                    .expect("contiguous lora_a")
                     .copy_from_slice(a_data);
             }
             if let Ok(b) = tensors.tensor(&format!("lora.{layer}.{proj}_proj.lora_b")) {
@@ -1234,6 +1237,7 @@ pub fn evaluate_checkpoint(
                 lora.lora_b_mut()
                     .data_mut()
                     .as_slice_mut()
+                    .expect("contiguous lora_b")
                     .copy_from_slice(b_data);
             }
         }

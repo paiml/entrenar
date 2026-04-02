@@ -26,7 +26,7 @@ pub mod router;
 #[cfg(test)]
 mod tests;
 
-use crate::sovereign_array::{Array1, Array2};
+use ndarray::{Array1, Array2};
 use serde::{Deserialize, Serialize};
 
 pub use router::{NoisyTopKRouter, RoutingResult, TopKRouter};
@@ -103,11 +103,11 @@ impl Expert {
     /// Output vector of length input_dim
     pub fn forward(&self, input: &Array1<f32>) -> Array1<f32> {
         // hidden = ReLU(input @ W1 + b1)
-        let hidden = &input.dot_mat(&self.w1) + &self.b1;
-        let hidden: Array1<f32> = hidden.mapv(|v: f32| v.max(0.0)); // ReLU
+        let hidden = input.dot(&self.w1) + &self.b1;
+        let hidden = hidden.mapv(|v| v.max(0.0)); // ReLU
 
         // output = hidden @ W2 + b2
-        &hidden.dot_mat(&self.w2) + &self.b2
+        hidden.dot(&self.w2) + &self.b2
     }
 
     /// Forward pass for a batch of tokens.
@@ -118,21 +118,9 @@ impl Expert {
     /// # Returns
     /// Output matrix of shape [batch_size, input_dim]
     pub fn forward_batch(&self, input: &Array2<f32>) -> Array2<f32> {
-        let mut hidden = input.dot(&self.w1);
-        // Broadcast add bias b1 to each row
-        for row in hidden.rows_mut() {
-            for (v, b) in row.iter_mut().zip(self.b1.iter()) {
-                *v += b;
-            }
-        }
-        let hidden = hidden.mapv(|v: f32| v.max(0.0));
-        let mut output = hidden.dot(&self.w2);
-        for row in output.rows_mut() {
-            for (v, b) in row.iter_mut().zip(self.b2.iter()) {
-                *v += b;
-            }
-        }
-        output
+        let hidden = input.dot(&self.w1) + &self.b1;
+        let hidden = hidden.mapv(|v| v.max(0.0));
+        hidden.dot(&self.w2) + &self.b2
     }
 }
 
@@ -215,7 +203,7 @@ impl MoeLayer {
                 }
             }
 
-            output.row_mut(i).copy_from_slice(combined.as_slice());
+            output.row_mut(i).assign(&combined);
         }
 
         (output, routing)

@@ -48,8 +48,8 @@ fn falsify_biatt_001_no_causal_mask() {
 
     let da = out_a.data();
     let db = out_b.data();
-    let sa = da.as_slice();
-    let sb = db.as_slice();
+    let sa = da.as_slice().expect("contiguous");
+    let sb = db.as_slice().expect("contiguous");
 
     // CLS at position 0 must differ when position 2 changes (bidirectional)
     let diff: f32 = sa.iter().zip(sb.iter()).map(|(a, b)| (a - b).abs()).sum();
@@ -78,8 +78,8 @@ fn falsify_biatt_002_single_token_deterministic() {
 
     let d1 = out1.data();
     let d2 = out2.data();
-    let s1 = d1.as_slice();
-    let s2 = d2.as_slice();
+    let s1 = d1.as_slice().expect("contiguous");
+    let s2 = d2.as_slice().expect("contiguous");
 
     assert_eq!(
         s1, s2,
@@ -102,7 +102,7 @@ fn falsify_biatt_003_output_finite() {
     let tokens = vec![10, 20, 30, 40, 50];
     let output = encoder.forward(&tokens);
     let data = output.data();
-    let slice = data.as_slice();
+    let slice = data.as_slice().expect("contiguous");
 
     assert!(
         slice.iter().all(|v| v.is_finite()),
@@ -126,7 +126,7 @@ fn falsify_probe_001_encoder_frozen() {
     let tokens = vec![1, 2, 3];
     let before = encoder.cls_embedding(&tokens);
     let before_data = before.data();
-    let before_slice = before_data.as_slice().to_vec();
+    let before_slice = before_data.as_slice().expect("contiguous").to_vec();
 
     // Extract embeddings and train linear probe
     let embeddings: Vec<Vec<f32>> = (0..20)
@@ -134,7 +134,7 @@ fn falsify_probe_001_encoder_frozen() {
             let t = vec![i as u32 % 100 + 1; 3];
             let cls = encoder.cls_embedding(&t);
             let d = cls.data();
-            d.as_slice().to_vec()
+            d.as_slice().expect("contiguous").to_vec()
         })
         .collect();
     let labels: Vec<usize> = (0..20).map(|i| usize::from(i >= 15)).collect();
@@ -145,7 +145,7 @@ fn falsify_probe_001_encoder_frozen() {
     // Verify encoder weights unchanged after probe training
     let after = encoder.cls_embedding(&tokens);
     let after_data = after.data();
-    let after_slice = after_data.as_slice();
+    let after_slice = after_data.as_slice().expect("contiguous");
 
     assert_eq!(
         before_slice.as_slice(),
@@ -276,7 +276,7 @@ fn falsify_enc_002_no_nan_inf() {
     for tokens in &test_cases {
         let output = encoder.forward(tokens);
         let data = output.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().expect("contiguous");
 
         assert!(
             slice.iter().all(|v| v.is_finite()),
@@ -302,8 +302,8 @@ fn falsify_pos_001_deterministic_lookup() {
 
     let d1 = out1.data();
     let d2 = out2.data();
-    let s1 = d1.as_slice();
-    let s2 = d2.as_slice();
+    let s1 = d1.as_slice().expect("contiguous");
+    let s2 = d2.as_slice().expect("contiguous");
 
     assert_eq!(
         s1, s2,

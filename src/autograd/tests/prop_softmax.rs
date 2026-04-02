@@ -15,7 +15,7 @@ proptest! {
         let mut y = softmax(&a);
 
         let y_len = y.len();
-        backward(&mut y, Some(crate::sovereign_array::Array1::ones(y_len)));
+        backward(&mut y, Some(ndarray::Array1::ones(y_len)));
 
         let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(

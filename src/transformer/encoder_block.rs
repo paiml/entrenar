@@ -158,7 +158,7 @@ mod tests {
         let x = Tensor::from_vec(vec![0.5; seq_len * config.hidden_size], true);
         let output = block.forward(&x, seq_len);
         let data = output.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().unwrap();
         assert!(slice.iter().all(|v| v.is_finite()), "encoder block output must be finite");
     }
 
@@ -215,8 +215,8 @@ mod tests {
 
         let d1 = out1.data();
         let d2 = out2.data();
-        let s1 = d1.as_slice();
-        let s2 = d2.as_slice();
+        let s1 = d1.as_slice().unwrap();
+        let s2 = d2.as_slice().unwrap();
         assert_eq!(s1, s2, "Encoder block should be deterministic");
     }
 
@@ -253,7 +253,7 @@ mod tests {
         let output = block.forward(&x, 1);
         assert_eq!(output.len(), config.hidden_size);
         let data = output.data();
-        let slice = data.as_slice();
+        let slice = data.as_slice().unwrap();
         assert!(slice.iter().all(|v| v.is_finite()));
     }
 }

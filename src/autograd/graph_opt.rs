@@ -13,7 +13,7 @@
 //! 4. Shape tracking enables early validation of dimension mismatches
 //! 5. Graph optimization passes (DCE, CSE) run at construction time
 
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 use std::collections::{HashMap, HashSet};
 
 /// Unique identifier for a node in the computation graph
@@ -909,7 +909,7 @@ mod tests {
         let result = traced_binary_op(&a, &b, |x, y| x + y, OpType::Add, &mut graph);
         assert!(result.is_constant());
         let data = result.value().as_constant().expect("operation should succeed");
-        assert_eq!(data.as_slice(), &[5.0, 7.0, 9.0]);
+        assert_eq!(data.as_slice().expect("operation should succeed"), &[5.0, 7.0, 9.0]);
         // No graph nodes created
         assert_eq!(graph.len(), 0);
     }
@@ -1009,7 +1009,7 @@ mod tests {
         assert_eq!(changes, 1);
         assert!(graph.node(add).is_constant());
         let result = graph.node(add).constant_value.as_ref().expect("operation should succeed");
-        assert_eq!(result.as_slice(), &[4.0, 6.0]);
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[4.0, 6.0]);
     }
 
     #[test]
@@ -1025,7 +1025,7 @@ mod tests {
 
         assert_eq!(changes, 1);
         let result = graph.node(mul).constant_value.as_ref().expect("operation should succeed");
-        assert_eq!(result.as_slice(), &[8.0, 15.0]);
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[8.0, 15.0]);
     }
 
     #[test]
@@ -1040,7 +1040,7 @@ mod tests {
 
         assert_eq!(changes, 1);
         let result = graph.node(sum).constant_value.as_ref().expect("operation should succeed");
-        assert_eq!(result.as_slice(), &[6.0]);
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[6.0]);
     }
 
     #[test]
@@ -1060,7 +1060,7 @@ mod tests {
         assert!(report.total_changes >= 2);
         assert!(graph.node(mul).is_constant());
         let result = graph.node(mul).constant_value.as_ref().expect("operation should succeed");
-        assert_eq!(result.as_slice(), &[8.0, 12.0]);
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[8.0, 12.0]);
     }
 
     #[test]

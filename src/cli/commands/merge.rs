@@ -180,7 +180,7 @@ fn export_safetensors(merged: &Model, args: &MergeArgs) -> Result<(), String> {
         .iter()
         .map(|(name, tensor)| {
             let data = tensor.data();
-            let bytes: Vec<u8> = bytemuck::cast_slice(data.as_slice()).to_vec();
+            let bytes: Vec<u8> = bytemuck::cast_slice(data.as_slice().unwrap_or(&[])).to_vec();
             let shape = vec![tensor.len()];
             (name.clone(), bytes, shape)
         })
@@ -693,7 +693,7 @@ mod tests {
         };
         let r = perform_average_merge(&[mk(&[("w", &[2.0, 4.0])]), mk(&[("w", &[6.0, 8.0])])], &a)
             .unwrap();
-        let s = r["w"].data().as_slice().to_vec();
+        let s = r["w"].data().as_slice().unwrap().to_vec();
         assert!((s[0] - 4.0).abs() < 1e-6);
     }
 
@@ -867,7 +867,7 @@ mod tests {
             adapter: None,
         };
         let result = perform_merge(&models, &a).unwrap();
-        let vals = result["w"].data().as_slice().to_vec();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
         assert!((vals[0] - 3.0).abs() < 1e-6);
     }
 
@@ -959,7 +959,7 @@ mod tests {
         };
         let models = vec![mk(&[("w", &[10.0])]), mk(&[("w", &[0.0])])];
         let result = perform_average_merge(&models, &a).unwrap();
-        let vals = result["w"].data().as_slice().to_vec();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
         // 0.8 * 10.0 + 0.2 * 0.0 = 8.0
         assert!((vals[0] - 8.0).abs() < 1e-4);
     }
@@ -1722,8 +1722,8 @@ mod tests {
         let m1 = mk(&[("a", &[1.0, 2.0]), ("b", &[3.0])]);
         let m2 = mk(&[("a", &[3.0, 4.0]), ("b", &[5.0])]);
         let result = perform_average_merge(&[m1, m2], &a).unwrap();
-        let a_vals = result["a"].data().as_slice().to_vec();
-        let b_vals = result["b"].data().as_slice().to_vec();
+        let a_vals = result["a"].data().as_slice().unwrap().to_vec();
+        let b_vals = result["b"].data().as_slice().unwrap().to_vec();
         assert!((a_vals[0] - 2.0).abs() < 1e-6);
         assert!((a_vals[1] - 3.0).abs() < 1e-6);
         assert!((b_vals[0] - 4.0).abs() < 1e-6);
@@ -1736,7 +1736,7 @@ mod tests {
         let a = MergeArgs { weight: Some(0.0), ..mk_args(MergeMethod::Slerp) };
         let models = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
         let result = perform_slerp_merge(&models, &a).unwrap();
-        let vals = result["w"].data().as_slice().to_vec();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
         // t=0 should give model 0's values
         assert!((vals[0] - 1.0).abs() < 0.1);
     }
@@ -1746,7 +1746,7 @@ mod tests {
         let a = MergeArgs { weight: Some(1.0), ..mk_args(MergeMethod::Slerp) };
         let models = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
         let result = perform_slerp_merge(&models, &a).unwrap();
-        let vals = result["w"].data().as_slice().to_vec();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
         // t=1 should give model 1's values
         assert!((vals[1] - 1.0).abs() < 0.1);
     }

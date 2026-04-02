@@ -7,7 +7,7 @@ use aprender::primitives::Vector;
 
 use crate::autograd::BackwardOp;
 use crate::Tensor;
-use crate::sovereign_array::Array1;
+use ndarray::Array1;
 use std::rc::Rc;
 
 use crate::train::loss::LossFn;
@@ -44,9 +44,9 @@ impl LossFn for MSELoss {
 
         // Delegate forward scalar to aprender
         let pred_vec =
-            Vector::from_slice(predictions.data().as_slice());
+            Vector::from_slice(predictions.data().as_slice().expect("contiguous tensor data"));
         let tgt_vec =
-            Vector::from_slice(targets.data().as_slice());
+            Vector::from_slice(targets.data().as_slice().expect("contiguous tensor data"));
         let mse = aprender::loss::mse_loss(&pred_vec, &tgt_vec);
 
         let mut loss = Tensor::from_vec(vec![mse], true);

@@ -3,7 +3,7 @@
 //! Matches student hidden states to teacher hidden states at selected layers.
 //! Based on Sun et al. (2019).
 
-use crate::sovereign_array::Array2;
+use ndarray::Array2;
 
 /// Progressive Knowledge Distillation
 ///

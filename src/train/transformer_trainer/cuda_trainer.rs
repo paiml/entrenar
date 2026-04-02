@@ -591,7 +591,7 @@ impl CudaTransformerTrainer {
         }
 
         // Upload final RMSNorm weight
-        let norm_slice = model.norm.weight.data().as_slice();
+        let norm_slice = model.norm.weight.data().as_slice().expect("contiguous");
         let final_norm_weight = GpuBuffer::from_host(&ctx, norm_slice).map_err(|e| {
             crate::error::Error::ConfigError(format!("Norm weight upload failed: {e:?}"))
         })?;
@@ -648,7 +648,7 @@ impl CudaTransformerTrainer {
         // Step 6: Upload LM head weight to GPU
         // Use tied weights (embed_tokens.weight) or separate lm_head
         let lm_head_data = model.lm_head.as_ref().unwrap_or(&model.embed_tokens.weight).data();
-        let lm_head_slice = lm_head_data.as_slice();
+        let lm_head_slice = lm_head_data.as_slice().expect("contiguous");
         let lm_head_weight_gpu = GpuBuffer::from_host(&ctx, lm_head_slice).map_err(|e| {
             crate::error::Error::ConfigError(format!("LM head upload failed: {e:?}"))
         })?;
@@ -889,26 +889,26 @@ impl CudaTransformerTrainer {
                     .self_attn
                     .q_norm
                     .as_ref()
-                    .map(|t| t.data().as_slice().to_vec());
+                    .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
                 let k_norm_data = layer
                     .self_attn
                     .k_norm
                     .as_ref()
-                    .map(|t| t.data().as_slice().to_vec());
+                    .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
 
                 let block = crate::transformer::CudaNf4TransformerBlock::new(
                     mc,
                     i,
                     ctx.clone(),
-                    layer.input_norm.weight.data().as_slice(),
-                    layer.post_attn_norm.weight.data().as_slice(),
-                    layer.self_attn.w_q.data().as_slice(),
-                    layer.self_attn.w_k.data().as_slice(),
-                    layer.self_attn.w_v.data().as_slice(),
-                    layer.self_attn.w_o.data().as_slice(),
-                    layer.ffn.w_gate.data().as_slice(),
-                    layer.ffn.w_up.data().as_slice(),
-                    layer.ffn.w_down.data().as_slice(),
+                    layer.input_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.post_attn_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_q.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_k.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_v.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_o.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_gate.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_up.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_down.data().as_slice().expect("contiguous"),
                     max_seq_len,
                     Some((&lora_a_q, &lora_b_q)),
                     Some((&lora_a_v, &lora_b_v)),
@@ -929,15 +929,15 @@ impl CudaTransformerTrainer {
                     mc,
                     i,
                     ctx.clone(),
-                    layer.input_norm.weight.data().as_slice(),
-                    layer.post_attn_norm.weight.data().as_slice(),
-                    layer.self_attn.w_q.data().as_slice(),
-                    layer.self_attn.w_k.data().as_slice(),
-                    layer.self_attn.w_v.data().as_slice(),
-                    layer.self_attn.w_o.data().as_slice(),
-                    layer.ffn.w_gate.data().as_slice(),
-                    layer.ffn.w_up.data().as_slice(),
-                    layer.ffn.w_down.data().as_slice(),
+                    layer.input_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.post_attn_norm.weight.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_q.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_k.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_v.data().as_slice().expect("contiguous"),
+                    layer.self_attn.w_o.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_gate.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_up.data().as_slice().expect("contiguous"),
+                    layer.ffn.w_down.data().as_slice().expect("contiguous"),
                     max_seq_len,
                 )
                 .map_err(|e| {
@@ -2095,7 +2095,7 @@ impl CudaTransformerTrainer {
         let grad_cell = embed_weight.grad_cell();
         let mut grad_ref = grad_cell.borrow_mut();
         if grad_ref.is_none() {
-            *grad_ref = Some(crate::sovereign_array::Array1::zeros_f32(embed_weight.len()));
+            *grad_ref = Some(ndarray::Array1::zeros(embed_weight.len()));
         }
         if let Some(grad) = grad_ref.as_mut() {
             for (pos, &token_id) in input_ids.iter().enumerate() {
@@ -2413,7 +2413,7 @@ impl CudaTransformerTrainer {
 
     /// Set CPU embedding gradient from AllReduced flat Vec.
     pub(crate) fn set_embed_grad(&mut self, grad: Vec<f32>) {
-        self.model.embed_tokens.weight.set_grad(crate::sovereign_array::Array1::from(grad));
+        self.model.embed_tokens.weight.set_grad(ndarray::Array1::from(grad));
     }
 
     /// Returns true if max_steps has been reached.
@@ -2755,13 +2755,13 @@ impl CudaTransformerTrainer {
             .embed_optimizer
             .first_moments()
             .iter()
-            .filter_map(|opt| opt.as_ref().map(Array1::to_vec))
+            .filter_map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let embed_v: Vec<Vec<f32>> = self
             .embed_optimizer
             .second_moments()
             .iter()
-            .filter_map(|opt| opt.as_ref().map(Array1::to_vec))
+            .filter_map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let embed_step = self.embed_optimizer.step_count();
 
@@ -3073,8 +3073,8 @@ impl CudaTransformerTrainer {
                     lora_alpha,
                 );
                 // Overwrite the A and B data with trained weights
-                layer.lora_a_mut().data_mut().assign(&crate::sovereign_array::Array1::from(a_transposed));
-                layer.lora_b_mut().data_mut().assign(&crate::sovereign_array::Array1::from(b_transposed));
+                layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
+                layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
 
                 adapters.push((format!("model.layers.{i}.self_attn.q_proj"), layer));
             }
@@ -3104,8 +3104,8 @@ impl CudaTransformerTrainer {
                     lora_rank,
                     lora_alpha,
                 );
-                layer.lora_a_mut().data_mut().assign(&crate::sovereign_array::Array1::from(a_transposed));
-                layer.lora_b_mut().data_mut().assign(&crate::sovereign_array::Array1::from(b_transposed));
+                layer.lora_a_mut().data_mut().assign(&ndarray::Array1::from(a_transposed));
+                layer.lora_b_mut().data_mut().assign(&ndarray::Array1::from(b_transposed));
 
                 adapters.push((format!("model.layers.{i}.self_attn.v_proj"), layer));
             }
@@ -3146,13 +3146,13 @@ impl CudaTransformerTrainer {
             .embed_optimizer
             .first_moments()
             .iter()
-            .map(|opt| opt.as_ref().map(Array1::to_vec))
+            .map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let v_data: Vec<Option<Vec<f32>>> = self
             .embed_optimizer
             .second_moments()
             .iter()
-            .map(|opt| opt.as_ref().map(Array1::to_vec))
+            .map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let state = serde_json::json!({
             "type": "adamw_cpu_embed",
@@ -3228,7 +3228,7 @@ impl CudaTransformerTrainer {
             let name = format!("__training__.embed_optimizer.m.{i}");
             match reader.read_tensor_f32(&name) {
                 Ok(data) if !data.is_empty() => {
-                    self.embed_optimizer.set_first_moment(i, crate::sovereign_array::Array1::from_vec(data));
+                    self.embed_optimizer.set_first_moment(i, ndarray::Array1::from_vec(data));
                 }
                 _ => break,
             }
@@ -3239,7 +3239,7 @@ impl CudaTransformerTrainer {
             let name = format!("__training__.embed_optimizer.v.{i}");
             match reader.read_tensor_f32(&name) {
                 Ok(data) if !data.is_empty() => {
-                    self.embed_optimizer.set_second_moment(i, crate::sovereign_array::Array1::from_vec(data));
+                    self.embed_optimizer.set_second_moment(i, ndarray::Array1::from_vec(data));
                 }
                 _ => break,
             }
@@ -3372,14 +3372,14 @@ fn infer_tensor_shape(name: &str, numel: usize, hidden_size: usize) -> Vec<usize
 #[cfg(feature = "cuda")]
 fn restore_moment_buffers(
     json_arr: &serde_json::Value,
-    mut set_fn: impl FnMut(usize, crate::sovereign_array::Array1<f32>),
+    mut set_fn: impl FnMut(usize, ndarray::Array1<f32>),
 ) {
     let Some(arr) = json_arr.as_array() else { return };
     for (idx, val) in arr.iter().enumerate() {
         let Some(inner) = val.as_array() else { continue };
         let floats: Vec<f32> = inner.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect();
         if !floats.is_empty() {
-            set_fn(idx, crate::sovereign_array::Array1::from_vec(floats));
+            set_fn(idx, ndarray::Array1::from_vec(floats));
         }
     }
 }

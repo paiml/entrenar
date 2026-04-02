@@ -3,7 +3,7 @@
 //! Provides numerically stable softmax, log-softmax, KL divergence,
 //! cross-entropy loss, and L2 normalization.
 
-use crate::sovereign_array::{Array1, Array2};
+use ndarray::{Array1, Array2};
 
 /// Softmax with numerical stability
 pub(crate) fn softmax(logits: &Array1<f32>) -> Array1<f32> {

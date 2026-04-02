@@ -1,6 +1,6 @@
 //! Distillation loss functions
 
-use crate::sovereign_array::{Array2, Axis};
+use ndarray::{Array2, Axis};
 
 /// Knowledge Distillation Loss
 ///
@@ -20,7 +20,7 @@ use crate::sovereign_array::{Array2, Axis};
 ///
 /// ```
 /// use entrenar::distill::DistillationLoss;
-/// // ndarray::array -> crate::array!
+/// use ndarray::array;
 ///
 /// let loss_fn = DistillationLoss::new(2.0, 0.7);
 /// let student_logits = array![[2.0, 1.0, 0.5]];
@@ -169,7 +169,7 @@ fn kl_divergence(p: &Array2<f32>, q: &Array2<f32>) -> f32 {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    // ndarray::array -> crate::array!
+    use ndarray::array;
 
     #[test]
     fn test_distillation_loss_basic() {
