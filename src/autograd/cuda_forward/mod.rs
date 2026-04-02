@@ -55,8 +55,8 @@ pub use elementwise::{
 #[cfg(feature = "cuda")]
 pub use matmul::gemm_forward_bf16;
 pub use matmul::{
-    batched_4d_gemm_forward, fused_swiglu_forward, gemm_forward, gemm_nf4_backward_a,
-    gemm_nf4_forward,
+    batched_4d_gemm_forward, fused_swiglu_forward, gemm_forward, gemm_forward_bt,
+    gemm_nf4_backward_a, gemm_nf4_forward,
 };
 #[cfg(feature = "cuda")]
 pub(crate) use matmul::{cublas_gemm_backward_a, cublas_gemm_backward_b};

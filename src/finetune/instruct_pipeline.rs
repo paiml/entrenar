@@ -2040,7 +2040,7 @@ impl InstructPipeline {
             // Save input for backward pass
             // PMAT-420: Re-allocate layer_input at seq_len if needed (was max_seq_len)
             if training_state.layer_inputs[i].len() != gpu_input.len() {
-                training_state.layer_inputs[i] = trainer.zeros(gpu_input.len()).ok()?;
+                training_state.layer_inputs[i] = trainer.zeros(gpu_input.len()).map_err(|e| eprintln!("[CUDA] layer_input realloc failed L{i}: {e}")).ok()?;
             }
             let _ = training_state.layer_inputs[i].copy_from_buffer(gpu_input);
 
@@ -2140,7 +2140,7 @@ impl InstructPipeline {
         // Save blocks output for RMSNorm backward
         // PMAT-420: Re-allocate at seq_len if needed
         if training_state.blocks_output.len() != final_output.len() {
-            training_state.blocks_output = trainer.zeros(final_output.len()).ok()?;
+            training_state.blocks_output = trainer.zeros(final_output.len()).map_err(|e| eprintln!("[CUDA] blocks_output realloc failed: {e}")).ok()?;
         }
         let _ = training_state.blocks_output.copy_from_buffer(final_output);
 
@@ -2160,7 +2160,7 @@ impl InstructPipeline {
         })
         .ok()?;
 
-        Some(())
+        { eprintln!("[FWD-TRAIN] completed OK"); Some(()) }
     }
 
     /// NF4 QLoRA backward pass through all GPU transformer blocks.
@@ -2435,21 +2435,19 @@ impl InstructPipeline {
         let training = self.gpu_training.as_mut()?;
         let stream = trainer.stream();
 
-        // entrenar#318: skip GPU lm_head if embed_transposed is placeholder (VRAM fix)
-        if training.embed_transposed.len() < hidden_size * vocab_size {
-            eprintln!("[CUDA] lm_head: embed_transposed is placeholder (len={}), using CPU", training.embed_transposed.len());
-            return None;
-        }
-        if let Err(e) = gemm_forward(
+        // entrenar#318: Use embed_original with transposed GEMM for lm_head.
+        eprintln!("[CUDA] lm_head BT: hidden_len={} embed_len={} logits_len={} seq={seq_len} h={hidden_size} v={vocab_size}",
+            training.lm_head_hidden_buf.len(), training.embed_original.len(), training.logits_buf.len());
+        if let Err(e) = crate::autograd::cuda_forward::gemm_forward_bt(
             &training.lm_head_hidden_buf,
-            &training.embed_transposed,
+            &training.embed_original,
             &mut training.logits_buf,
             seq_len as u32,
             hidden_size as u32,
             vocab_size as u32,
             stream,
         ) {
-            eprintln!("[CUDA] lm_head forward GEMM failed: {e}");
+            eprintln!("[CUDA] lm_head forward GEMM (BT) failed: {e}");
             return None;
         }
 
@@ -2637,7 +2635,7 @@ impl InstructPipeline {
         if self.gpu_training.is_some() {
             let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
                 (Some(ref t), Some(ref mut b)) => (t, b),
-                _ => return false,
+                _ => { eprintln!("[RES-FALSE] no trainer/blocks"); return false },
             };
             let mut training = self.gpu_training.take();
             let result = Self::forward_cuda_training(
@@ -2650,7 +2648,7 @@ impl InstructPipeline {
             );
             self.gpu_training = training;
             if result.is_none() {
-                return false;
+                { eprintln!("[RES-FALSE] forward_cuda_training returned None"); return false };
             }
             // lm_head_hidden_buf is ready
         } else {
@@ -2682,34 +2680,16 @@ impl InstructPipeline {
         // GPU GEMM: logits[seq, vocab] = hidden[seq, hidden] @ embed_T[hidden, vocab]
         let (trainer, training) = match (&self.cuda_trainer, &mut self.gpu_training) {
             (Some(ref t), Some(ref mut tr)) => (t, tr),
-            _ => return false,
+            _ => { eprintln!("[RES-FALSE] no trainer/training"); return false },
         };
-
-        // PMAT-420: If embed_transposed is minimal (VRAM-constrained path),
-        // skip GPU lm_head GEMM — return false to trigger CPU fallback.
-        if training.embed_transposed.len() < hidden_size * vocab_size {
-            return false;
-        }
 
         let stream = trainer.stream();
 
-        // TRACE: Check hidden state before lm_head
-        {
-            stream.synchronize().ok();
-            let mut h = vec![0.0f32; training.lm_head_hidden_buf.len()];
-            let _ = training.lm_head_hidden_buf.copy_to_host(&mut h);
-            let nz = h.iter().filter(|&&x| x != 0.0).count();
-            let h5: Vec<f32> = h.iter().copied().take(5).collect();
-            static TRACE_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-            let c = TRACE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if c == 0 {
-                eprintln!("[TRACE] lm_head input: len={} nonzero={nz} first5={h5:?}", h.len());
-            }
-        }
-
-        if gemm_forward(
+        // entrenar#318: Use embed_original with transposed GEMM (BT) for lm_head.
+        // This works even when embed_transposed is a 1-element placeholder (VRAM fix).
+        if crate::autograd::cuda_forward::gemm_forward_bt(
             &training.lm_head_hidden_buf,
-            &training.embed_transposed,
+            &training.embed_original,
             &mut training.logits_buf,
             seq_len as u32,
             hidden_size as u32,
@@ -2718,8 +2698,8 @@ impl InstructPipeline {
         )
         .is_err()
         {
-            eprintln!("[CUDA] lm_head forward GEMM failed");
-            return false;
+            eprintln!("[CUDA] lm_head forward GEMM (BT) failed");
+            { eprintln!("[RES-FALSE] BT GEMM failed"); return false };
         }
 
         // TRACE: Check logits after lm_head
