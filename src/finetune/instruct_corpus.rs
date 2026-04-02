@@ -280,3 +280,34 @@ mod tests {
         assert_eq!(stats.avg_instruction_len, 0);
     }
 }
+
+/// A DPO preference training sample (prompt + chosen + rejected).
+/// Contract: dpo-alignment-v1 / preference_data_valid
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PreferenceSample {
+    /// The prompt/instruction text
+    pub prompt: String,
+    /// The preferred (chosen) response
+    pub chosen: String,
+    /// The rejected response
+    pub rejected: String,
+}
+
+/// Load preference pairs from JSONL file.
+pub fn load_preference_pairs(path: &std::path::Path) -> Result<Vec<PreferenceSample>, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("Open {}: {e}", path.display()))?;
+    let reader = std::io::BufReader::new(file);
+    let mut samples = Vec::new();
+    for (i, line) in std::io::BufRead::lines(reader).enumerate() {
+        let line = line.map_err(|e| format!("Line {i}: {e}"))?;
+        if line.trim().is_empty() { continue; }
+        let sample: PreferenceSample = serde_json::from_str(&line)
+            .map_err(|e| format!("Line {i}: {e}"))?;
+        // FALSIFY-DPO-002: validate non-empty fields
+        if sample.prompt.is_empty() || sample.chosen.is_empty() || sample.rejected.is_empty() {
+            return Err(format!("Line {i}: empty prompt/chosen/rejected"));
+        }
+        samples.push(sample);
+    }
+    Ok(samples)
+}

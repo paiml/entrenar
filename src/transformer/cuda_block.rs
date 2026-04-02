@@ -2913,20 +2913,19 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // === Q, K, V Projections (NF4 fused dequant+GEMM — 8x less bandwidth) ===
-        // entrenar#318: use NF4 packed data directly instead of fp32 cuBLAS.
-        // Reads 1.2 MB (NF4) vs 9.4 MB (fp32) per weight matrix.
+        // === Q, K, V Projections ===
+        // Backend selection: NF4_FUSED_GEMM=1 uses fused dequant+GEMM (8x less BW, 100% GPU,
+        // but 6.5x slower due to naive PTX). Default: cuBLAS fp32 (197 tok/s, 7% GPU).
+        static USE_NF4_GEMM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let nf4_gemm = *USE_NF4_GEMM.get_or_init(|| std::env::var("NF4_FUSED_GEMM").as_deref() == Ok("1"));
 
-        gemm_nf4_forward(
-            &scratch.norm1_out,
-            &self.w_q_nf4,
-            &self.w_q_scales,
-            &mut scratch.q,
-            saturating_u32(seq_len),
-            saturating_u32(hidden_size),
-            saturating_u32(q_dim),
-            stream,
-        )?;
+        if nf4_gemm {
+            gemm_nf4_forward(&scratch.norm1_out, &self.w_q_nf4, &self.w_q_scales, &mut scratch.q,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(q_dim), stream)?;
+        } else {
+            gemm_forward(&scratch.norm1_out, &self.w_q_fp32, &mut scratch.q,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(q_dim), stream)?;
+        }
 
         // ENT-153: Q LoRA: q += (norm1_out @ A_q) @ B_q  (B_q pre-scaled by lora_scale)
         if let (Some(a_q), Some(b_q)) = (&self.lora_a_q, &self.lora_b_q) {
@@ -2942,18 +2941,17 @@ impl CudaNf4TransformerBlock {
             cuda_add_inplace(&mut scratch.q, &scratch.lora_temp, seq_len * q_dim, stream)?;
         }
 
-        gemm_nf4_forward(
-            &scratch.norm1_out, &self.w_k_nf4, &self.w_k_scales, &mut scratch.k,
-            saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream,
-        )?;
-
-        gemm_nf4_forward(
-            &scratch.norm1_out, &self.w_v_nf4, &self.w_v_scales, &mut scratch.v,
-            saturating_u32(seq_len),
-            saturating_u32(hidden_size),
-            saturating_u32(kv_hidden_size),
-            stream,
-        )?;
+        if nf4_gemm {
+            gemm_nf4_forward(&scratch.norm1_out, &self.w_k_nf4, &self.w_k_scales, &mut scratch.k,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+            gemm_nf4_forward(&scratch.norm1_out, &self.w_v_nf4, &self.w_v_scales, &mut scratch.v,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+        } else {
+            gemm_forward(&scratch.norm1_out, &self.w_k_fp32, &mut scratch.k,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+            gemm_forward(&scratch.norm1_out, &self.w_v_fp32, &mut scratch.v,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+        }
 
         // ENT-153: V LoRA: v += (norm1_out @ A_v) @ B_v  (B_v pre-scaled by lora_scale)
         if let (Some(a_v), Some(b_v)) = (&self.lora_a_v, &self.lora_b_v) {
@@ -2973,16 +2971,13 @@ impl CudaNf4TransformerBlock {
         self.compute_attention_cuda(seq_len, stream, scratch)?;
 
         // === Output Projection ===
-        // ENT-287: O proj is C[seq,hidden] = A[seq,q_dim] @ W_o[hidden,q_dim]^T
-        gemm_nf4_forward(
-            &scratch.attn_out,
-            &self.w_o_nf4, &self.w_o_scales,
-            &mut scratch.o_proj_out,
-            saturating_u32(seq_len),
-            saturating_u32(q_dim),
-            saturating_u32(hidden_size),
-            stream,
-        )?;
+        if nf4_gemm {
+            gemm_nf4_forward(&scratch.attn_out, &self.w_o_nf4, &self.w_o_scales, &mut scratch.o_proj_out,
+                saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
+        } else {
+            gemm_forward(&scratch.attn_out, &self.w_o_fp32, &mut scratch.o_proj_out,
+                saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
+        }
 
         // === Residual Add ===
         cuda_add(
@@ -3005,44 +3000,31 @@ impl CudaNf4TransformerBlock {
 
         // === FFN: Gate + Up Projections (cuBLAS fp32) ===
         gemm_nf4_forward(
-            &scratch.norm2_out,
-            &self.w_gate_nf4, &self.w_gate_scales,
-            &mut scratch.gate_out,
-            saturating_u32(seq_len),
-            saturating_u32(hidden_size),
-            saturating_u32(intermediate_size),
-            stream,
-        )?;
-
-        gemm_nf4_forward(
-            &scratch.norm2_out,
-            &self.w_up_nf4, &self.w_up_scales,
-            &mut scratch.up_out,
-            saturating_u32(seq_len),
-            saturating_u32(hidden_size),
-            saturating_u32(intermediate_size),
-            stream,
-        )?;
+        // === FFN: Gate + Up Projections ===
+        if nf4_gemm {
+            gemm_nf4_forward(&scratch.norm2_out, &self.w_gate_nf4, &self.w_gate_scales, &mut scratch.gate_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+            gemm_nf4_forward(&scratch.norm2_out, &self.w_up_nf4, &self.w_up_scales, &mut scratch.up_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+        } else {
+            gemm_forward(&scratch.norm2_out, &self.w_gate_fp32, &mut scratch.gate_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+            gemm_forward(&scratch.norm2_out, &self.w_up_fp32, &mut scratch.up_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+        }
 
         // === FFN: Fused SwiGLU ===
-        fused_swiglu_forward(
-            &scratch.gate_out,
-            &scratch.up_out,
-            &mut scratch.swiglu_out,
-            saturating_u32(seq_len * intermediate_size),
-            stream,
-        )?;
+        fused_swiglu_forward(&scratch.gate_out, &scratch.up_out, &mut scratch.swiglu_out,
+            saturating_u32(seq_len * intermediate_size), stream)?;
 
-        // === FFN: Down Projection (cuBLAS fp32) ===
-        gemm_nf4_forward(
-            &scratch.swiglu_out,
-            &self.w_down_nf4, &self.w_down_scales,
-            &mut scratch.ffn_out,
-            saturating_u32(seq_len),
-            saturating_u32(intermediate_size),
-            saturating_u32(hidden_size),
-            stream,
-        )?;
+        // === FFN: Down Projection ===
+        if nf4_gemm {
+            gemm_nf4_forward(&scratch.swiglu_out, &self.w_down_nf4, &self.w_down_scales, &mut scratch.ffn_out,
+                saturating_u32(seq_len), saturating_u32(intermediate_size), saturating_u32(hidden_size), stream)?;
+        } else {
+            gemm_forward(&scratch.swiglu_out, &self.w_down_fp32, &mut scratch.ffn_out,
+                saturating_u32(seq_len), saturating_u32(intermediate_size), saturating_u32(hidden_size), stream)?;
+        }
 
         // === Final Residual Add ===
         cuda_add(&scratch.residual1, &scratch.ffn_out, output, seq_len * hidden_size, stream)?;
