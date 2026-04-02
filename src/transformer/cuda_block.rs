@@ -2998,9 +2998,7 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // === FFN: Gate + Up Projections (cuBLAS fp32) ===
-        gemm_nf4_forward(
-        // === FFN: Gate + Up Projections ===
+        // === FFN: Gate + Up + SwiGLU + Down ===
         if nf4_gemm {
             gemm_nf4_forward(&scratch.norm2_out, &self.w_gate_nf4, &self.w_gate_scales, &mut scratch.gate_out,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
