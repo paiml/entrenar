@@ -14,6 +14,7 @@
 //!
 //! ```
 //! use entrenar::distill::DistillationLoss;
+//! // ndarray::array -> crate::array!
 //!
 //! let loss_fn = DistillationLoss::new(3.0, 0.5);
 //! let student_logits = array![[1.0, 2.0, 1.5]];

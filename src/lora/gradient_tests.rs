@@ -98,6 +98,8 @@ mod tests {
             let init_slice: Vec<f32> = initial[..a_len].to_vec();
             let add_slice: Vec<f32> = additional[..a_len].to_vec();
 
+            lora.lora_a_mut().set_grad(crate::sovereign_array::arr1(&init_slice));
+            lora.lora_a_mut().accumulate_grad(crate::sovereign_array::arr1(&add_slice));
 
             let grad = lora.lora_a().grad().expect("gradient should be available");
             for i in 0..a_len {
@@ -143,6 +145,8 @@ mod tests {
         let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
         // Set non-zero LoRA weights
+        *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
+        *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
 
         // Forward pass
         let x = Tensor::from_vec(vec![1.0, 1.0], true);
@@ -154,6 +158,8 @@ mod tests {
 
         // Manually compute expected gradients for this simple case
         // This validates that the LoRA params CAN receive gradients
+        lora.lora_a_mut().set_grad(crate::sovereign_array::arr1(&[0.1, 0.1]));
+        lora.lora_b_mut().set_grad(crate::sovereign_array::arr1(&[0.1, 0.1]));
 
         // Verify gradients are set
         assert!(lora.lora_a().grad().is_some(), "LoRA A should have gradient");
@@ -181,6 +187,10 @@ mod tests {
         let mut lora_merged = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
         // Set same LoRA weights
+        *lora_unmerged.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
+        *lora_unmerged.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
+        *lora_merged.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
+        *lora_merged.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
 
         // Merge one
         lora_merged.merge();
@@ -199,6 +209,8 @@ mod tests {
         let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
         // Set gradients
+        lora.lora_a_mut().set_grad(crate::sovereign_array::arr1(&[1.0, 2.0]));
+        lora.lora_b_mut().set_grad(crate::sovereign_array::arr1(&[3.0, 4.0]));
 
         assert!(lora.lora_a().grad().is_some());
         assert!(lora.lora_b().grad().is_some());
@@ -218,8 +230,10 @@ mod tests {
         let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
         // Set initial gradient
+        lora.lora_a_mut().set_grad(crate::sovereign_array::arr1(&[1.0, 2.0]));
 
         // Accumulate more gradient
+        lora.lora_a_mut().accumulate_grad(crate::sovereign_array::arr1(&[0.5, 0.5]));
 
         let grad = lora.lora_a().grad().expect("gradient should be available");
         assert_abs_diff_eq!(grad[0], 1.5, epsilon = 1e-6); // 1.0 + 0.5
@@ -251,6 +265,8 @@ mod tests {
         let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
         // Set different gradients
+        lora.lora_a_mut().set_grad(crate::sovereign_array::arr1(&[1.0, 2.0]));
+        lora.lora_b_mut().set_grad(crate::sovereign_array::arr1(&[3.0, 4.0]));
 
         let grad_a = lora.lora_a().grad().expect("gradient should be available");
         let grad_b = lora.lora_b().grad().expect("gradient should be available");
@@ -282,6 +298,7 @@ mod tests {
         // Simulate optimizer: set gradients and update
         for param in params {
             // Set dummy gradient
+            param.set_grad(crate::sovereign_array::Array1::ones(param.len()));
 
             // Simulate parameter update (grad descent)
             let update = param.grad().expect("gradient should be available") * 0.01;

@@ -117,6 +117,7 @@ impl QLoRALayer {
         } else {
             dequantize_4bit(&self.base_weight_quantized)
         };
+        let base_weight = Tensor::new(crate::sovereign_array::arr1(&base_weight_data), false);
 
         // Base forward: W @ x
         let base_output = matmul(&base_weight, x, self.d_out, self.d_in, 1);
@@ -447,8 +448,12 @@ mod tests {
         // Test that QLoRA forward pass approximates LoRA
         let base_weight = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], false);
         let mut lora = LoRALayer::new(base_weight.clone(), 2, 2, 1, 1.0);
+        *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
+        *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.3, 0.3]);
 
         let mut qlora = QLoRALayer::new(base_weight, 2, 2, 1, 1.0);
+        *qlora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
+        *qlora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.3, 0.3]);
 
         let x = Tensor::from_vec(vec![2.0, 3.0], true);
 
@@ -539,6 +544,8 @@ mod tests {
         let mut qlora = QLoRALayer::new(base_weight, d_out, d_in, 2, 2.0);
 
         // Set adapter weights to known values
+        *qlora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0]);
+        *qlora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0]);
 
         let merged = qlora.merge_to_f32();
 
@@ -560,9 +567,13 @@ mod tests {
 
         let a_data = vec![0.1, 0.2, -0.1, 0.3, 0.2, -0.2, 0.1, 0.1];
         let b_data = vec![0.3, -0.1, 0.2, 0.1, -0.2, 0.3, 0.1, -0.1];
+        *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&a_data);
+        *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&b_data);
 
         let mut qlora = QLoRALayer::from_lora(lora.clone());
         // Copy same adapter weights
+        *qlora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&a_data);
+        *qlora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&b_data);
 
         // Merge LoRA in-place and extract base weight as the merged result
         lora.merge();
@@ -753,6 +764,8 @@ mod tests {
         // Set non-zero adapter weights
         let a_data: Vec<f32> = (0..2 * d_in).map(|i| (i as f32 * 0.1).sin() * 0.5).collect();
         let b_data: Vec<f32> = (0..d_out * 2).map(|i| (i as f32 * 0.2).cos() * 0.3).collect();
+        *qlora.lora_a_mut().data_mut() = crate::sovereign_array::Array1::from_vec(a_data);
+        *qlora.lora_b_mut().data_mut() = crate::sovereign_array::Array1::from_vec(b_data);
 
         let x = Tensor::from_vec(vec![1.0; d_in], true);
         let output = qlora.forward(&x);
@@ -805,10 +818,12 @@ mod tests {
         let mut qlora = QLoRALayer::new(base_weight, 2, 2, 1, 2.0);
 
         // Mutate A
+        *qlora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[10.0, 20.0]);
         assert_abs_diff_eq!(qlora.lora_a().data()[0], 10.0, epsilon = 1e-6);
         assert_abs_diff_eq!(qlora.lora_a().data()[1], 20.0, epsilon = 1e-6);
 
         // Mutate B
+        *qlora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[30.0, 40.0]);
         assert_abs_diff_eq!(qlora.lora_b().data()[0], 30.0, epsilon = 1e-6);
         assert_abs_diff_eq!(qlora.lora_b().data()[1], 40.0, epsilon = 1e-6);
     }

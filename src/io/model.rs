@@ -132,7 +132,7 @@ impl Model {
                 let shape = vec![tensor.len()];
                 let param_data = tensor.data();
                 data.extend_from_slice(
-                    param_data.as_slice().expect("tensor data must be contiguous"),
+                    param_data.as_slice(),
                 );
 
                 ParameterInfo {

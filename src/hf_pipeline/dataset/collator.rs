@@ -1,5 +1,6 @@
 //! Distillation collator for batching examples
 
+use crate::sovereign_array::Array2;
 
 use super::batch::Batch;
 use super::dataset_impl::Dataset;

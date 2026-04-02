@@ -88,21 +88,7 @@ pub fn gemm_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
     if let Some(cublas) = cache.cublas() {
-        let r = cublas_gemm_forward(cublas, a, b, c, m, k, n);
-        {
-            static T: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-            if T.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0 {
-                stream.synchronize().ok();
-                let mut va = vec![0.0f32; 4.min(a.len())];
-                let _ = a.copy_to_host(&mut va);
-                let mut vb = vec![0.0f32; 4.min(b.len())];
-                let _ = b.copy_to_host(&mut vb);
-                let mut vc = vec![0.0f32; 4.min(c.len())];
-                let _ = c.copy_to_host(&mut vc);
-                eprintln!("[DIAG-002] m={m} k={k} n={n} A={va:?} B={vb:?} C={vc:?}");
-            }
-        }
-        return r;
+        return cublas_gemm_forward(cublas, a, b, c, m, k, n);
     }
 
     // PTX fallback

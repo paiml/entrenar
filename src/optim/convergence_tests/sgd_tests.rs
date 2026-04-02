@@ -37,6 +37,7 @@ mod tests {
 
         for _ in 0..20 {
             // Same gradient for both
+            let grad = crate::sovereign_array::arr1(&[2.0 * params_with[0].data()[0]]);
             params_with[0].set_grad(grad.clone());
             params_without[0].set_grad(grad);
 
@@ -68,6 +69,7 @@ mod tests {
                 let y = params[0].data()[1];
                 let dx = -2.0 * (1.0 - x) - 400.0 * x * (y - x * x);
                 let dy = 200.0 * (y - x * x);
+                params[0].set_grad(crate::sovereign_array::arr1(&[dx, dy]));
                 optimizer.step(&mut params);
             }
             prop_assert!(params[0].data().iter().all(|&v| v.is_finite()));
@@ -116,11 +118,13 @@ mod tests {
 
         // Apply gradient for several steps to build up momentum
         for _ in 0..10 {
+            params[0].set_grad(crate::sovereign_array::arr1(&[2.0 * params[0].data()[0]]));
             opt.step(&mut params);
         }
         let after_10 = params[0].data()[0];
 
         // Now apply zero gradient - momentum should still cause movement
+        params[0].set_grad(crate::sovereign_array::arr1(&[0.0]));
         opt.step(&mut params);
         let after_zero_grad = params[0].data()[0];
 

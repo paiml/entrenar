@@ -1,6 +1,7 @@
 //! SafeTensors-based teacher model implementation
 
 use crate::hf_pipeline::error::{FetchError, Result};
+use crate::sovereign_array::Array2;
 use std::path::Path;
 
 use super::{MemoryEstimate, TeacherModel};

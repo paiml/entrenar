@@ -43,6 +43,7 @@ pub fn test_loss_decreases<O: Optimizer>(mut optimizer: O, iterations: usize) ->
         // Compute loss and gradient for f(x) = x^2
         let x = params[0].data()[0];
         let loss = x * x;
+        let grad = crate::sovereign_array::arr1(&[2.0 * x]);
 
         // Loss should decrease (or stay same if converged)
         if loss > prev_loss + 1e-3 {
@@ -81,6 +82,7 @@ pub fn test_rosenbrock_convergence<O: Optimizer>(
         let dx = -2.0 * (a - x) - 4.0 * b * x * (y - x * x);
         let dy = 2.0 * b * (y - x * x);
 
+        let grad = crate::sovereign_array::arr1(&[dx, dy]);
         params[0].set_grad(grad);
         optimizer.step(&mut params);
     }
@@ -107,6 +109,7 @@ pub fn test_ill_conditioned_convergence<O: Optimizer>(
         let y = params[0].data()[1];
 
         // Gradient: [x, 100*y]
+        let grad = crate::sovereign_array::arr1(&[x, 100.0 * y]);
         params[0].set_grad(grad);
         optimizer.step(&mut params);
     }

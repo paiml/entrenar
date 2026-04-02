@@ -35,7 +35,7 @@ pub fn pissa_init(
 
     // Truncated SVD via power iteration
     let (u_r, s_r, v_r) =
-        truncated_svd(base_weight.data().as_slice().expect("contiguous"), d_out, d_in, rank);
+        truncated_svd(base_weight.data().as_slice(), d_out, d_in, rank);
 
     // Compute A = sqrt(S_r) · V_r^T [rank × d_in]
     let mut a_data = vec![0.0f32; rank * d_in];
@@ -74,6 +74,8 @@ pub fn pissa_init(
     let mut layer = LoRALayer::new(residual_tensor, d_out, d_in, rank, alpha);
 
     // Override the default random init with PiSSA init
+    *layer.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&a_data);
+    *layer.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&b_data);
 
     layer
 }

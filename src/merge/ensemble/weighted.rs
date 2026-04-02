@@ -42,6 +42,7 @@ fn weighted_sum_param(
     weights: &[f32],
 ) -> Result<crate::autograd::Tensor, MergeError> {
     let param_len = models[0][name].len();
+    let mut weighted_sum = crate::sovereign_array::Array1::zeros_f32(param_len);
 
     for (model, weight) in models.iter().zip(weights.iter()) {
         let param = model

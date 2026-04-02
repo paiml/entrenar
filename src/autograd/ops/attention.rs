@@ -3,6 +3,7 @@
 //! Uses CUDA GEMM for Q@K^T and Attn@V operations when available.
 
 use crate::autograd::{BackwardOp, Tensor};
+use crate::sovereign_array::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -36,8 +37,8 @@ pub fn attention(
     // Step 1: Compute Q @ K^T (seq_len x seq_len) using GPU GEMM
     // Q is (seq_len, d_k), K is (seq_len, d_k), K^T is (d_k, seq_len)
     // Result: (seq_len, d_k) @ (d_k, seq_len) = (seq_len, seq_len)
-    let q_slice = q.data().as_slice().unwrap_or(&[]);
-    let k_slice = k.data().as_slice().unwrap_or(&[]);
+    let q_slice = q.data().as_slice();
+    let k_slice = k.data().as_slice();
     let k_t = transpose(k_slice, seq_len, d_k); // K^T: (d_k, seq_len)
     let mut scores = matmul_compute(q_slice, &k_t, seq_len, d_k, seq_len);
 
@@ -66,7 +67,7 @@ pub fn attention(
     // Step 3: Compute attention_weights @ V (seq_len x d_v) using GPU GEMM
     // attention_weights is (seq_len, seq_len), V is (seq_len, d_v)
     // Result: (seq_len, seq_len) @ (seq_len, d_v) = (seq_len, d_v)
-    let v_slice = v.data().as_slice().unwrap_or(&[]);
+    let v_slice = v.data().as_slice();
     let output_data = matmul_compute(&attention_weights, v_slice, seq_len, seq_len, d_v);
 
     let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
@@ -111,8 +112,8 @@ impl BackwardOp for AttentionBackward {
             let seq_len = self.seq_len;
             let d_k = self.d_k;
             let d_v = self.d_v;
-            let grad_out_slice = grad_output.as_slice().unwrap_or(&[]);
-            let attn_slice = self.attention_weights.as_slice().unwrap_or(&[]);
+            let grad_out_slice = grad_output.as_slice();
+            let attn_slice = self.attention_weights.as_slice();
 
             // Gradient w.r.t. V: attention_weights^T @ grad_output
             // attention_weights is (seq_len, seq_len), grad_output is (seq_len, d_v)
@@ -127,7 +128,7 @@ impl BackwardOp for AttentionBackward {
             // Gradient w.r.t. attention_weights: grad_output @ V^T
             // grad_output is (seq_len, d_v), V is (seq_len, d_v), V^T is (d_v, seq_len)
             // Result: (seq_len, d_v) @ (d_v, seq_len) = (seq_len, seq_len)
-            let v_slice = self.v.data().as_slice().unwrap_or(&[]);
+            let v_slice = self.v.data().as_slice();
             let v_t = transpose(v_slice, seq_len, d_v);
             let grad_attention_weights =
                 matmul_compute(grad_out_slice, &v_t, seq_len, d_v, seq_len);
@@ -160,7 +161,7 @@ impl BackwardOp for AttentionBackward {
             // grad_scaled is (seq_len, seq_len), K is (seq_len, d_k)
             // Result: (seq_len, seq_len) @ (seq_len, d_k) = (seq_len, d_k)
             if self.q.requires_grad() {
-                let k_slice = self.k.data().as_slice().unwrap_or(&[]);
+                let k_slice = self.k.data().as_slice();
                 let grad_q = matmul_compute(&grad_scores, k_slice, seq_len, seq_len, d_k);
                 self.q.accumulate_grad(Array1::from(grad_q));
             }
@@ -171,7 +172,7 @@ impl BackwardOp for AttentionBackward {
             // Result: (seq_len, seq_len) @ (seq_len, d_k) = (seq_len, d_k)
             if self.k.requires_grad() {
                 let grad_t = transpose(&grad_scores, seq_len, seq_len);
-                let q_slice = self.q.data().as_slice().unwrap_or(&[]);
+                let q_slice = self.q.data().as_slice();
                 let grad_k = matmul_compute(&grad_t, q_slice, seq_len, seq_len, d_k);
                 self.k.accumulate_grad(Array1::from(grad_k));
             }
@@ -208,6 +209,7 @@ impl BackwardOp for AttentionBackward {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sovereign_array::Array1;
 
     /// FALSIFY-ATT-001: Weight normalization (indirect) — uniform V → output equals V
     ///
@@ -233,7 +235,7 @@ mod tests {
 
         let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
         let out_data = output.data();
-        let out_slice = out_data.as_slice().expect("contiguous");
+        let out_slice = out_data.as_slice();
 
         for i in 0..seq_len {
             for d in 0..d_v {
@@ -270,7 +272,7 @@ mod tests {
 
         let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
         let out_data = output.data();
-        let out_slice = out_data.as_slice().expect("contiguous");
+        let out_slice = out_data.as_slice();
 
         for i in 0..seq_len {
             for d in 0..d_v {
@@ -309,7 +311,7 @@ mod tests {
         let v = Tensor::new(Array1::from(v_data.clone()), false);
 
         let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
-        let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+        let out_slice = output.data().as_slice().to_vec();
 
         // Manual reference with correct 1/√d_k scaling
         let scale = (d_k as f32).sqrt(); // 2.0
@@ -351,7 +353,7 @@ mod tests {
         let v = Tensor::new(Array1::from(v_data.clone()), false);
 
         let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
-        let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+        let out_slice = output.data().as_slice().to_vec();
 
         for (d, (&out_val, &v_val)) in out_slice.iter().zip(v_data.iter()).enumerate() {
             let diff = (out_val - v_val).abs();
@@ -382,7 +384,7 @@ mod tests {
         let k_a = Tensor::new(Array1::from(k_data_a.clone()), false);
         let v_a = Tensor::new(Array1::from(v_data.clone()), false);
         let out_a = attention(&q_a, &k_a, &v_a, seq_len, d_k, seq_len, d_v);
-        let slice_a = out_a.data().as_slice().expect("contiguous").to_vec();
+        let slice_a = out_a.data().as_slice().to_vec();
 
         // Run B: modify K at position 2 (last token)
         let mut k_data_b = k_data_a;
@@ -391,7 +393,7 @@ mod tests {
         let k_b = Tensor::new(Array1::from(k_data_b), false);
         let v_b = Tensor::new(Array1::from(v_data), false);
         let out_b = attention(&q_b, &k_b, &v_b, seq_len, d_k, seq_len, d_v);
-        let slice_b = out_b.data().as_slice().expect("contiguous").to_vec();
+        let slice_b = out_b.data().as_slice().to_vec();
 
         // Position 0's output MUST change — it attends bidirectionally to position 2
         let diff_pos0: f32 = (0..d_v).map(|d| (slice_a[d] - slice_b[d]).abs()).sum();
@@ -432,7 +434,7 @@ mod tests {
                 let v = Tensor::new(Array1::from(v_data.clone()), false);
 
                 let output = attention(&q, &k, &v, seq, d, seq, d);
-                let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+                let out_slice = output.data().as_slice().to_vec();
 
                 for dim in 0..d {
                     let v_min = (0..seq).map(|j| v_data[j * d + dim]).fold(f32::INFINITY, f32::min);
@@ -477,7 +479,7 @@ mod tests {
                 let v = Tensor::new(Array1::from(v_data), false);
 
                 let output = attention(&q, &k, &v, seq, d, seq, d);
-                let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+                let out_slice = output.data().as_slice().to_vec();
 
                 for i in 0..seq {
                     for dim in 0..d {

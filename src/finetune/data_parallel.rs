@@ -344,6 +344,7 @@ mod tests {
             .iter()
             .map(|v| v + 1.0)
             .collect();
+        let arr = crate::sovereign_array::Array1::from(perturbed);
         *coordinator.pipelines[1].lora_layers[0].lora_a_mut().data_mut() = arr;
 
         // Verify they are now different
@@ -373,6 +374,7 @@ mod tests {
             .iter()
             .map(|v| v + 0.5)
             .collect();
+        let arr = crate::sovereign_array::Array1::from(perturbed);
         *coordinator.pipelines[1].lora_layers[0].lora_a_mut().data_mut() = arr;
 
         // DO NOT call sync_lora_weights_from_primary
@@ -511,6 +513,7 @@ mod tests {
         // Perturb replica 1's classifier weight
         let perturbed: Vec<f32> =
             coordinator.pipelines[1].classifier.weight.data().iter().map(|v| v + 99.0).collect();
+        let arr = crate::sovereign_array::Array1::from(perturbed);
         *coordinator.pipelines[1].classifier.weight.data_mut() = arr;
 
         // Sync
@@ -545,10 +548,13 @@ mod tests {
         // Perturb ALL lora_a/lora_b of replica 1 and classifier
         for lora in &mut coordinator.pipelines[1].lora_layers {
             let perturbed_a: Vec<f32> = lora.lora_a().data().iter().map(|v| v + 42.0).collect();
+            *lora.lora_a_mut().data_mut() = crate::sovereign_array::Array1::from(perturbed_a);
             let perturbed_b: Vec<f32> = lora.lora_b().data().iter().map(|v| v + 7.0).collect();
+            *lora.lora_b_mut().data_mut() = crate::sovereign_array::Array1::from(perturbed_b);
         }
         let perturbed_w: Vec<f32> =
             coordinator.pipelines[1].classifier.weight.data().iter().map(|v| v + 99.0).collect();
+        *coordinator.pipelines[1].classifier.weight.data_mut() = crate::sovereign_array::Array1::from(perturbed_w);
 
         // Sync from primary
         coordinator.sync_lora_weights_from_primary();
@@ -561,26 +567,26 @@ mod tests {
             .enumerate()
         {
             assert_eq!(
-                l0.lora_a().data().as_slice().unwrap(),
-                l1.lora_a().data().as_slice().unwrap(),
+                l0.lora_a().data().as_slice(),
+                l1.lora_a().data().as_slice(),
                 "F-DP-001: lora_a of layer {i} must match after sync"
             );
             assert_eq!(
-                l0.lora_b().data().as_slice().unwrap(),
-                l1.lora_b().data().as_slice().unwrap(),
+                l0.lora_b().data().as_slice(),
+                l1.lora_b().data().as_slice(),
                 "F-DP-001: lora_b of layer {i} must match after sync"
             );
         }
 
         // Verify classifier head
         assert_eq!(
-            coordinator.pipelines[0].classifier.weight.data().as_slice().unwrap(),
-            coordinator.pipelines[1].classifier.weight.data().as_slice().unwrap(),
+            coordinator.pipelines[0].classifier.weight.data().as_slice(),
+            coordinator.pipelines[1].classifier.weight.data().as_slice(),
             "F-DP-001: classifier weight must match after sync"
         );
         assert_eq!(
-            coordinator.pipelines[0].classifier.bias.data().as_slice().unwrap(),
-            coordinator.pipelines[1].classifier.bias.data().as_slice().unwrap(),
+            coordinator.pipelines[0].classifier.bias.data().as_slice(),
+            coordinator.pipelines[1].classifier.bias.data().as_slice(),
             "F-DP-001: classifier bias must match after sync"
         );
     }

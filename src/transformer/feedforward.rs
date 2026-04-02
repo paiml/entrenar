@@ -220,8 +220,8 @@ impl EncoderFeedForward {
         // Up projection — HF weights [inter, h] (ENT-269)
         let up = matmul_nt(x, &self.w_up, seq_len, h, inter);
         let up_data = up.data();
-        let up_slice = up_data.as_slice().expect("contiguous");
-        let b_up_slice = self.b_up.data().as_slice().expect("contiguous");
+        let up_slice = up_data.as_slice();
+        let b_up_slice = self.b_up.data().as_slice();
 
         // GELU(W_up * x + b_up)
         let activated: Vec<f32> =
@@ -231,8 +231,8 @@ impl EncoderFeedForward {
         // Down projection — HF weights [h, inter] (ENT-269)
         let down = matmul_nt(&activated_t, &self.w_down, seq_len, inter, h);
         let down_data = down.data();
-        let down_slice = down_data.as_slice().expect("contiguous");
-        let b_down_slice = self.b_down.data().as_slice().expect("contiguous");
+        let down_slice = down_data.as_slice();
+        let b_down_slice = self.b_down.data().as_slice();
 
         let output: Vec<f32> =
             (0..seq_len * h).map(|i| down_slice[i] + b_down_slice[i % h]).collect();
@@ -544,6 +544,7 @@ mod tests {
         let mut output = ffn.forward(&x, 2);
 
         // Backward pass
+        let grad_out = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All FFN weights should have gradients
@@ -559,6 +560,7 @@ mod tests {
         let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
+        let grad_out = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All gradients should be finite
@@ -585,6 +587,7 @@ mod tests {
             );
             let mut output = ffn.forward(&x, 2);
 
+            let grad_out = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
             crate::autograd::backward(&mut output, Some(grad_out));
 
             let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
@@ -602,6 +605,7 @@ mod tests {
         let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
+        let grad_out = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Gradients should not be all zero
@@ -619,6 +623,7 @@ mod tests {
             let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
             let mut output = ffn.forward(&x, seq_len);
 
+            let grad_out = crate::sovereign_array::Array1::ones(seq_len * config.hidden_size);
             crate::autograd::backward(&mut output, Some(grad_out));
 
             let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
@@ -637,12 +642,14 @@ mod tests {
         // First forward-backward
         let x1 = Tensor::from_vec(vec![0.1; 2 * config.hidden_size], true);
         let mut output1 = ffn.forward(&x1, 2);
+        let grad_out1 = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output1, Some(grad_out1));
         let grad1 = ffn.w_gate.grad().expect("gradient should be available").to_vec();
 
         // Second forward-backward should accumulate
         let x2 = Tensor::from_vec(vec![0.2; 2 * config.hidden_size], true);
         let mut output2 = ffn.forward(&x2, 2);
+        let grad_out2 = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output2, Some(grad_out2));
         let grad2 = ffn.w_gate.grad().expect("gradient should be available").to_vec();
 
@@ -660,6 +667,7 @@ mod tests {
         let x = Tensor::from_vec(vec![0.0; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
+        let grad_out = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Should still produce finite gradients
@@ -674,6 +682,7 @@ mod tests {
         let x = Tensor::from_vec(vec![10.0; 2 * config.hidden_size], true);
         let mut output = ffn.forward(&x, 2);
 
+        let grad_out = crate::sovereign_array::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Should still produce finite gradients

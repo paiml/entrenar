@@ -20,6 +20,7 @@
 //! - **BCEWithLogitsLoss**: sigmoid → independent per-class (multi-label)
 
 use crate::Tensor;
+use crate::sovereign_array::Array1;
 
 use super::LossFn;
 

@@ -5,6 +5,7 @@
 
 use super::{validate_models, MergeError, Model};
 use crate::autograd::Tensor;
+use crate::sovereign_array::Array1;
 use std::collections::HashMap;
 
 /// Configuration for SLERP merge

@@ -411,14 +411,14 @@ impl InstructTrainer {
             // LoRA A: [rank, d_in]
             let a_data = lora.lora_a().data();
             let a_bytes: Vec<u8> =
-                bytemuck::cast_slice(a_data.as_slice().expect("contiguous lora_a")).to_vec();
+                bytemuck::cast_slice(a_data.as_slice()).to_vec();
             let a_shape = vec![lora.rank(), lora.d_in()];
             tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_a"), a_bytes, a_shape));
 
             // LoRA B: [d_out, rank]
             let b_data = lora.lora_b().data();
             let b_bytes: Vec<u8> =
-                bytemuck::cast_slice(b_data.as_slice().expect("contiguous lora_b")).to_vec();
+                bytemuck::cast_slice(b_data.as_slice()).to_vec();
             let b_shape = vec![lora.d_out(), lora.rank()];
             tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_b"), b_bytes, b_shape));
         }

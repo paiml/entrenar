@@ -19,9 +19,11 @@ fn test_tensor_creation() {
 fn test_tensor_grad_accumulation() {
     let t = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
 
+    t.accumulate_grad(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0]));
     let grad1 = t.grad().expect("gradient should be available");
     assert_eq!(grad1[0], 1.0);
 
+    t.accumulate_grad(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0]));
     let grad2 = t.grad().expect("gradient should be available");
     assert_eq!(grad2[0], 2.0);
 }
@@ -44,6 +46,7 @@ fn test_add_backward() {
     let mut c = add(&a, &b);
 
     // Backward with gradient of ones
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
     let grad_b = b.grad().expect("gradient should be available");
@@ -69,6 +72,7 @@ fn test_mul_backward() {
     let b = Tensor::from_vec(vec![5.0, 7.0], true);
     let mut c = mul(&a, &b);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
     let grad_b = b.grad().expect("gradient should be available");
@@ -98,6 +102,7 @@ fn test_relu_backward() {
     let a = Tensor::from_vec(vec![-1.0, 0.0, 1.0, 2.0], true);
     let mut c = relu(&a);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0, 1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
 
@@ -123,6 +128,7 @@ fn test_scale_backward() {
     let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
     let mut c = scale(&a, 3.0);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
 
@@ -206,6 +212,7 @@ fn test_gelu_backward() {
     let a = Tensor::from_vec(vec![-1.0, 0.0, 1.0], true);
     let mut c = gelu(&a);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
 
@@ -232,6 +239,7 @@ fn test_swish_backward() {
     let a = Tensor::from_vec(vec![-1.0, 0.0, 1.0], true);
     let mut c = swish(&a);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
 
@@ -264,6 +272,7 @@ fn test_layer_norm_backward() {
     let beta = Tensor::from_vec(vec![0.0, 0.0, 0.0, 0.0], true);
     let mut c = layer_norm(&a, &gamma, &beta, 1e-5);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0, 1.0])));
 
     // Gradients should exist for all inputs
     let grad_a = a.grad().expect("gradient should be available");
@@ -304,6 +313,7 @@ fn test_attention_backward() {
     let mut output = attention(&q, &k, &v, 2, 2, 2, 2);
 
     // Backward with all ones gradient
+    backward(&mut output, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0, 1.0])));
 
     // All three should have gradients
     assert!(q.grad().is_some());
@@ -340,6 +350,7 @@ fn test_softmax_backward_gradient_check() {
     let mut y = softmax(&a);
 
     // Compute analytical gradient
+    backward(&mut y, Some(crate::sovereign_array::arr1(&[1.0, 0.0, 0.0, 0.0])));
     let analytical = a.grad().expect("gradient should be available");
 
     // Compute numerical gradient
@@ -364,6 +375,7 @@ fn test_sum_backward() {
     let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
     let mut c = sum(&a);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
 
@@ -427,6 +439,7 @@ fn test_matmul_backward() {
     let b = Tensor::from_vec(vec![5.0, 6.0, 7.0, 8.0], true);
     let mut c = matmul(&a, &b, 2, 2, 2);
 
+    backward(&mut c, Some(crate::sovereign_array::arr1(&[1.0, 1.0, 1.0, 1.0])));
 
     let grad_a = a.grad().expect("gradient should be available");
     let grad_b = b.grad().expect("gradient should be available");

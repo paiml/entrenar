@@ -1,6 +1,7 @@
 //! Cross Entropy Loss for classification
 
 use crate::Tensor;
+use crate::sovereign_array::Array1;
 
 use super::LossFn;
 
@@ -268,6 +269,7 @@ mod tests {
 #[cfg(test)]
 mod ce_contract_tests {
     use super::*;
+    use crate::sovereign_array::Array1;
 
     /// Helper: create one-hot targets
     fn one_hot(idx: usize, len: usize) -> Vec<f32> {

@@ -106,6 +106,7 @@ mod tests {
             let y = params[0].data()[1];
             let dx = -2.0 * (a - x) - 4.0 * b * x * (y - x * x);
             let dy = 2.0 * b * (y - x * x);
+            params[0].set_grad(crate::sovereign_array::arr1(&[dx, dy]));
             optimizer.step(&mut params);
         }
 
@@ -131,6 +132,8 @@ mod tests {
 
         // Run for several steps
         for _ in 0..20 {
+            let grad_h = crate::sovereign_array::arr1(&[2.0 * params_high_beta2[0].data()[0]]);
+            let grad_l = crate::sovereign_array::arr1(&[2.0 * params_low_beta2[0].data()[0]]);
             params_high_beta2[0].set_grad(grad_h);
             params_low_beta2[0].set_grad(grad_l);
             opt_high.step(&mut params_high_beta2);
@@ -154,6 +157,7 @@ mod tests {
 
         // Run some steps
         for _ in 0..10 {
+            params[0].set_grad(crate::sovereign_array::arr1(&[2.0 * params[0].data()[0]]));
             adam.step(&mut params);
         }
 
@@ -161,6 +165,7 @@ mod tests {
 
         // Run 10 more
         for _ in 0..10 {
+            params[0].set_grad(crate::sovereign_array::arr1(&[2.0 * params[0].data()[0]]));
             adam.step(&mut params);
         }
 

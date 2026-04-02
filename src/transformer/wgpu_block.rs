@@ -132,15 +132,13 @@ impl WgpuForwardPass {
         for (i, layer) in model.layers.iter().enumerate() {
             let gate_data = layer.ffn.w_gate.data();
             let gate_slice = gate_data
-                .as_slice()
-                .ok_or_else(|| format!("Layer {i}: gate weight not contiguous"))?;
+                .as_slice();
             let up_data = layer.ffn.w_up.data();
             let up_slice =
-                up_data.as_slice().ok_or_else(|| format!("Layer {i}: up weight not contiguous"))?;
+                up_data.as_slice();
             let down_data = layer.ffn.w_down.data();
             let down_slice = down_data
-                .as_slice()
-                .ok_or_else(|| format!("Layer {i}: down weight not contiguous"))?;
+                .as_slice();
 
             let w_gate = Arc::new(device.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(&format!("ffn_gate_L{i}")),
@@ -287,7 +285,7 @@ impl WgpuForwardPass {
 
             // Upload input (always from CPU — small: seq_len * hidden_size)
             let input_data = input.data();
-            let input_slice = input_data.as_slice().ok_or("Input tensor not contiguous")?;
+            let input_slice = input_data.as_slice();
             let buf_input = batch.upload(input_slice);
 
             // KAIZEN-015: Import GPU-resident weights or fall back to CPU upload
@@ -300,11 +298,11 @@ impl WgpuForwardPass {
             } else {
                 // Fallback: upload weights from CPU tensors (original path)
                 let gate_data = w_gate.data();
-                let gate_slice = gate_data.as_slice().ok_or("Gate weight not contiguous")?;
+                let gate_slice = gate_data.as_slice();
                 let up_data = w_up.data();
-                let up_slice = up_data.as_slice().ok_or("Up weight not contiguous")?;
+                let up_slice = up_data.as_slice();
                 let down_data = w_down.data();
-                let down_slice = down_data.as_slice().ok_or("Down weight not contiguous")?;
+                let down_slice = down_data.as_slice();
                 let g = batch.upload(gate_slice);
                 let u = batch.upload(up_slice);
                 let d = batch.upload(down_slice);
@@ -432,7 +430,7 @@ impl WgpuForwardPass {
             let mut concat_input = Vec::with_capacity(total_tokens * hidden_size);
             for norm2 in &ffn_input_tensors {
                 let data = norm2.data();
-                concat_input.extend_from_slice(data.as_slice().expect("norm2 contiguous"));
+                concat_input.extend_from_slice(data.as_slice());
             }
             let concat_tensor = Tensor::from_vec(concat_input, false);
 
@@ -452,7 +450,7 @@ impl WgpuForwardPass {
 
             // Split FFN output back into per-sample tensors + residual
             let ffn_data = ffn_out.data();
-            let ffn_slice = ffn_data.as_slice().expect("ffn contiguous");
+            let ffn_slice = ffn_data.as_slice();
             let mut offset = 0;
             hiddens = residuals
                 .into_iter()

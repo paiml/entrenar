@@ -50,6 +50,7 @@ pub trait Optimizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sovereign_array::arr1;
 
     /// Minimal optimizer implementation for testing default trait methods
     struct TestOptimizer {

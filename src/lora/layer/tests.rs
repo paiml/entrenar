@@ -56,6 +56,8 @@ proptest! {
         // Set non-zero LoRA weights
         let a_data: Vec<f32> = (0..rank * d_in).map(|i| (i as f32 * 0.2).sin() * 0.1).collect();
         let b_data: Vec<f32> = (0..d_out * rank).map(|i| (i as f32 * 0.3).cos() * 0.1).collect();
+        *lora.lora_a_mut().data_mut() = crate::sovereign_array::Array1::from_vec(a_data);
+        *lora.lora_b_mut().data_mut() = crate::sovereign_array::Array1::from_vec(b_data);
 
         let x_data: Vec<f32> = (0..d_in).map(|i| i as f32 + 1.0).collect();
         let x = Tensor::from_vec(x_data.clone(), true);
@@ -95,6 +97,8 @@ proptest! {
         // Set non-zero LoRA weights
         let a_data: Vec<f32> = (0..rank * d_in).map(|i| i as f32 * 0.01).collect();
         let b_data: Vec<f32> = (0..d_out * rank).map(|i| i as f32 * 0.02).collect();
+        *lora.lora_a_mut().data_mut() = crate::sovereign_array::Array1::from_vec(a_data);
+        *lora.lora_b_mut().data_mut() = crate::sovereign_array::Array1::from_vec(b_data);
 
         // Merge then unmerge
         lora.merge();
@@ -174,7 +178,9 @@ fn test_lora_forward_unmerged() {
 
     // Set LoRA weights to known values for testing
     // A: [1, 2] (1x2 matrix)
+    *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 2.0]);
     // B: [3, 4] (2x1 matrix) - stored as column-major [3, 4]
+    *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[3.0, 4.0]);
 
     // Input vector [1, 2]
     let x = Tensor::from_vec(vec![1.0, 2.0], true);
@@ -200,6 +206,8 @@ fn test_lora_merge_unmerge() {
     let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
     // Set LoRA weights: A = [1, 2], B = [0.5, 0.5]
+    *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 2.0]);
+    *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
 
     // Original base weight
     let original_weight = lora.base_weight().data().to_owned();
@@ -235,6 +243,8 @@ fn test_lora_forward_merged() {
     let base_weight = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], false);
     let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
+    *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 1.0]);
+    *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 1.0]);
 
     let x = Tensor::from_vec(vec![1.0, 1.0], true);
 
@@ -355,6 +365,8 @@ fn test_merge_already_merged_is_noop() {
     let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
     // Set non-zero LoRA weights
+    *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 2.0]);
+    *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
 
     // First merge
     lora.merge();
@@ -384,6 +396,8 @@ fn test_unmerge_not_merged_is_noop() {
     let mut lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
     // Set non-zero LoRA weights
+    *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 2.0]);
+    *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
 
     // Never merged — unmerge should be a no-op (early return path)
     assert!(!lora.is_merged());
@@ -402,6 +416,8 @@ fn test_lora_layer_clone() {
     let base_weight = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], false);
     let mut original = LoRALayer::new(base_weight, 2, 2, 1, 2.0);
 
+    *original.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.3, 0.7]);
+    *original.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.9]);
 
     let cloned = original.clone();
 
@@ -442,6 +458,7 @@ fn test_lora_a_mut_modifies_weights() {
     let initial_a: Vec<f32> = lora.lora_a().data().to_vec();
 
     // Mutate through lora_a_mut
+    *lora.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[99.0, 99.0]);
 
     // Verify mutation took effect
     assert_abs_diff_eq!(lora.lora_a().data()[0], 99.0, epsilon = 1e-6);
@@ -462,6 +479,7 @@ fn test_lora_b_mut_modifies_weights() {
     assert_abs_diff_eq!(lora.lora_b().data()[0], 0.0, epsilon = 1e-10);
 
     // Mutate through lora_b_mut
+    *lora.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[42.0, 42.0]);
 
     // Verify mutation took effect
     assert_abs_diff_eq!(lora.lora_b().data()[0], 42.0, epsilon = 1e-6);

@@ -18,6 +18,7 @@ proptest! {
         let mut c = layer_norm(&a, &gamma, &beta, 1e-5);
 
         let c_len = c.len();
+        backward(&mut c, Some(crate::sovereign_array::Array1::ones(c_len)));
 
         let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
@@ -55,6 +56,7 @@ proptest! {
         let b = Tensor::from_vec(vec![0.0; n], false);
         let mut c = layer_norm(&a, &g, &b, 1e-5);
 
+        backward(&mut c, Some(crate::sovereign_array::Array1::ones(n)));
 
         let analytical = g.grad().expect("gradient should be available");
         let numerical = finite_difference(
@@ -92,6 +94,7 @@ proptest! {
         let b = Tensor::from_vec(beta_vec.clone(), true);
         let mut c = layer_norm(&a, &g, &b, 1e-5);
 
+        backward(&mut c, Some(crate::sovereign_array::Array1::ones(n)));
 
         let analytical = b.grad().expect("gradient should be available");
 

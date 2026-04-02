@@ -1,5 +1,6 @@
 //! Batch struct for training
 
+use crate::sovereign_array::Array2;
 
 /// Batch of examples for training
 #[derive(Debug, Clone)]

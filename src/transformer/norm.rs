@@ -71,9 +71,9 @@ impl RMSNorm {
         // Previously x.data().as_slice() was called per-position (seq_len times)
         // and self.weight.data()[i] was called per-element (seq_len * hidden_size times).
         let x_data = x.data();
-        let x_slice = x_data.as_slice().expect("norm input must be contiguous");
+        let x_slice = x_data.as_slice();
         let w_data = self.weight.data();
-        let w_slice = w_data.as_slice().expect("norm weight must be contiguous");
+        let w_slice = w_data.as_slice();
 
         for s in 0..seq_len {
             let start = s * hidden_size;
@@ -96,6 +96,7 @@ impl RMSNorm {
 
         if requires_grad {
             use crate::autograd::BackwardOp;
+            use crate::sovereign_array::Array1;
             use std::cell::RefCell;
             use std::rc::Rc;
 
@@ -113,10 +114,10 @@ impl RMSNorm {
                     if let Some(grad_output) = self.result_grad.borrow().as_ref() {
                         let h = self.hidden_size;
                         let x_data = self.x.data();
-                        let x_sl = x_data.as_slice().expect("x contiguous");
+                        let x_sl = x_data.as_slice();
                         let w_data = self.weight.data();
-                        let w_sl = w_data.as_slice().expect("weight contiguous");
-                        let go = grad_output.as_slice().expect("grad contiguous");
+                        let w_sl = w_data.as_slice();
+                        let go = grad_output.as_slice();
 
                         if self.x.requires_grad() {
                             // dx[s,j] = (go[s,j]*w[j] - x[s,j]*c_s) / rms_s
@@ -242,11 +243,11 @@ impl LayerNorm {
     pub fn forward_batched(&self, x: &Tensor, seq_len: usize, hidden_size: usize) -> Tensor {
         let mut output = vec![0.0_f32; seq_len * hidden_size];
         let x_data = x.data();
-        let x_slice = x_data.as_slice().expect("input contiguous");
+        let x_slice = x_data.as_slice();
         let w_data = self.weight.data();
-        let w_slice = w_data.as_slice().expect("weight contiguous");
+        let w_slice = w_data.as_slice();
         let b_data = self.bias.data();
-        let b_slice = b_data.as_slice().expect("bias contiguous");
+        let b_slice = b_data.as_slice();
 
         for s in 0..seq_len {
             let start = s * hidden_size;
@@ -352,6 +353,7 @@ mod tests {
         let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
         let mut output = norm.forward(&x);
 
+        let grad_out = crate::sovereign_array::Array1::ones(8);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         assert!(norm.weight.grad().is_some());
@@ -366,6 +368,7 @@ mod tests {
         let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
         let mut output = norm.forward_batched(&x, 2, 4);
 
+        let grad_out = crate::sovereign_array::Array1::ones(8);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Weight must receive gradient (was broken before ALB-038 fix)
@@ -396,12 +399,14 @@ mod tests {
         let norm1 = RMSNorm::new(hidden, 1e-6);
         let x1 = Tensor::from_vec(data.clone(), true);
         let mut out1 = norm1.forward(&x1);
+        crate::autograd::backward(&mut out1, Some(crate::sovereign_array::Array1::ones(hidden)));
         let wgrad1 = norm1.weight.grad().expect("gradient available");
 
         // Batched path (new backward op)
         let norm2 = RMSNorm::new(hidden, 1e-6);
         let x2 = Tensor::from_vec(data, true);
         let mut out2 = norm2.forward_batched(&x2, 1, hidden);
+        crate::autograd::backward(&mut out2, Some(crate::sovereign_array::Array1::ones(hidden)));
         let wgrad2 = norm2.weight.grad().expect("gradient available");
 
         // Weight gradients should match exactly (dw = go * x / rms)
@@ -433,7 +438,7 @@ mod tests {
         let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
         let output = ln.forward_batched(&x, 1, 8);
         let data = output.data();
-        let slice = data.as_slice().expect("contiguous");
+        let slice = data.as_slice();
 
         // With weight=1, bias=0: output should have ~zero mean, ~unit variance
         let mean: f32 = slice.iter().sum::<f32>() / 8.0;

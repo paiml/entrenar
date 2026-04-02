@@ -34,6 +34,7 @@ mod tests {
     #[test]
     fn test_optimizer_with_zero_gradients() {
         let mut params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
+        params[0].set_grad(crate::sovereign_array::arr1(&[0.0, 0.0]));
 
         let mut adam = Adam::default_params(0.1);
         let initial = params[0].data().to_owned();
@@ -54,6 +55,7 @@ mod tests {
         let mut params = vec![Tensor::from_vec(vec![1.0], true)];
 
         // Set large gradient
+        params[0].set_grad(crate::sovereign_array::arr1(&[100.0]));
 
         // Clip to max_norm = 1.0
         let global_norm = clip_grad_norm(&mut params, 1.0);
@@ -89,6 +91,7 @@ mod tests {
             let x = params[0].data()[0];
             losses.push(x * x);
 
+            let grad = crate::sovereign_array::arr1(&[2.0 * x]);
             params[0].set_grad(grad);
 
             // Update with current learning rate

@@ -1,6 +1,7 @@
 //! Causal Language Modeling Loss
 
 use crate::Tensor;
+use crate::sovereign_array::Array1;
 
 use super::LossFn;
 
@@ -67,7 +68,7 @@ impl LossFn for CausalLMLoss {
             let start = pos * vocab_size;
             let end = start + vocab_size;
             let logits =
-                &pred_data.as_slice().expect("prediction data must be contiguous")[start..end];
+                &pred_data.as_slice()[start..end];
 
             // Softmax
             let probs = Self::softmax(logits);

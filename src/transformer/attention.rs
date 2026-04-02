@@ -4,6 +4,7 @@
 
 use crate::autograd::{matmul, matmul_nt, BackwardOp};
 use crate::Tensor;
+use crate::sovereign_array::Array1;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -14,9 +15,9 @@ use super::config::TransformerConfig;
 /// Input shape: (seq_len × dim) flattened. Bias shape: (dim).
 fn add_bias(x: &Tensor, bias: &Tensor, seq_len: usize) -> Tensor {
     let xd = x.data();
-    let x_slice = xd.as_slice().expect("contiguous projection");
+    let x_slice = xd.as_slice();
     let bd = bias.data();
-    let b_slice = bd.as_slice().expect("contiguous bias");
+    let b_slice = bd.as_slice();
     let dim = b_slice.len();
     let mut out = Vec::with_capacity(x_slice.len());
     for s in 0..seq_len {
@@ -40,9 +41,9 @@ fn apply_qk_norm(
     head_dim: usize,
 ) -> Tensor {
     let xd = x.data();
-    let x_slice = xd.as_slice().expect("contiguous qk");
+    let x_slice = xd.as_slice();
     let wd = norm_weight.data();
-    let w_slice = wd.as_slice().expect("contiguous norm weight");
+    let w_slice = wd.as_slice();
     let total_dim = num_heads * head_dim;
     let eps = 1e-6_f32;
     let mut out = vec![0.0f32; seq_len * total_dim];
@@ -83,7 +84,7 @@ fn apply_rope(
     rope_theta: f32,
 ) -> Tensor {
     let xd = x.data();
-    let x_slice = xd.as_slice().expect("contiguous qk for rope");
+    let x_slice = xd.as_slice();
     let total_dim = num_heads * head_dim;
     let half_dim = head_dim / 2;
     let mut out = vec![0.0f32; seq_len * total_dim];
@@ -138,7 +139,7 @@ struct AttentionBlockBackward {
 impl BackwardOp for AttentionBlockBackward {
     fn backward(&self) {
         let Some(grad_out) = self.result_grad.borrow().as_ref().cloned() else { return };
-        let go = grad_out.as_slice().expect("grad contiguous");
+        let go = grad_out.as_slice();
         let h = self.head_dim;
 
         // Step 1: Split concat grad per head and trigger each attention backward
@@ -209,7 +210,7 @@ fn scatter_head_grads_q(
     let mut grad_q = vec![0.0_f32; seq_len * q_dim];
     for (head_idx, head_q) in head_q_tensors.iter().enumerate() {
         if let Some(hgrad) = head_q.grad() {
-            let hg = hgrad.as_slice().expect("contiguous");
+            let hg = hgrad.as_slice();
             for s in 0..seq_len {
                 let src_base = s * head_dim;
                 let dst_base = s * q_dim + head_idx * head_dim;
@@ -238,7 +239,7 @@ fn scatter_head_grads_kv(
     for (head_idx, head_t) in head_tensors.iter().enumerate() {
         let kv_h = kv_indices[head_idx];
         if let Some(hgrad) = head_t.grad() {
-            let hg = hgrad.as_slice().expect("contiguous");
+            let hg = hgrad.as_slice();
             for s in 0..seq_len {
                 let src_base = s * head_dim;
                 let dst_base = s * kv_hidden_size + kv_h * head_dim;
@@ -412,11 +413,11 @@ impl MultiHeadAttention {
         // KAIZEN-016: Hoist data borrows outside the head loop to avoid
         // num_heads × seq_len × 3 redundant RefCell borrows per attention call.
         let q_data = q.data();
-        let q_slice = q_data.as_slice().expect("contiguous Q");
+        let q_slice = q_data.as_slice();
         let k_data = k.data();
-        let k_slice = k_data.as_slice().expect("contiguous K");
+        let k_slice = k_data.as_slice();
         let v_data = v.data();
-        let v_slice = v_data.as_slice().expect("contiguous V");
+        let v_slice = v_data.as_slice();
 
         // Per-head attention with gradient tracking
         let mut head_q_tensors = Vec::with_capacity(num_heads);
@@ -468,7 +469,7 @@ impl MultiHeadAttention {
         let mut concat_output = vec![0.0; seq_len * q_dim];
         for (h, head_out) in head_outputs.iter().enumerate() {
             let hd = head_out.data();
-            let hdata = hd.as_slice().expect("contiguous attention output");
+            let hdata = hd.as_slice();
             for s in 0..seq_len {
                 let src_base = s * head_dim;
                 let dst_base = s * q_dim + h * head_dim;
@@ -585,11 +586,11 @@ impl MultiHeadAttention {
 
         // KAIZEN-016: Hoist data borrows outside head loop (same optimization as forward())
         let q_data = q.data();
-        let q_slice = q_data.as_slice().expect("contiguous Q");
+        let q_slice = q_data.as_slice();
         let k_data = k.data();
-        let k_slice = k_data.as_slice().expect("contiguous K");
+        let k_slice = k_data.as_slice();
         let v_data = v.data();
-        let v_slice = v_data.as_slice().expect("contiguous V");
+        let v_slice = v_data.as_slice();
 
         // Per-head attention (same as forward())
         let mut head_q_tensors = Vec::with_capacity(num_heads);
@@ -639,7 +640,7 @@ impl MultiHeadAttention {
         let mut concat_output = vec![0.0; seq_len * q_dim];
         for (h, head_out) in head_outputs.iter().enumerate() {
             let hd = head_out.data();
-            let hdata = hd.as_slice().expect("contiguous attention output");
+            let hdata = hd.as_slice();
             for s in 0..seq_len {
                 let src_base = s * head_dim;
                 let dst_base = s * q_dim + h * head_dim;
@@ -896,11 +897,11 @@ impl MultiHeadAttentionWithLoRA {
 
         // KAIZEN-016: Hoist data borrows outside head loop
         let q_data = q.data();
-        let q_slice = q_data.as_slice().expect("contiguous Q tensor");
+        let q_slice = q_data.as_slice();
         let k_data = k.data();
-        let k_slice = k_data.as_slice().expect("contiguous K tensor");
+        let k_slice = k_data.as_slice();
         let v_data = v.data();
-        let v_slice = v_data.as_slice().expect("contiguous V tensor");
+        let v_slice = v_data.as_slice();
 
         for h in 0..num_heads {
             let kv_h = h / heads_per_kv;
@@ -934,7 +935,7 @@ impl MultiHeadAttentionWithLoRA {
             );
 
             attn_outputs.extend_from_slice(
-                attn_out.data().as_slice().expect("contiguous attention output"),
+                attn_out.data().as_slice(),
             );
         }
 
@@ -1093,6 +1094,7 @@ mod tests {
 
         // Test Q projection
         let mut q = crate::autograd::matmul(&x, &attn.w_q, seq_len, hidden_size, hidden_size);
+        let grad_out = crate::sovereign_array::Array1::ones(seq_len * hidden_size);
         crate::autograd::backward(&mut q, Some(grad_out));
 
         assert!(attn.w_q.grad().is_some());
@@ -1115,6 +1117,7 @@ mod tests {
         let mut output =
             crate::autograd::matmul(&concat_out, &attn.w_o, seq_len, hidden_size, hidden_size);
 
+        let grad_out = crate::sovereign_array::Array1::ones(seq_len * hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         assert!(attn.w_o.grad().is_some());
@@ -1144,6 +1147,7 @@ mod tests {
         let x = Tensor::from_vec(x_data, true);
         let mut output = attn.forward(&x, seq_len);
 
+        let grad_out = crate::sovereign_array::Array1::ones(seq_len * hidden_size);
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All four projection weights must receive gradients
@@ -1479,7 +1483,7 @@ mod tests {
             [("w_q", &attn.w_q), ("w_k", &attn.w_k), ("w_v", &attn.w_v), ("w_o", &attn.w_o)]
         {
             let data = w.data();
-            let slice = data.as_slice().expect("data as slice");
+            let slice = data.as_slice();
 
             // No NaN
             let nan_count = slice.iter().filter(|v| v.is_nan()).count();

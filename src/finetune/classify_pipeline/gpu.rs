@@ -19,7 +19,7 @@ impl ClassifyPipeline {
             if lora_config.should_apply("q_proj", None) {
                 let q_dim = model_config.num_attention_heads * head_dim;
                 let q_weight = Tensor::from_vec(
-                    attn.w_q.data().as_slice().expect("contiguous w_q").to_vec(),
+                    attn.w_q.data().as_slice().to_vec(),
                     false,
                 );
                 lora_layers.push(LoRALayer::new(
@@ -35,7 +35,7 @@ impl ClassifyPipeline {
             if lora_config.should_apply("v_proj", None) {
                 let v_dim = model_config.num_kv_heads * head_dim;
                 let v_weight = Tensor::from_vec(
-                    attn.w_v.data().as_slice().expect("contiguous w_v").to_vec(),
+                    attn.w_v.data().as_slice().to_vec(),
                     false,
                 );
                 lora_layers.push(LoRALayer::new(
@@ -227,23 +227,23 @@ impl ClassifyPipeline {
         for (i, layer) in model.layers.iter().enumerate() {
             // Extract weight data from CPU tensors (F-CUDA-005)
             let input_norm = layer.input_norm.weight.data();
-            let input_norm = input_norm.as_slice().expect("contiguous input_norm");
+            let input_norm = input_norm.as_slice();
             let post_attn_norm = layer.post_attn_norm.weight.data();
-            let post_attn_norm = post_attn_norm.as_slice().expect("contiguous post_attn_norm");
+            let post_attn_norm = post_attn_norm.as_slice();
             let w_q = layer.self_attn.w_q.data();
-            let w_q = w_q.as_slice().expect("contiguous w_q");
+            let w_q = w_q.as_slice();
             let w_k = layer.self_attn.w_k.data();
-            let w_k = w_k.as_slice().expect("contiguous w_k");
+            let w_k = w_k.as_slice();
             let w_v = layer.self_attn.w_v.data();
-            let w_v = w_v.as_slice().expect("contiguous w_v");
+            let w_v = w_v.as_slice();
             let w_o = layer.self_attn.w_o.data();
-            let w_o = w_o.as_slice().expect("contiguous w_o");
+            let w_o = w_o.as_slice();
             let w_gate = layer.ffn.w_gate.data();
-            let w_gate = w_gate.as_slice().expect("contiguous w_gate");
+            let w_gate = w_gate.as_slice();
             let w_up = layer.ffn.w_up.data();
-            let w_up = w_up.as_slice().expect("contiguous w_up");
+            let w_up = w_up.as_slice();
             let w_down = layer.ffn.w_down.data();
-            let w_down = w_down.as_slice().expect("contiguous w_down");
+            let w_down = w_down.as_slice();
 
             let result = if quantize_nf4 {
                 // Extract LoRA data for this layer's Q and V projections
@@ -259,8 +259,8 @@ impl ClassifyPipeline {
                     q_a_data = lora_layers[q_lora_idx].lora_a().data();
                     q_b_data = lora_layers[q_lora_idx].lora_b().data();
                     Some((
-                        q_a_data.as_slice().expect("contiguous lora_a_q"),
-                        q_b_data.as_slice().expect("contiguous lora_b_q"),
+                        q_a_data.as_slice(),
+                        q_b_data.as_slice(),
                     ))
                 } else {
                     None
@@ -273,8 +273,8 @@ impl ClassifyPipeline {
                     v_a_data = lora_layers[v_lora_idx].lora_a().data();
                     v_b_data = lora_layers[v_lora_idx].lora_b().data();
                     Some((
-                        v_a_data.as_slice().expect("contiguous lora_a_v"),
-                        v_b_data.as_slice().expect("contiguous lora_b_v"),
+                        v_a_data.as_slice(),
+                        v_b_data.as_slice(),
                     ))
                 } else {
                     None
@@ -285,12 +285,12 @@ impl ClassifyPipeline {
                     .self_attn
                     .q_norm
                     .as_ref()
-                    .map(|t| t.data().as_slice().expect("contiguous q_norm").to_vec());
+                    .map(|t| t.data().as_slice().to_vec());
                 let k_norm_data = layer
                     .self_attn
                     .k_norm
                     .as_ref()
-                    .map(|t| t.data().as_slice().expect("contiguous k_norm").to_vec());
+                    .map(|t| t.data().as_slice().to_vec());
 
                 crate::transformer::CudaNf4TransformerBlock::new(
                     model_config,
@@ -447,7 +447,7 @@ impl ClassifyPipeline {
 
         // Upload final RMSNorm weight
         let norm_data = model.norm.weight.data();
-        let norm_slice = norm_data.as_slice().expect("contiguous final norm weight");
+        let norm_slice = norm_data.as_slice();
         let final_norm_weight = match trainer.upload(norm_slice) {
             Ok(buf) => buf,
             Err(e) => {
@@ -646,7 +646,7 @@ impl ClassifyPipeline {
         // Step 1: Embed on CPU
         let hidden = model.embed_tokens.forward(token_ids);
         let hidden_data = hidden.data();
-        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
+        let hidden_slice = hidden_data.as_slice();
 
         // Step 2: Upload to GPU using pre-allocated fwd_scratch_a (KAIZEN-060)
         // Pad remaining buffer to match pre-allocated size (kernels use seq_len param).
@@ -737,7 +737,7 @@ impl ClassifyPipeline {
         // Step 1: Classifier backward on CPU (trivial: hidden_size * num_classes mults)
         // grad_pooled = W_classifier^T @ grad_logits
         let w_data = self.classifier.weight.data();
-        let w_slice = w_data.as_slice().expect("contiguous classifier weight");
+        let w_slice = w_data.as_slice();
         let mut grad_pooled = vec![0.0f32; hidden_size];
         for j in 0..hidden_size {
             let mut sum = 0.0f32;
@@ -886,7 +886,7 @@ impl ClassifyPipeline {
 
         // Step 1: Classifier backward on CPU (trivial: hidden_size * num_classes mults)
         let w_data = self.classifier.weight.data();
-        let w_slice = w_data.as_slice().expect("contiguous classifier weight");
+        let w_slice = w_data.as_slice();
         let mut grad_pooled = vec![0.0f32; hidden_size];
         for j in 0..hidden_size {
             let mut sum = 0.0f32;
@@ -1314,7 +1314,7 @@ impl ClassifyPipeline {
         // Step 1: Embed on CPU
         let hidden = model.embed_tokens.forward(token_ids);
         let hidden_data = hidden.data();
-        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
+        let hidden_slice = hidden_data.as_slice();
 
         // Step 2: Upload to GPU
         let mut gpu_input = trainer.upload(hidden_slice).ok()?;

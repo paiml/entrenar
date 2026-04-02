@@ -134,6 +134,8 @@ fn test_adapter_serialization_round_trip() {
     let mut layer = LoRALayer::new(base_weight.clone(), 2, 2, 2, 4.0);
 
     // Set known weights
+    *layer.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.1, 0.2, 0.3, 0.4]);
+    *layer.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.6, 0.7, 0.8]);
 
     // Save adapter
     let path = "/tmp/test_adapter.json";
@@ -169,6 +171,8 @@ fn test_adapter_forward_consistency() {
     let base_weight = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], false);
     let mut layer = LoRALayer::new(base_weight.clone(), 2, 2, 1, 1.0);
 
+    *layer.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[0.5, 0.5]);
+    *layer.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[0.3, 0.3]);
 
     let x = Tensor::from_vec(vec![2.0, 3.0], true);
     let output_original = layer.forward(&x);
@@ -232,10 +236,14 @@ fn test_multiple_adapters_same_base() {
 
     // Create and save adapter 1
     let mut layer1 = LoRALayer::new(base_weight.clone(), 2, 2, 1, 1.0);
+    *layer1.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 1.0]);
+    *layer1.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[1.0, 1.0]);
     save_adapter(&layer1, 1, 1.0, "/tmp/adapter1.json").expect("save should succeed");
 
     // Create and save adapter 2
     let mut layer2 = LoRALayer::new(base_weight.clone(), 2, 2, 1, 1.0);
+    *layer2.lora_a_mut().data_mut() = crate::sovereign_array::arr1(&[2.0, 2.0]);
+    *layer2.lora_b_mut().data_mut() = crate::sovereign_array::arr1(&[2.0, 2.0]);
     save_adapter(&layer2, 1, 1.0, "/tmp/adapter2.json").expect("save should succeed");
 
     // Load both adapters

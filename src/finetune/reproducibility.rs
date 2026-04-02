@@ -211,6 +211,7 @@ impl ExperimentLock {
         }
 
         // Parse relevant dependencies
+        let key_deps = ["entrenar", "trueno", "serde"];
         let mut deps = Vec::new();
 
         if let Ok(content) = std::fs::read_to_string(cargo_lock) {

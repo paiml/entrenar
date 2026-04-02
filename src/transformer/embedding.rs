@@ -76,7 +76,7 @@ impl Embedding {
                 let start = idx * self.hidden_size;
                 let end = start + self.hidden_size;
                 output.extend_from_slice(
-                    &self.weight.data().as_slice().expect("embedding weight must be contiguous")
+                    &self.weight.data().as_slice()
                         [start..end],
                 );
             }
@@ -155,7 +155,7 @@ impl LearnedPositionEmbedding {
     /// Output is (seq_len × hidden_size, flattened) — add element-wise to token embeddings.
     pub fn forward(&self, seq_len: usize) -> Tensor {
         let clamped_len = seq_len.min(self.max_positions);
-        let weight_slice = &self.weight.data().as_slice().expect("position weight contiguous")
+        let weight_slice = &self.weight.data().as_slice()
             [..clamped_len * self.hidden_size];
         // For positions beyond max, repeat the last position embedding
         if seq_len <= self.max_positions {
@@ -164,7 +164,7 @@ impl LearnedPositionEmbedding {
             let mut output = weight_slice.to_vec();
             let last_start = (self.max_positions - 1) * self.hidden_size;
             let last_end = last_start + self.hidden_size;
-            let last_pos = &self.weight.data().as_slice().expect("position weight contiguous")
+            let last_pos = &self.weight.data().as_slice()
                 [last_start..last_end];
             for _ in self.max_positions..seq_len {
                 output.extend_from_slice(last_pos);
@@ -269,8 +269,8 @@ mod tests {
         let o1 = pe1.forward(10);
         let o2 = pe2.forward(10);
         assert_eq!(
-            o1.data().as_slice().expect("contiguous"),
-            o2.data().as_slice().expect("contiguous"),
+            o1.data().as_slice(),
+            o2.data().as_slice(),
         );
     }
 
@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(output.len(), 6 * 8);
         // Positions 4 and 5 should equal position 3 (clamped)
         let data = output.data();
-        let slice = data.as_slice().expect("contiguous");
+        let slice = data.as_slice();
         let pos3 = &slice[3 * 8..4 * 8];
         let pos4 = &slice[4 * 8..5 * 8];
         let pos5 = &slice[5 * 8..6 * 8];
@@ -327,7 +327,7 @@ mod tests {
     fn falsify_e7a_init_produces_valid_embedding() {
         let embed = Embedding::new(100, 64);
         let data = embed.weight.data();
-        let slice = data.as_slice().expect("data as slice");
+        let slice = data.as_slice();
 
         // No NaN
         let nan_count = slice.iter().filter(|v| v.is_nan()).count();
@@ -409,8 +409,8 @@ mod tests {
         let d1 = embed1.weight.data();
         let d2 = embed2.weight.data();
         assert_eq!(
-            d1.as_slice().expect("operation should succeed"),
-            d2.as_slice().expect("operation should succeed"),
+            d1.as_slice(),
+            d2.as_slice(),
             "FALSIFY-E7e: Same vocab+hidden must produce identical initialization"
         );
     }
@@ -515,8 +515,8 @@ mod tests {
         let o2 = embed.forward(&tokens);
 
         assert_eq!(
-            o1.data().as_slice().expect("operation should succeed"),
-            o2.data().as_slice().expect("operation should succeed"),
+            o1.data().as_slice(),
+            o2.data().as_slice(),
             "FALSIFIED EM-003: forward() is non-deterministic"
         );
     }

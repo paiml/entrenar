@@ -1,6 +1,7 @@
 //! Tensor type with gradient tracking
 
 use super::BackwardOp;
+use crate::sovereign_array::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 
