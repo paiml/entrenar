@@ -716,6 +716,10 @@ impl InstructPipeline {
         seq_len: usize,
         vocab_size: usize,
     ) -> InstructStepResult {
+        // entrenar#318: truncate seq_len to match forward_cuda_training's max
+        let max_pos = self.model.config().max_position_embeddings.min(512);
+        let seq_len = seq_len.min(max_pos);
+        let prompt_len = prompt_len.min(seq_len);
         let loss_start = prompt_len.saturating_sub(1);
         let loss_end = seq_len - 1;
         let num_loss_tokens = loss_end.saturating_sub(loss_start);
@@ -787,9 +791,12 @@ impl InstructPipeline {
         })();
 
         let avg_loss = match avg_loss {
-            Some(l) if l.is_finite() => l,
-            Some(_) => {
-                eprintln!("[CUDA] NaN/Inf loss detected — skipping backward pass");
+            Some(l) if l.is_finite() => {
+                eprintln!("[CUDA] loss={l:.4} (finite, proceeding with backward)");
+                l
+            }
+            Some(l) => {
+                eprintln!("[CUDA] NaN/Inf loss detected (loss={l}) — skipping backward pass");
                 return InstructStepResult {
                     loss: 100.0,
                     num_response_tokens: num_loss_tokens,
