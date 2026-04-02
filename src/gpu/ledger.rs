@@ -454,8 +454,7 @@ fn sys_total_memory_mb() -> usize {
                 .find(|l| l.starts_with("MemTotal:"))
                 .and_then(|l| l.split_whitespace().nth(1)?.parse::<usize>().ok())
         })
-        .map(|kb| kb / 1024)
-        .unwrap_or(0)
+        .map_or(0, |kb| kb / 1024)
 }
 
 /// Detect whether GPU has unified memory (Jetson) vs discrete.

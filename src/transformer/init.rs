@@ -49,7 +49,7 @@ pub fn rand_normal_seeded(n: usize, base_seed: u64, name: &str) -> Vec<f32> {
 fn hash_name(name: &str) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a offset basis
     for byte in name.bytes() {
-        h ^= byte as u64;
+        h ^= u64::from(byte);
         h = h.wrapping_mul(0x0100_0000_01b3); // FNV-1a prime
     }
     h

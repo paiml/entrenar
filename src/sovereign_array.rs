@@ -163,7 +163,7 @@ impl<T> IndexMut<usize> for Array1<T> {
 }
 
 // &Array1 + &Array1
-impl<'a, 'b> Add<&'b Array1<f32>> for &'a Array1<f32> {
+impl<'b> Add<&'b Array1<f32>> for &Array1<f32> {
     type Output = Array1<f32>;
     fn add(self, rhs: &'b Array1<f32>) -> Array1<f32> {
         Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a + b).collect() }
@@ -171,7 +171,7 @@ impl<'a, 'b> Add<&'b Array1<f32>> for &'a Array1<f32> {
 }
 
 // &Array1 - &Array1
-impl<'a, 'b> Sub<&'b Array1<f32>> for &'a Array1<f32> {
+impl<'b> Sub<&'b Array1<f32>> for &Array1<f32> {
     type Output = Array1<f32>;
     fn sub(self, rhs: &'b Array1<f32>) -> Array1<f32> {
         Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a - b).collect() }
@@ -179,7 +179,7 @@ impl<'a, 'b> Sub<&'b Array1<f32>> for &'a Array1<f32> {
 }
 
 // &Array1 * &Array1
-impl<'a, 'b> Mul<&'b Array1<f32>> for &'a Array1<f32> {
+impl<'b> Mul<&'b Array1<f32>> for &Array1<f32> {
     type Output = Array1<f32>;
     fn mul(self, rhs: &'b Array1<f32>) -> Array1<f32> {
         Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a * b).collect() }
@@ -187,7 +187,7 @@ impl<'a, 'b> Mul<&'b Array1<f32>> for &'a Array1<f32> {
 }
 
 // &Array1 / &Array1
-impl<'a, 'b> Div<&'b Array1<f32>> for &'a Array1<f32> {
+impl<'b> Div<&'b Array1<f32>> for &Array1<f32> {
     type Output = Array1<f32>;
     fn div(self, rhs: &'b Array1<f32>) -> Array1<f32> {
         Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a / b).collect() }
@@ -341,7 +341,7 @@ impl Array2<f32> {
         [self.rows, self.cols]
     }
 
-    pub fn row(&self, r: usize) -> ArrayView1 {
+    pub fn row(&self, r: usize) -> ArrayView1<'_> {
         let start = r * self.cols;
         ArrayView1 { data: &self.data[start..start + self.cols] }
     }
@@ -459,6 +459,7 @@ impl Array2<f32> {
         &self.data
     }
 
+    #[allow(clippy::iter_without_into_iter)]
     pub fn iter(&self) -> std::slice::Iter<'_, f32> {
         self.data.iter()
     }
@@ -492,7 +493,7 @@ impl IndexMut<[usize; 2]> for Array2<f32> {
 }
 
 // &Array2 + &Array2
-impl<'a, 'b> Add<&'b Array2<f32>> for &'a Array2<f32> {
+impl<'b> Add<&'b Array2<f32>> for &Array2<f32> {
     type Output = Array2<f32>;
     fn add(self, rhs: &'b Array2<f32>) -> Array2<f32> {
         assert_eq!(self.rows, rhs.rows);
@@ -506,7 +507,7 @@ impl<'a, 'b> Add<&'b Array2<f32>> for &'a Array2<f32> {
 }
 
 // &Array2 - &Array2
-impl<'a, 'b> Sub<&'b Array2<f32>> for &'a Array2<f32> {
+impl<'b> Sub<&'b Array2<f32>> for &Array2<f32> {
     type Output = Array2<f32>;
     fn sub(self, rhs: &'b Array2<f32>) -> Array2<f32> {
         assert_eq!(self.rows, rhs.rows);
@@ -548,7 +549,7 @@ pub struct ArrayView1<'a> {
     data: &'a [f32],
 }
 
-impl<'a> ArrayView1<'a> {
+impl ArrayView1<'_> {
     pub fn to_owned(&self) -> Array1<f32> {
         Array1::from(self.data.to_vec())
     }
@@ -561,6 +562,7 @@ impl<'a> ArrayView1<'a> {
         self.data.is_empty()
     }
 
+    #[allow(clippy::iter_without_into_iter)]
     pub fn iter(&self) -> std::slice::Iter<'_, f32> {
         self.data.iter()
     }
@@ -578,7 +580,7 @@ impl<'a> ArrayView1<'a> {
     }
 }
 
-impl<'a> Index<usize> for ArrayView1<'a> {
+impl Index<usize> for ArrayView1<'_> {
     type Output = f32;
     fn index(&self, i: usize) -> &f32 {
         &self.data[i]
@@ -590,7 +592,7 @@ pub struct ArrayViewMut1<'a> {
     data: &'a mut [f32],
 }
 
-impl<'a> ArrayViewMut1<'a> {
+impl ArrayViewMut1<'_> {
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -599,10 +601,12 @@ impl<'a> ArrayViewMut1<'a> {
         self.data.is_empty()
     }
 
+    #[allow(clippy::iter_without_into_iter)]
     pub fn iter(&self) -> std::slice::Iter<'_, f32> {
         self.data.iter()
     }
 
+    #[allow(clippy::iter_without_into_iter)]
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, f32> {
         self.data.iter_mut()
     }
@@ -623,14 +627,14 @@ impl<'a> ArrayViewMut1<'a> {
     }
 }
 
-impl<'a> Index<usize> for ArrayViewMut1<'a> {
+impl Index<usize> for ArrayViewMut1<'_> {
     type Output = f32;
     fn index(&self, i: usize) -> &f32 {
         &self.data[i]
     }
 }
 
-impl<'a> IndexMut<usize> for ArrayViewMut1<'a> {
+impl IndexMut<usize> for ArrayViewMut1<'_> {
     fn index_mut(&mut self, i: usize) -> &mut f32 {
         &mut self.data[i]
     }
@@ -655,8 +659,6 @@ impl<'a> Iterator for AxisIter<'a> {
     }
 }
 
-// AxisIterMut removed — using chunks_mut() in axis_iter_mut()
-
 /// Macro to create Array2 from nested arrays (replaces `ndarray::array!`)
 #[macro_export]
 macro_rules! array {
@@ -673,15 +675,12 @@ impl Array2<u32> {
     pub fn nrows(&self) -> usize {
         self.rows
     }
-
     pub fn ncols(&self) -> usize {
         self.cols
     }
-
     pub fn shape(&self) -> [usize; 2] {
         [self.rows, self.cols]
     }
-
     pub fn row(&self, r: usize) -> &[u32] {
         let start = r * self.cols;
         &self.data[start..start + self.cols]
@@ -692,50 +691,39 @@ impl Array2<u8> {
     pub fn nrows(&self) -> usize {
         self.rows
     }
-
     pub fn ncols(&self) -> usize {
         self.cols
     }
-
     pub fn shape(&self) -> [usize; 2] {
         [self.rows, self.cols]
     }
-
     pub fn row(&self, r: usize) -> &[u8] {
         let start = r * self.cols;
         &self.data[start..start + self.cols]
     }
 }
 
-impl Index<[usize; 2]> for Array2<u32> {
-    type Output = u32;
-    fn index(&self, idx: [usize; 2]) -> &u32 {
-        &self.data[idx[0] * self.cols + idx[1]]
-    }
+macro_rules! impl_array2_index {
+    ($T:ty) => {
+        impl Index<[usize; 2]> for Array2<$T> {
+            type Output = $T;
+            fn index(&self, idx: [usize; 2]) -> &$T {
+                &self.data[idx[0] * self.cols + idx[1]]
+            }
+        }
+        impl IndexMut<[usize; 2]> for Array2<$T> {
+            fn index_mut(&mut self, idx: [usize; 2]) -> &mut $T {
+                &mut self.data[idx[0] * self.cols + idx[1]]
+            }
+        }
+    };
 }
+impl_array2_index!(u32);
+impl_array2_index!(u8);
 
-impl IndexMut<[usize; 2]> for Array2<u32> {
-    fn index_mut(&mut self, idx: [usize; 2]) -> &mut u32 {
-        &mut self.data[idx[0] * self.cols + idx[1]]
-    }
-}
-
-impl Index<[usize; 2]> for Array2<u8> {
-    type Output = u8;
-    fn index(&self, idx: [usize; 2]) -> &u8 {
-        &self.data[idx[0] * self.cols + idx[1]]
-    }
-}
-
-impl IndexMut<[usize; 2]> for Array2<u8> {
-    fn index_mut(&mut self, idx: [usize; 2]) -> &mut u8 {
-        &mut self.data[idx[0] * self.cols + idx[1]]
-    }
-}
-
-impl<'a> IntoIterator for &'a mut Array1<f32> {
-    type Item = &'a mut f32;
-    type IntoIter = std::slice::IterMut<'a, f32>;
+impl<'a, T> IntoIterator for &'a mut Array1<T> {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
         self.data.iter_mut()
     }

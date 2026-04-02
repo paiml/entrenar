@@ -58,6 +58,9 @@ fn status_rank(s: &str) -> u8 {
 }
 
 fn main() {
+    // Declare __has_embedding_contract as a known cfg value (used for fallback macros)
+    println!("cargo:rustc-check-cfg=cfg(feature, values(\"__has_embedding_contract\"))");
+
     let binding_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("provable-contracts")

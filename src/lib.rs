@@ -45,6 +45,7 @@ macro_rules! contract_pre_embedding_lookup {
     }};
 }
 #[cfg(not(feature = "__has_embedding_contract"))]
+#[allow(unused_macros)]
 macro_rules! contract_post_embedding_lookup {
     ($result:expr) => {{
         let _ = &$result;

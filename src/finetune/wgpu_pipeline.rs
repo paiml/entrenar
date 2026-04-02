@@ -29,9 +29,6 @@ use crate::autograd::wgpu_cross_entropy::WgslCrossEntropy;
 #[cfg(feature = "gpu")]
 use crate::autograd::wgpu_training::WgpuTrainer;
 
-use crate::finetune::instruct_pipeline::InstructStepResult;
-use crate::tokenizer::HfTokenizer;
-
 /// LoRA adapters for one transformer layer (7 projections).
 #[cfg(feature = "gpu")]
 pub struct LayerLoRA {
