@@ -727,10 +727,11 @@ impl InstructPipeline {
         // PMAT-420: If GPU embeddings are minimal (VRAM-constrained), skip the GPU-resident
         // logits path entirely — go straight to CPU-loss path which uses GPU transformer + CPU lm_head.
         // This avoids CUDA context poisoning from attempting GPU lm_head with undersized buffers.
+        // entrenar#318: check embed_original (not transposed placeholder)
         let has_gpu_embed = self
             .gpu_training
             .as_ref()
-            .map(|t| t.embed_transposed.len() >= self.model.config().hidden_size * vocab_size)
+            .map(|t| t.embed_original.len() >= self.model.config().hidden_size * vocab_size)
             .unwrap_or(false);
 
         if !has_gpu_embed {
