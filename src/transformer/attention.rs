@@ -4,7 +4,6 @@
 
 use crate::autograd::{matmul, matmul_nt, BackwardOp};
 use crate::Tensor;
-use ndarray::Array1;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

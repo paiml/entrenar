@@ -50,7 +50,6 @@ pub trait Optimizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::arr1;
 
     /// Minimal optimizer implementation for testing default trait methods
     struct TestOptimizer {

@@ -1,7 +1,6 @@
 //! Cross Entropy Loss for classification
 
 use crate::Tensor;
-use ndarray::Array1;
 
 use super::LossFn;
 
@@ -269,7 +268,6 @@ mod tests {
 #[cfg(test)]
 mod ce_contract_tests {
     use super::*;
-    use ndarray::Array1;
 
     /// Helper: create one-hot targets
     fn one_hot(idx: usize, len: usize) -> Vec<f32> {

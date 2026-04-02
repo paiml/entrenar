@@ -165,7 +165,6 @@ hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard
 # Contract macros for pre/post-condition enforcement (zero cost in release)
 provable-contracts-macros = { path = "../provable-contracts/crates/provable-contracts-macros" }
 # Core PAIML stack
-ndarray = "0.16"
 trueno = { version = "0.16", features = ["parallel"] }  # SIMD-accelerated compute
 trueno-gpu = { version = "0.4", optional = true }  # CUDA compute via crates.io
 realizar = { version = "0.8", optional = true }  # CUDA inference engine with working GEMM

@@ -7,7 +7,6 @@
 //! matrix W such that `fix_features ≈ W * error_features`. Prediction
 //! for new errors is a simple matrix-vector multiply.
 
-use ndarray::{Array1, Array2};
 use serde::{Deserialize, Serialize};
 
 /// An error-fix training pair for CITL.

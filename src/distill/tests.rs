@@ -3,7 +3,6 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use super::*;
-use ndarray::{array, Array2};
 use proptest::prelude::*;
 
 // Helper to generate random logits

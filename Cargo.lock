@@ -1892,7 +1892,6 @@ dependencies = [
  "js-sys",
  "jsonschema",
  "jugar-probar",
- "ndarray",
  "nvml-wrapper",
  "parquet 57.3.0",
  "presentar-core",

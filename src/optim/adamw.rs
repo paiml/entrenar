@@ -2,7 +2,6 @@
 
 use super::Optimizer;
 use crate::Tensor;
-use ndarray::Array1;
 use provable_contracts_macros::requires;
 
 /// AdamW optimizer

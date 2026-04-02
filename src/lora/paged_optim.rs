@@ -14,7 +14,6 @@
 //! - LoRA m/v only: 2 × ~5.9M × 4 bytes = ~47 MB (always fits)
 //! - Paged: m/v on CPU, paged in per-layer = constant ~200KB GPU overhead
 
-use ndarray::Array1;
 
 /// VRAM budget tracker for optimizer state paging decisions
 #[derive(Debug, Clone)]

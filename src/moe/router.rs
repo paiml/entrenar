@@ -3,7 +3,6 @@
 //! Provides `TopKRouter` (deterministic) and `NoisyTopKRouter` (with exploration noise)
 //! for selecting which experts process each input token.
 
-use ndarray::{Array1, Array2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 

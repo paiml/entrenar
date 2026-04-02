@@ -1,6 +1,5 @@
 //! Teacher cache for distillation
 
-use ndarray::Array2;
 use std::collections::HashMap;
 
 /// Cached teacher outputs for distillation

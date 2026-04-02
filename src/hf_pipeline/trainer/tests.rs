@@ -168,7 +168,6 @@ fn test_trainer_is_parameter_efficient() {
 
 #[test]
 fn test_trainer_compute_loss() {
-    use ndarray::Array2;
 
     let config = TrainerConfig::new("t", "s");
     let teacher = SafeTensorsTeacher::mock(12, 768);
@@ -188,7 +187,6 @@ fn test_trainer_compute_loss() {
 
 #[test]
 fn test_trainer_compute_loss_with_progressive() {
-    use ndarray::Array2;
 
     let config = TrainerConfig::new("t", "s").with_progressive(vec![(0, 0)]);
     let teacher = SafeTensorsTeacher::mock(12, 768);
@@ -322,7 +320,6 @@ fn test_trainer_teacher_ref() {
 
 #[test]
 fn test_trainer_compute_loss_with_attention_transfer() {
-    use ndarray::Array2;
 
     let config = TrainerConfig::new("t", "s").with_attention_transfer(0.5);
     let teacher = SafeTensorsTeacher::mock(12, 768);

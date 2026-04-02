@@ -7,7 +7,6 @@ use aprender::primitives::Vector;
 
 use crate::autograd::BackwardOp;
 use crate::Tensor;
-use ndarray::Array1;
 use std::rc::Rc;
 
 use crate::train::loss::LossFn;

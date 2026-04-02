@@ -2,7 +2,6 @@
 
 use super::Optimizer;
 use crate::Tensor;
-use ndarray::Array1;
 
 /// SGD optimizer with optional momentum
 pub struct SGD {

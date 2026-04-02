@@ -58,7 +58,6 @@ fn test_end_to_end_real_fetch() {
 
 #[test]
 fn test_distillation_pipeline_mock() {
-    use ndarray::Array2;
 
     // Create mock teacher
     let teacher = SafeTensorsTeacher::mock(12, 768);
@@ -83,7 +82,6 @@ fn test_distillation_pipeline_mock() {
 
 #[test]
 fn test_full_distillation_loss_flow() {
-    use ndarray::Array2;
 
     // Create loss function
     let loss_fn = DistillationLoss::new(4.0, 0.7);
@@ -105,7 +103,6 @@ fn test_full_distillation_loss_flow() {
 
 #[test]
 fn test_progressive_distillation_flow() {
-    use ndarray::Array2;
 
     // Setup progressive distillation
     let prog = ProgressiveDistillation::new(vec![(0, 3), (1, 7), (2, 11)]).with_weight(0.5);
@@ -124,7 +121,6 @@ fn test_progressive_distillation_flow() {
 
 #[test]
 fn test_attention_transfer_flow() {
-    use ndarray::Array2;
 
     let at = AttentionTransfer::new(0.1);
 
@@ -191,7 +187,6 @@ fn test_memory_estimation_realistic() {
 
 #[test]
 fn test_teacher_cache() {
-    use ndarray::Array2;
 
     let mut cache = TeacherCache::new();
 

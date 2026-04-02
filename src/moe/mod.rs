@@ -26,7 +26,6 @@ pub mod router;
 #[cfg(test)]
 mod tests;
 
-use ndarray::{Array1, Array2};
 use serde::{Deserialize, Serialize};
 
 pub use router::{NoisyTopKRouter, RoutingResult, TopKRouter};

@@ -1,6 +1,5 @@
 //! Distillation collator for batching examples
 
-use ndarray::Array2;
 
 use super::batch::Batch;
 use super::dataset_impl::Dataset;

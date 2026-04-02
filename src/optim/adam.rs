@@ -2,7 +2,6 @@
 
 use super::Optimizer;
 use crate::Tensor;
-use ndarray::Array1;
 
 /// Adam optimizer (Adaptive Moment Estimation)
 pub struct Adam {

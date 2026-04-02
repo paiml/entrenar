@@ -1,7 +1,6 @@
 //! Tests for the Mixture of Experts module
 
 use super::*;
-use ndarray::Array2;
 use router::{capacity_limit, expert_load_fractions, softmax_rows, RouterConfig};
 
 // ---------------------------------------------------------------------------

@@ -89,7 +89,6 @@ dataset:
 
 #[test]
 fn test_integration_loss_with_trainer() {
-    use ndarray::Array2;
 
     let teacher = SafeTensorsTeacher::mock(12, 768);
     let config = TrainerConfig::new("t", "s")
@@ -157,7 +156,6 @@ mod proptests {
             temp in 1.0f32..20.0,
             alpha in 0.0f32..1.0,
         ) {
-            use ndarray::Array2;
 
             let loss_fn = DistillationLoss::new(temp, alpha);
             let student = Array2::from_shape_fn((2, 10), |(i, j)| (i + j) as f32);

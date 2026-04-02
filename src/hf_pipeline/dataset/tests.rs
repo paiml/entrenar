@@ -1,7 +1,6 @@
 //! Tests for dataset module
 
 use super::*;
-use ndarray::Array2;
 
 // =========================================================================
 // Split Tests

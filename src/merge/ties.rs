@@ -7,7 +7,6 @@
 
 use super::{compute_deltas, merge_with_base, validate_models, MergeError, Model};
 use crate::autograd::Tensor;
-use ndarray::Array1;
 use std::collections::HashMap;
 
 /// Configuration for TIES merge

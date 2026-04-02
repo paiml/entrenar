@@ -1,6 +1,5 @@
 //! Progressive layer-wise distillation
 
-use ndarray::{Array2, Axis};
 
 /// Progressive Layer-wise Distillation
 ///
@@ -223,7 +222,6 @@ fn cosine_similarity(student: &Array2<f32>, teacher: &Array2<f32>) -> f32 {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use ndarray::array;
 
     #[test]
     fn test_uniform_progressive() {

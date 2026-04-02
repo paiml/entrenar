@@ -96,7 +96,6 @@ impl RMSNorm {
 
         if requires_grad {
             use crate::autograd::BackwardOp;
-            use ndarray::Array1;
             use std::cell::RefCell;
             use std::rc::Rc;
 

@@ -1,7 +1,6 @@
 //! Teacher model trait for distillation
 
 use crate::hf_pipeline::error::Result;
-use ndarray::Array2;
 
 use super::MemoryEstimate;
 

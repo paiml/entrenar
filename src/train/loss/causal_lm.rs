@@ -1,7 +1,6 @@
 //! Causal Language Modeling Loss
 
 use crate::Tensor;
-use ndarray::Array1;
 
 use super::LossFn;
 
