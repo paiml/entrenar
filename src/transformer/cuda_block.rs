@@ -2884,10 +2884,29 @@ impl CudaNf4TransformerBlock {
         let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
         let intermediate_size = self.config.intermediate_size;
 
-        // PMAT-420: Ensure causal mask is contiguous for current seq_len.
-        // When seq_len < max_seq_len, the precomputed mask has stride max_seq_len
-        // which causes row misalignment in the flat element-wise add, leading to
-        // NaN after ~28 layers as corrupted mask values accumulate through softmax.
+        // entrenar#318: zero forward scratch buffers to prevent backward gradient contamination.
+        // PyTorch allocates fresh tensors per forward. Shared scratch reuse between forward
+        // and backward causes NaN after 2 steps. Zero all buffers used by forward.
+        // Cost: ~100MB cuMemcpyHtoD per forward step (acceptable for correctness).
+        {
+            let z = |buf: &mut GpuBuffer<f32>| -> Result<()> {
+                let zeros = vec![0.0f32; buf.len()];
+                buf.copy_from_host(&zeros).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("zero: {e:?}")))
+            };
+            z(&mut scratch.norm1_out)?;
+            z(&mut scratch.q)?;
+            z(&mut scratch.k)?;
+            z(&mut scratch.v)?;
+            z(&mut scratch.attn_scores)?;
+            z(&mut scratch.attn_out)?;
+            z(&mut scratch.o_proj_out)?;
+            z(&mut scratch.residual1)?;
+            z(&mut scratch.norm2_out)?;
+            z(&mut scratch.gate_out)?;
+            z(&mut scratch.up_out)?;
+            z(&mut scratch.swiglu_out)?;
+            z(&mut scratch.ffn_out)?;
+        }
         scratch.prepare_causal_mask(seq_len, &self.ctx)?;
 
         // === Pre-attention RMSNorm ===
