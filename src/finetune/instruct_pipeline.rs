@@ -2717,21 +2717,7 @@ impl InstructPipeline {
             { eprintln!("[RES-FALSE] BT GEMM failed"); return false };
         }
 
-        // TRACE: Check logits after lm_head
-        {
-            stream.synchronize().ok();
-            let mut l = vec![0.0f32; training.logits_buf.len()];
-            let _ = training.logits_buf.copy_to_host(&mut l);
-            let nz = l.iter().filter(|&&x| x != 0.0).count();
-            let l5: Vec<f32> = l.iter().copied().take(5).collect();
-            static TRACE_COUNT2: std::sync::atomic::AtomicU32 =
-                std::sync::atomic::AtomicU32::new(0);
-            let c = TRACE_COUNT2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if c == 0 {
-                eprintln!("[TRACE] logits output: len={} nonzero={nz} first5={l5:?}", l.len());
-            }
-        }
-
+        // entrenar#318: logits trace REMOVED — was downloading 296MB per step, blocking GPU
         // KAIZEN-064: No logits download — logits stay in training.logits_buf for fused kernel.
         // KAIZEN-067: No stream.synchronize() needed — fused_causal_cross_entropy_cuda runs
         // on the same CUDA stream, so GEMM output is guaranteed complete before kernel reads.
