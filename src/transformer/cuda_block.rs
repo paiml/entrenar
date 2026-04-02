@@ -166,6 +166,17 @@ pub(crate) struct CudaBlockScratch {
 
 #[cfg(feature = "cuda")]
 impl CudaBlockScratch {
+    /// Zero all forward scratch buffers to prevent backward gradient contamination.
+    /// entrenar#318: call once per training step, before the layer loop.
+    pub(crate) fn zero_forward_buffers(&mut self) {
+        let z = |buf: &mut GpuBuffer<f32>| { let v = vec![0.0f32; buf.len()]; buf.copy_from_host(&v).ok(); };
+        z(&mut self.norm1_out); z(&mut self.q); z(&mut self.k); z(&mut self.v);
+        z(&mut self.attn_scores); z(&mut self.attn_out); z(&mut self.o_proj_out);
+        z(&mut self.residual1); z(&mut self.norm2_out); z(&mut self.gate_out);
+        z(&mut self.up_out); z(&mut self.swiglu_out); z(&mut self.ffn_out);
+        self.causal_mask_cached_seq_len = 0;
+    }
+
     /// Allocate scratch buffers for a given model config and max sequence length.
     ///
     /// # Contract (C-SCRATCH-001)
@@ -2884,29 +2895,7 @@ impl CudaNf4TransformerBlock {
         let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
         let intermediate_size = self.config.intermediate_size;
 
-        // entrenar#318: zero forward scratch buffers to prevent backward gradient contamination.
-        // PyTorch allocates fresh tensors per forward. Shared scratch reuse between forward
-        // and backward causes NaN after 2 steps. Zero all buffers used by forward.
-        // Cost: ~100MB cuMemcpyHtoD per forward step (acceptable for correctness).
-        {
-            let z = |buf: &mut GpuBuffer<f32>| -> Result<()> {
-                let zeros = vec![0.0f32; buf.len()];
-                buf.copy_from_host(&zeros).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("zero: {e:?}")))
-            };
-            z(&mut scratch.norm1_out)?;
-            z(&mut scratch.q)?;
-            z(&mut scratch.k)?;
-            z(&mut scratch.v)?;
-            z(&mut scratch.attn_scores)?;
-            z(&mut scratch.attn_out)?;
-            z(&mut scratch.o_proj_out)?;
-            z(&mut scratch.residual1)?;
-            z(&mut scratch.norm2_out)?;
-            z(&mut scratch.gate_out)?;
-            z(&mut scratch.up_out)?;
-            z(&mut scratch.swiglu_out)?;
-            z(&mut scratch.ffn_out)?;
-        }
+        // entrenar#318: scratch zeroing moved to forward_cuda_training (once per step, not per layer)
         scratch.prepare_causal_mask(seq_len, &self.ctx)?;
 
         // === Pre-attention RMSNorm ===

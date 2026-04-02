@@ -2032,6 +2032,11 @@ impl InstructPipeline {
 
         // Run through CUDA transformer blocks, saving inputs
         let stream = trainer.stream();
+        // entrenar#318: zero shared scratch ONCE before the layer loop (not per-layer).
+        // Prevents backward gradient contamination at ~40MB H2D cost (not 1.1GB per-layer).
+        if let Some(ref mut scratch) = shared_scratch.as_mut() {
+            scratch.zero_forward_buffers();
+        }
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
             // SAFETY: scratch_a_ptr and scratch_b_ptr point to disjoint struct fields.
             // Only one is written (output) while the other is read (input) per iteration.
