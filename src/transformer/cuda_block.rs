@@ -173,6 +173,7 @@ impl CudaBlockScratch {
         self.norm1_out.len() / hidden_size.max(1)
     }
 
+    #[rustfmt::skip]
     pub(crate) fn zero_forward_buffers(&mut self, stream: &CudaStream) {
         let z = |b: &mut GpuBuffer<f32>| { b.zero_async(stream).ok(); };
         z(&mut self.norm1_out); z(&mut self.q); z(&mut self.k); z(&mut self.v); z(&mut self.attn_scores); z(&mut self.attn_out);
@@ -2880,11 +2881,9 @@ impl CudaNf4TransformerBlock {
 
     /// Forward pass using cuBLAS GEMM with pre-dequantized fp32 weights (ENT-287).
     ///
-    /// Uses shared scratch buffers (C-SCRATCH-001) — caller allocates once,
-    /// passes `&mut` to each layer sequentially. Saves 7.5 GB for Qwen3-4B.
-    ///
-    /// Weight layout: W is `[N,K]` row-major (HuggingFace convention).
+    /// Uses shared scratch buffers (C-SCRATCH-001). Weight layout: W is `[N,K]` row-major.
     /// cuBLAS call: `C[M,N] = A[M,K] @ W[N,K]^T` via `gemm_forward`.
+    #[rustfmt::skip]
     pub(crate) fn forward(
         &self,
         input: &GpuBuffer<f32>,

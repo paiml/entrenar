@@ -1,8 +1,7 @@
 //! WgpuInstructPipeline — GPU-only training pipeline (§26.11.7)
 //!
-//! Root cause fix: bypasses entrenar's `Transformer` (which requires 20-min CPU
-//! dequant of 28 GB Q4K→F32). Instead, uses `WgslForwardPass` with pre-uploaded
-//! GPU weights from `dequant_model_weights()`.
+//! Bypasses entrenar's `Transformer` (which requires 20-min CPU dequant of 28 GB Q4K→F32).
+//! Uses `WgslForwardPass` with pre-uploaded GPU weights from `dequant_model_weights()`.
 //!
 //! No `Transformer` object. No CPU F32 projection weights. No SATD.
 //!
@@ -83,9 +82,9 @@ pub struct WgpuInstructPipeline {
     /// A: [in_dim, rank], B: [rank, out_dim], m/v: optimizer states
     lora: Vec<LayerLoRA>,
     lora_rank: usize,
-    lora_scale: f32, // alpha / rank
-    lora_step: u32,  // optimizer step counter
-    lora_target_set: Vec<String>,  // which projections to train
+    lora_scale: f32,              // alpha / rank
+    lora_step: u32,               // optimizer step counter
+    lora_target_set: Vec<String>, // which projections to train
     /// Config
     num_layers: usize,
     hidden_dim: usize,
@@ -388,11 +387,12 @@ impl WgpuInstructPipeline {
         let _use_all = true; // Always create all 7 for QkvLoRA forward
         let proj_dims: Vec<(&str, usize, usize)> = all_proj_dims.to_vec();
         let num_targets = proj_dims.len();
-        let lora_target_set: Vec<String> = if lora_targets.is_empty() || lora_targets.contains(&"all") {
-            all_proj_dims.iter().map(|(n,_,_)| n.to_string()).collect()
-        } else {
-            lora_targets.iter().map(|s| s.to_string()).collect()
-        };
+        let lora_target_set: Vec<String> =
+            if lora_targets.is_empty() || lora_targets.contains(&"all") {
+                all_proj_dims.iter().map(|(n, _, _)| n.to_string()).collect()
+            } else {
+                lora_targets.iter().map(|s| s.to_string()).collect()
+            };
 
         let mut lora = Vec::with_capacity(num_layers);
         for layer_idx in 0..num_layers {
@@ -691,7 +691,9 @@ impl WgpuInstructPipeline {
 
         for (layer_idx, layer_lora) in self.lora.iter().enumerate() {
             for proj in &layer_lora.projections {
-                if !self.lora_target_set.iter().any(|t| t == &proj.name) { continue; }
+                if !self.lora_target_set.iter().any(|t| t == &proj.name) {
+                    continue;
+                }
                 let a = self.trainer.download(&proj.a);
                 let b = self.trainer.download(&proj.b);
                 // Naming: layer.{i}.{proj_name}.lora_a  (matches apr merge convention)
@@ -1010,7 +1012,9 @@ impl WgpuInstructPipeline {
             let saved = &_saved_activations[layer_idx];
 
             for proj in &layer_lora.projections {
-                if !self.lora_target_set.iter().any(|t| t == &proj.name) { continue; }
+                if !self.lora_target_set.iter().any(|t| t == &proj.name) {
+                    continue;
+                }
                 // Select saved input based on projection name
                 let input_buf = match proj.name.as_str() {
                     "q_proj" | "k_proj" | "v_proj" => &saved.attn_norm_out,
@@ -1127,11 +1131,7 @@ impl WgpuInstructPipeline {
 
     /// Compute total log-probability of response given prompt.
     /// Returns: Σ log P(response_token_i | prompt, response_tokens_<i)
-    fn compute_sequence_logprob(
-        &mut self,
-        prompt_ids: &[u32],
-        response_ids: &[u32],
-    ) -> f32 {
+    fn compute_sequence_logprob(&mut self, prompt_ids: &[u32], response_ids: &[u32]) -> f32 {
         // Use existing train_step infrastructure for forward pass
         let result = self.train_step(prompt_ids, response_ids);
         // CE loss = -1/N * Σ log P(y_i | y_<i)

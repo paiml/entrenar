@@ -1997,13 +1997,16 @@ impl InstructPipeline {
         // entrenar#318: truncation cap MUST match scratch allocation size.
         // Scratch allocated at config.max_seq_len in try_init_cuda.
         // Using a larger cap causes buffer overflow (seq_len > scratch capacity).
-        let max_seq_len = shared_scratch.as_ref()
+        let max_seq_len = shared_scratch
+            .as_ref()
             .map(|s| s.max_seq_len(hidden_size))
             .unwrap_or(model.config.max_position_embeddings.min(512));
 
         // entrenar#318: truncate instead of aborting when seq_len > max_seq_len
         let seq_len = if seq_len > max_seq_len { max_seq_len } else { seq_len };
-        if seq_len == 0 { return None; }
+        if seq_len == 0 {
+            return None;
+        }
 
         // Embed on CPU, then zero-pad to max_seq_len for GPU buffer compatibility.
         // Training state buffers are allocated at max_seq_len * hidden_size;
@@ -2035,8 +2038,18 @@ impl InstructPipeline {
         // Run through CUDA transformer blocks, saving inputs
         let stream = trainer.stream();
         // entrenar#318: GPU-side scratch + training state zeroing (PMAT-453 NaN cascade fix).
-        if let Some(ref mut scratch) = shared_scratch.as_mut() { scratch.zero_forward_buffers(stream); }
-        for b in [&mut training_state.grad_buf_a, &mut training_state.grad_buf_b, &mut training_state.grad_hidden_buf, &mut training_state.output_scratch, &mut training_state.logits_buf] { b.zero_async(stream).ok(); }
+        if let Some(ref mut scratch) = shared_scratch.as_mut() {
+            scratch.zero_forward_buffers(stream);
+        }
+        for b in [
+            &mut training_state.grad_buf_a,
+            &mut training_state.grad_buf_b,
+            &mut training_state.grad_hidden_buf,
+            &mut training_state.output_scratch,
+            &mut training_state.logits_buf,
+        ] {
+            b.zero_async(stream).ok();
+        }
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
             // SAFETY: scratch_a_ptr and scratch_b_ptr point to disjoint struct fields.
             // Only one is written (output) while the other is read (input) per iteration.
@@ -2051,34 +2064,16 @@ impl InstructPipeline {
             // Save input for backward pass
             // PMAT-420: Re-allocate layer_input at seq_len if needed (was max_seq_len)
             if training_state.layer_inputs[i].len() != gpu_input.len() {
-                training_state.layer_inputs[i] = trainer.zeros(gpu_input.len()).map_err(|e| eprintln!("[CUDA] layer_input realloc failed L{i}: {e}")).ok()?;
+                training_state.layer_inputs[i] = trainer
+                    .zeros(gpu_input.len())
+                    .map_err(|e| eprintln!("[CUDA] layer_input realloc failed L{i}: {e}"))
+                    .ok()?;
             }
-            training_state.layer_inputs[i].copy_from_buffer(gpu_input).map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}")).ok()?;
+            training_state.layer_inputs[i]
+                .copy_from_buffer(gpu_input)
+                .map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}"))
+                .ok()?;
 
-            // Forward uses actual seq_len for attention masking; padded positions
-            // produce zeros that don't affect loss (loss only covers actual tokens).
-            //
-            // PMAT-420: Per-layer NaN detection to find which layer introduces NaN.
-            {
-                static FWD_TRACE_COUNT: std::sync::atomic::AtomicU32 =
-                    std::sync::atomic::AtomicU32::new(0);
-                let c = FWD_TRACE_COUNT.load(std::sync::atomic::Ordering::Relaxed);
-                if c == 0 {
-                    // Check input for NaN before layer forward (first step only)
-                    stream.synchronize().ok();
-                    let mut buf =
-                        vec![0.0f32; std::cmp::min(gpu_input.len(), seq_len * hidden_size)];
-                    let _ = gpu_input.copy_to_host(&mut buf);
-                    let nan_count = buf.iter().filter(|x| x.is_nan()).count();
-                    let inf_count = buf.iter().filter(|x| x.is_infinite()).count();
-                    if nan_count > 0 || inf_count > 0 || i == 0 {
-                        eprintln!(
-                            "[CUDA-TRAIN] Layer {i} INPUT: nan={nan_count} inf={inf_count} first5={:?}",
-                            &buf[..5.min(buf.len())]
-                        );
-                    }
-                }
-            }
             if let Err(e) =
                 block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut())
             {
@@ -2089,54 +2084,7 @@ impl InstructPipeline {
                 );
                 return None;
             }
-            // PMAT-420: Check output for NaN after layer forward (first step only)
-            {
-                static FWD_TRACE_COUNT: std::sync::atomic::AtomicU32 =
-                    std::sync::atomic::AtomicU32::new(0);
-                let c = FWD_TRACE_COUNT.load(std::sync::atomic::Ordering::Relaxed);
-                if c == 0 {
-                    stream.synchronize().ok();
-                    let mut buf =
-                        vec![0.0f32; std::cmp::min(gpu_output.len(), seq_len * hidden_size)];
-                    let _ = gpu_output.copy_to_host(&mut buf);
-                    let nan_count = buf.iter().filter(|x| x.is_nan()).count();
-                    let inf_count = buf.iter().filter(|x| x.is_infinite()).count();
-                    if nan_count > 0 || inf_count > 0 {
-                        eprintln!(
-                            "[CUDA-TRAIN] Layer {i} OUTPUT: nan={nan_count} inf={inf_count} first5={:?}",
-                            &buf[..5.min(buf.len())]
-                        );
-                        FWD_TRACE_COUNT.store(1, std::sync::atomic::Ordering::Relaxed);
-                    }
-                }
-            }
             input_is_a = !input_is_a;
-        }
-
-        // TRACE: Check output of each layer (first forward only)
-        {
-            static LAYER_TRACE: std::sync::atomic::AtomicBool =
-                std::sync::atomic::AtomicBool::new(false);
-            if !LAYER_TRACE.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                stream.synchronize().ok();
-                // Check output of last layer
-                let final_buf = unsafe {
-                    if input_is_a {
-                        &*scratch_a_ptr
-                    } else {
-                        &*scratch_b_ptr
-                    }
-                };
-                let mut out = vec![0.0f32; final_buf.len()];
-                let _ = final_buf.copy_to_host(&mut out);
-                let nz = out.iter().filter(|&&x| x != 0.0).count();
-                let o5: Vec<f32> = out.iter().copied().take(5).collect();
-                eprintln!(
-                    "[TRACE] After 36 layers: len={} nonzero={nz}/{} first5={o5:?}",
-                    out.len(),
-                    out.len()
-                );
-            }
         }
 
         // After ping-pong: result is in the buffer that would be "input" for the next iteration
@@ -2151,9 +2099,16 @@ impl InstructPipeline {
         // Save blocks output for RMSNorm backward
         // PMAT-420: Re-allocate at seq_len if needed
         if training_state.blocks_output.len() != final_output.len() {
-            training_state.blocks_output = trainer.zeros(final_output.len()).map_err(|e| eprintln!("[CUDA] blocks_output realloc failed: {e}")).ok()?;
+            training_state.blocks_output = trainer
+                .zeros(final_output.len())
+                .map_err(|e| eprintln!("[CUDA] blocks_output realloc failed: {e}"))
+                .ok()?;
         }
-        training_state.blocks_output.copy_from_buffer(final_output).map_err(|e| eprintln!("[CUDA] blocks_output copy: {e}")).ok()?;
+        training_state
+            .blocks_output
+            .copy_from_buffer(final_output)
+            .map_err(|e| eprintln!("[CUDA] blocks_output copy: {e}"))
+            .ok()?;
 
         // KAIZEN-066: GPU RMSNorm forward — output goes directly to lm_head_hidden_buf.
         // Eliminates ~5MB D2H download + CPU RMSNorm + ~5MB H2D upload.
@@ -2171,7 +2126,7 @@ impl InstructPipeline {
         })
         .ok()?;
 
-        { eprintln!("[FWD-TRAIN] completed OK"); Some(()) }
+        Some(())
     }
 
     /// NF4 QLoRA backward pass through all GPU transformer blocks.
@@ -2521,7 +2476,10 @@ impl InstructPipeline {
                             training.layer_inputs[i] = buf;
                         }
                     }
-                    training.layer_inputs[i].copy_from_buffer(&gpu_input).map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}")).ok();
+                    training.layer_inputs[i]
+                        .copy_from_buffer(&gpu_input)
+                        .map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}"))
+                        .ok();
                 }
             }
 
@@ -2547,7 +2505,11 @@ impl InstructPipeline {
                     training.blocks_output = buf;
                 }
             }
-            training.blocks_output.copy_from_buffer(&gpu_input).map_err(|e| eprintln!("[CUDA] blocks_output copy: {e}")).ok();
+            training
+                .blocks_output
+                .copy_from_buffer(&gpu_input)
+                .map_err(|e| eprintln!("[CUDA] blocks_output copy: {e}"))
+                .ok();
         }
 
         // Download hidden states for CPU RMSNorm + lm_head
@@ -2649,7 +2611,10 @@ impl InstructPipeline {
         if self.gpu_training.is_some() {
             let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
                 (Some(ref t), Some(ref mut b)) => (t, b),
-                _ => { eprintln!("[RES-FALSE] no trainer/blocks"); return false },
+                _ => {
+                    eprintln!("[RES-FALSE] no trainer/blocks");
+                    return false;
+                }
             };
             let mut training = self.gpu_training.take();
             let result = Self::forward_cuda_training(
@@ -2662,7 +2627,10 @@ impl InstructPipeline {
             );
             self.gpu_training = training;
             if result.is_none() {
-                { eprintln!("[RES-FALSE] forward_cuda_training returned None"); return false };
+                {
+                    eprintln!("[RES-FALSE] forward_cuda_training returned None");
+                    return false;
+                };
             }
             // lm_head_hidden_buf is ready
         } else {
@@ -2694,7 +2662,10 @@ impl InstructPipeline {
         // GPU GEMM: logits[seq, vocab] = hidden[seq, hidden] @ embed_T[hidden, vocab]
         let (trainer, training) = match (&self.cuda_trainer, &mut self.gpu_training) {
             (Some(ref t), Some(ref mut tr)) => (t, tr),
-            _ => { eprintln!("[RES-FALSE] no trainer/training"); return false },
+            _ => {
+                eprintln!("[RES-FALSE] no trainer/training");
+                return false;
+            }
         };
 
         let stream = trainer.stream();
@@ -2713,7 +2684,10 @@ impl InstructPipeline {
         .is_err()
         {
             eprintln!("[CUDA] lm_head forward GEMM (BT) failed");
-            { eprintln!("[RES-FALSE] BT GEMM failed"); return false };
+            {
+                eprintln!("[RES-FALSE] BT GEMM failed");
+                return false;
+            };
         }
 
         // entrenar#318: logits trace REMOVED — was downloading 296MB per step, blocking GPU
