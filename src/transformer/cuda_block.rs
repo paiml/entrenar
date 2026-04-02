@@ -2761,25 +2761,15 @@ impl CudaNf4TransformerBlock {
             eprintln!("[TRACE] uploaded ptr={:?} len={} copy_ok={verify_ok} nonzero={nz} verify[:5]={verify5:?}", buf.as_ptr(), buf.len());
             Ok(buf)
         };
-        // entrenar#318: direct upload without NF4 roundtrip (avoids double-quantization)
-        let direct_transpose_upload = |weights: &[f32], n: usize, k: usize| -> std::result::Result<GpuBuffer<f32>, crate::autograd::cuda_tensor::CudaTensorError> {
-            let mut transposed = vec![0.0f32; n * k];
-            for row in 0..n {
-                for col in 0..k {
-                    transposed[col * n + row] = weights[row * k + col];
-                }
-            }
-            GpuBuffer::from_host(&ctx, &transposed).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("direct upload: {e:?}")))
-        };
         // Each weight is [out_features, in_features] = [N, K].
         // After transpose: [K, N] — standard cuBLAS B layout.
-        let w_q_fp32 = direct_transpose_upload(w_q, q_dim, hidden_size)?;
-        let w_k_fp32 = direct_transpose_upload(w_k, kv_hidden_size, hidden_size)?;
-        let w_v_fp32 = direct_transpose_upload(w_v, kv_hidden_size, hidden_size)?;
-        let w_o_fp32 = direct_transpose_upload(w_o, hidden_size, q_dim)?;
-        let w_gate_fp32 = direct_transpose_upload(w_gate, intermediate_size, hidden_size)?;
-        let w_up_fp32 = direct_transpose_upload(w_up, intermediate_size, hidden_size)?;
-        let w_down_fp32 = direct_transpose_upload(w_down, hidden_size, intermediate_size)?;
+        let w_q_fp32 = GpuBuffer::from_host(&ctx, w_q).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("w_q: {e:?}")))?;
+        let w_k_fp32 = GpuBuffer::from_host(&ctx, w_k).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("w_k: {e:?}")))?;
+        let w_v_fp32 = GpuBuffer::from_host(&ctx, w_v).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("w_v: {e:?}")))?;
+        let w_o_fp32 = GpuBuffer::from_host(&ctx, w_o).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("w_o: {e:?}")))?;
+        let w_gate_fp32 = GpuBuffer::from_host(&ctx, w_gate).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("w_gate: {e:?}")))?;
+        let w_up_fp32 = GpuBuffer::from_host(&ctx, w_up).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("w_up: {e:?}")))?;
+        let w_down_fp32 = GpuBuffer::from_host(&ctx, w_down).map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!("w_down: {e:?}")))?;
 
         // NF4 blocks do NOT allocate scratch — shared across all layers (C-SCRATCH-001).
         // Pipeline allocates one CudaBlockScratch and passes &mut to each forward() call.
