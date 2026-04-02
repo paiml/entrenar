@@ -131,6 +131,7 @@ impl WgpuInstructPipeline {
         intermediate_dim: usize,
         lora_rank: usize,
         lora_alpha: f32,
+        lora_targets: &[&str],
         eps: f32,
     ) -> Self {
         let ce = WgslCrossEntropy::new(trainer.device_ref().clone(), trainer.queue_ref().clone());
@@ -373,7 +374,7 @@ impl WgpuInstructPipeline {
         let kv_dim = num_kv_heads * (hidden_dim / num_heads);
         let inter = intermediate_dim;
 
-        let proj_dims: &[(&str, usize, usize)] = &[
+        let all_proj_dims: &[(&str, usize, usize)] = &[
             ("q_proj", h, q_dim),
             ("k_proj", h, kv_dim),
             ("v_proj", h, kv_dim),
@@ -383,10 +384,15 @@ impl WgpuInstructPipeline {
             ("down_proj", inter, h),
         ];
 
+        let use_all = lora_targets.is_empty() || lora_targets.contains(&"all");
+        let proj_dims: Vec<(&str, usize, usize)> = all_proj_dims
+            .iter().filter(|(name, _, _)| use_all || lora_targets.contains(name)).copied().collect();
+        let num_targets = proj_dims.len();
+
         let mut lora = Vec::with_capacity(num_layers);
         for layer_idx in 0..num_layers {
-            let mut projections = Vec::with_capacity(7);
-            for &(name, in_d, out_d) in proj_dims {
+            let mut projections = Vec::with_capacity(num_targets);
+            for &(name, in_d, out_d) in &proj_dims {
                 // Kaiming init for A: std = sqrt(2/fan_in)
                 let std = (2.0 / in_d as f32).sqrt();
                 let a_data: Vec<f32> = (0..in_d * r)
@@ -413,8 +419,8 @@ impl WgpuInstructPipeline {
         }
 
         eprintln!(
-            "[wgpu] LoRA initialized: {} layers × 7 projections, rank={}, scale={:.2}",
-            num_layers, r, scale,
+            "[wgpu] LoRA initialized: {} layers × {} projections, rank={}, scale={:.2}",
+            num_layers, num_targets, r, scale,
         );
 
         // Pre-allocate buffers before moving trainer into Self
