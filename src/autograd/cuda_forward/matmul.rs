@@ -150,9 +150,7 @@ pub fn gemm_forward_bt(
     stream: &CudaStream,
 ) -> Result<()> {
     let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let cache = cache.lock().map_err(|_| {
-        CudaTensorError::KernelError("cache lock".to_string())
-    })?;
+    let cache = cache.lock().map_err(|_| CudaTensorError::KernelError("cache lock".to_string()))?;
     if let Some(cublas) = cache.cublas() {
         return cublas_gemm_forward_bt(cublas, a, b, c, m, k, n);
     }
@@ -173,19 +171,19 @@ fn cublas_gemm_forward_bt(
     // Column-major: C^T[N,M] = Trans(B_col[K,N])[N,K] @ A_col[K,M]
     cublas
         .gemm_f32(
-            GemmOp::Trans,     // B transposed
-            GemmOp::NoTrans,   // A not transposed
+            GemmOp::Trans,   // B transposed
+            GemmOp::NoTrans, // A not transposed
             n as i32,
             m as i32,
             k as i32,
             1.0,
             b.as_ptr(),
-            k as i32,          // ldb = K (B is [K,N] in col-major, transposed to [N,K])
+            k as i32, // ldb = K (B is [K,N] in col-major, transposed to [N,K])
             a.as_ptr(),
-            k as i32,          // lda = K (A is [K,M] in col-major)
+            k as i32, // lda = K (A is [K,M] in col-major)
             0.0,
             c.as_ptr(),
-            n as i32,          // ldc = N
+            n as i32, // ldc = N
         )
         .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS GEMM BT failed: {e:?}")))
 }

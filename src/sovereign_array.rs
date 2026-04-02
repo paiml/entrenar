@@ -16,9 +16,7 @@ impl<T: Clone + Default> Array1<T> {
     where
         T: From<f32>,
     {
-        Self {
-            data: vec![T::from(0.0f32); n],
-        }
+        Self { data: vec![T::from(0.0f32); n] }
     }
 
     pub fn from_vec(v: Vec<T>) -> Self {
@@ -29,21 +27,15 @@ impl<T: Clone + Default> Array1<T> {
 // Specialization for f32
 impl Array1<f32> {
     pub fn ones(n: usize) -> Self {
-        Self {
-            data: vec![1.0; n],
-        }
+        Self { data: vec![1.0; n] }
     }
 
     pub fn zeros_f32(n: usize) -> Self {
-        Self {
-            data: vec![0.0; n],
-        }
+        Self { data: vec![0.0; n] }
     }
 
     pub fn mapv<F: Fn(f32) -> f32>(&self, f: F) -> Self {
-        Self {
-            data: self.data.iter().map(|&x| f(x)).collect(),
-        }
+        Self { data: self.data.iter().map(|&x| f(x)).collect() }
     }
 
     pub fn mapv_inplace<F: Fn(f32) -> f32>(&mut self, f: F) {
@@ -57,11 +49,7 @@ impl Array1<f32> {
     }
 
     pub fn dot(&self, other: &Self) -> f32 {
-        self.data
-            .iter()
-            .zip(other.data.iter())
-            .map(|(&a, &b)| a * b)
-            .sum()
+        self.data.iter().zip(other.data.iter()).map(|(&a, &b)| a * b).sum()
     }
 
     pub fn mean(&self) -> Option<f32> {
@@ -90,8 +78,13 @@ impl Array1<f32> {
 
     /// Vector-matrix multiply: self [m] dot other [m, n] -> [n]
     pub fn dot_mat(&self, mat: &Array2<f32>) -> Array1<f32> {
-        assert_eq!(self.data.len(), mat.nrows(),
-            "dot_mat: vector length {} != matrix rows {}", self.data.len(), mat.nrows());
+        assert_eq!(
+            self.data.len(),
+            mat.nrows(),
+            "dot_mat: vector length {} != matrix rows {}",
+            self.data.len(),
+            mat.nrows()
+        );
         let n = mat.ncols();
         let m = mat.nrows();
         let mut out = vec![0.0f32; n];
@@ -107,10 +100,18 @@ impl Array1<f32> {
 }
 
 impl<T> Array1<T> {
-    pub fn len(&self) -> usize { self.data.len() }
-    pub fn is_empty(&self) -> bool { self.data.is_empty() }
-    pub fn iter(&self) -> std::slice::Iter<'_, T> { self.data.iter() }
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> { self.data.iter_mut() }
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.data.iter()
+    }
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+        self.data.iter_mut()
+    }
 }
 
 impl Array1<f32> {
@@ -135,9 +136,7 @@ impl<T: Clone> From<&[T]> for Array1<T> {
 // FromIterator for .collect()
 impl std::iter::FromIterator<f32> for Array1<f32> {
     fn from_iter<I: IntoIterator<Item = f32>>(iter: I) -> Self {
-        Self {
-            data: iter.into_iter().collect(),
-        }
+        Self { data: iter.into_iter().collect() }
     }
 }
 
@@ -167,14 +166,7 @@ impl<T> IndexMut<usize> for Array1<T> {
 impl<'a, 'b> Add<&'b Array1<f32>> for &'a Array1<f32> {
     type Output = Array1<f32>;
     fn add(self, rhs: &'b Array1<f32>) -> Array1<f32> {
-        Array1 {
-            data: self
-                .data
-                .iter()
-                .zip(rhs.data.iter())
-                .map(|(&a, &b)| a + b)
-                .collect(),
-        }
+        Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a + b).collect() }
     }
 }
 
@@ -182,14 +174,7 @@ impl<'a, 'b> Add<&'b Array1<f32>> for &'a Array1<f32> {
 impl<'a, 'b> Sub<&'b Array1<f32>> for &'a Array1<f32> {
     type Output = Array1<f32>;
     fn sub(self, rhs: &'b Array1<f32>) -> Array1<f32> {
-        Array1 {
-            data: self
-                .data
-                .iter()
-                .zip(rhs.data.iter())
-                .map(|(&a, &b)| a - b)
-                .collect(),
-        }
+        Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a - b).collect() }
     }
 }
 
@@ -197,14 +182,7 @@ impl<'a, 'b> Sub<&'b Array1<f32>> for &'a Array1<f32> {
 impl<'a, 'b> Mul<&'b Array1<f32>> for &'a Array1<f32> {
     type Output = Array1<f32>;
     fn mul(self, rhs: &'b Array1<f32>) -> Array1<f32> {
-        Array1 {
-            data: self
-                .data
-                .iter()
-                .zip(rhs.data.iter())
-                .map(|(&a, &b)| a * b)
-                .collect(),
-        }
+        Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a * b).collect() }
     }
 }
 
@@ -212,14 +190,7 @@ impl<'a, 'b> Mul<&'b Array1<f32>> for &'a Array1<f32> {
 impl<'a, 'b> Div<&'b Array1<f32>> for &'a Array1<f32> {
     type Output = Array1<f32>;
     fn div(self, rhs: &'b Array1<f32>) -> Array1<f32> {
-        Array1 {
-            data: self
-                .data
-                .iter()
-                .zip(rhs.data.iter())
-                .map(|(&a, &b)| a / b)
-                .collect(),
-        }
+        Array1 { data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a / b).collect() }
     }
 }
 
@@ -227,18 +198,14 @@ impl<'a, 'b> Div<&'b Array1<f32>> for &'a Array1<f32> {
 impl Add<f32> for Array1<f32> {
     type Output = Array1<f32>;
     fn add(self, rhs: f32) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&a| a + rhs).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&a| a + rhs).collect() }
     }
 }
 
 impl Add<f32> for &Array1<f32> {
     type Output = Array1<f32>;
     fn add(self, rhs: f32) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&a| a + rhs).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&a| a + rhs).collect() }
     }
 }
 
@@ -246,18 +213,14 @@ impl Add<f32> for &Array1<f32> {
 impl Mul<f32> for Array1<f32> {
     type Output = Array1<f32>;
     fn mul(self, rhs: f32) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&a| a * rhs).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&a| a * rhs).collect() }
     }
 }
 
 impl Mul<f32> for &Array1<f32> {
     type Output = Array1<f32>;
     fn mul(self, rhs: f32) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&a| a * rhs).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&a| a * rhs).collect() }
     }
 }
 
@@ -265,9 +228,7 @@ impl Mul<f32> for &Array1<f32> {
 impl Div<f32> for Array1<f32> {
     type Output = Array1<f32>;
     fn div(self, rhs: f32) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&a| a / rhs).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&a| a / rhs).collect() }
     }
 }
 
@@ -275,18 +236,14 @@ impl Div<f32> for Array1<f32> {
 impl Sub<f32> for Array1<f32> {
     type Output = Array1<f32>;
     fn sub(self, rhs: f32) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&a| a - rhs).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&a| a - rhs).collect() }
     }
 }
 
 impl Sub<f32> for &Array1<f32> {
     type Output = Array1<f32>;
     fn sub(self, rhs: f32) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&a| a - rhs).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&a| a - rhs).collect() }
     }
 }
 
@@ -294,9 +251,7 @@ impl Sub<f32> for &Array1<f32> {
 impl Mul<&Array1<f32>> for f32 {
     type Output = Array1<f32>;
     fn mul(self, rhs: &Array1<f32>) -> Array1<f32> {
-        Array1 {
-            data: rhs.data.iter().map(|&a| self * a).collect(),
-        }
+        Array1 { data: rhs.data.iter().map(|&a| self * a).collect() }
     }
 }
 
@@ -319,9 +274,7 @@ impl<'a, T> IntoIterator for &'a Array1<T> {
 
 /// Free function: create Array1 from slice (replaces `ndarray::arr1`)
 pub fn arr1(data: &[f32]) -> Array1<f32> {
-    Array1 {
-        data: data.to_vec(),
-    }
+    Array1 { data: data.to_vec() }
 }
 
 /// Axis for Array2 operations (replaces `ndarray::Axis`)
@@ -339,29 +292,17 @@ pub struct Array2<T = f32> {
 
 impl<T: Clone + Default> Array2<T> {
     pub fn zeros(shape: (usize, usize)) -> Self {
-        Self {
-            data: vec![T::default(); shape.0 * shape.1],
-            rows: shape.0,
-            cols: shape.1,
-        }
+        Self { data: vec![T::default(); shape.0 * shape.1], rows: shape.0, cols: shape.1 }
     }
 
     pub fn from_elem(shape: (usize, usize), val: T) -> Self {
-        Self {
-            data: vec![val; shape.0 * shape.1],
-            rows: shape.0,
-            cols: shape.1,
-        }
+        Self { data: vec![val; shape.0 * shape.1], rows: shape.0, cols: shape.1 }
     }
 }
 
 impl Array2<f32> {
     pub fn ones(shape: (usize, usize)) -> Self {
-        Self {
-            data: vec![1.0; shape.0 * shape.1],
-            rows: shape.0,
-            cols: shape.1,
-        }
+        Self { data: vec![1.0; shape.0 * shape.1], rows: shape.0, cols: shape.1 }
     }
 
     pub fn from_shape_fn<F: Fn((usize, usize)) -> f32>(shape: (usize, usize), f: F) -> Self {
@@ -371,11 +312,7 @@ impl Array2<f32> {
                 data.push(f((r, c)));
             }
         }
-        Self {
-            data,
-            rows: shape.0,
-            cols: shape.1,
-        }
+        Self { data, rows: shape.0, cols: shape.1 }
     }
 
     pub fn from_shape_vec(
@@ -389,11 +326,7 @@ impl Array2<f32> {
                 data.len()
             ));
         }
-        Ok(Self {
-            data,
-            rows: shape.0,
-            cols: shape.1,
-        })
+        Ok(Self { data, rows: shape.0, cols: shape.1 })
     }
 
     pub fn nrows(&self) -> usize {
@@ -410,17 +343,11 @@ impl Array2<f32> {
 
     pub fn row(&self, r: usize) -> ArrayView1 {
         let start = r * self.cols;
-        ArrayView1 {
-            data: &self.data[start..start + self.cols],
-        }
+        ArrayView1 { data: &self.data[start..start + self.cols] }
     }
 
     pub fn mapv<F: Fn(f32) -> f32>(&self, f: F) -> Self {
-        Self {
-            data: self.data.iter().map(|&x| f(x)).collect(),
-            rows: self.rows,
-            cols: self.cols,
-        }
+        Self { data: self.data.iter().map(|&x| f(x)).collect(), rows: self.rows, cols: self.cols }
     }
 
     pub fn sum(&self) -> f32 {
@@ -442,11 +369,7 @@ impl Array2<f32> {
                 result[c * self.rows + r] = self.data[r * self.cols + c];
             }
         }
-        Self {
-            data: result,
-            rows: self.cols,
-            cols: self.rows,
-        }
+        Self { data: result, rows: self.cols, cols: self.rows }
     }
 
     /// Matrix multiply: self [m,k] dot other [k,n] -> [m,n]
@@ -469,17 +392,18 @@ impl Array2<f32> {
                 out[i * n + j] = sum;
             }
         }
-        Self {
-            data: out,
-            rows: m,
-            cols: n,
-        }
+        Self { data: out, rows: m, cols: n }
     }
 
     /// Matrix-vector multiply: self [m,k] dot vec [k] -> [m]
     pub fn dot_vec(&self, vec: &Array1<f32>) -> Array1<f32> {
-        assert_eq!(self.cols, vec.len(),
-            "dot_vec: matrix cols {} != vector length {}", self.cols, vec.len());
+        assert_eq!(
+            self.cols,
+            vec.len(),
+            "dot_vec: matrix cols {} != vector length {}",
+            self.cols,
+            vec.len()
+        );
         let m = self.rows;
         let k = self.cols;
         let mut out = vec![0.0f32; m];
@@ -495,12 +419,7 @@ impl Array2<f32> {
 
     /// Iterate rows along Axis(0)
     pub fn axis_iter(&self, _axis: Axis) -> AxisIter<'_> {
-        AxisIter {
-            data: &self.data,
-            cols: self.cols,
-            row: 0,
-            total_rows: self.rows,
-        }
+        AxisIter { data: &self.data, cols: self.cols, row: 0, total_rows: self.rows }
     }
 
     /// Iterate mutable rows along Axis(0)
@@ -579,12 +498,7 @@ impl<'a, 'b> Add<&'b Array2<f32>> for &'a Array2<f32> {
         assert_eq!(self.rows, rhs.rows);
         assert_eq!(self.cols, rhs.cols);
         Array2 {
-            data: self
-                .data
-                .iter()
-                .zip(rhs.data.iter())
-                .map(|(&a, &b)| a + b)
-                .collect(),
+            data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a + b).collect(),
             rows: self.rows,
             cols: self.cols,
         }
@@ -598,12 +512,7 @@ impl<'a, 'b> Sub<&'b Array2<f32>> for &'a Array2<f32> {
         assert_eq!(self.rows, rhs.rows);
         assert_eq!(self.cols, rhs.cols);
         Array2 {
-            data: self
-                .data
-                .iter()
-                .zip(rhs.data.iter())
-                .map(|(&a, &b)| a - b)
-                .collect(),
+            data: self.data.iter().zip(rhs.data.iter()).map(|(&a, &b)| a - b).collect(),
             rows: self.rows,
             cols: self.cols,
         }
@@ -661,9 +570,7 @@ impl<'a> ArrayView1<'a> {
     }
 
     pub fn mapv<F: Fn(f32) -> f32>(&self, f: F) -> Array1<f32> {
-        Array1 {
-            data: self.data.iter().map(|&x| f(x)).collect(),
-        }
+        Array1 { data: self.data.iter().map(|&x| f(x)).collect() }
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
@@ -744,9 +651,7 @@ impl<'a> Iterator for AxisIter<'a> {
         }
         let start = self.row * self.cols;
         self.row += 1;
-        Some(ArrayView1 {
-            data: &self.data[start..start + self.cols],
-        })
+        Some(ArrayView1 { data: &self.data[start..start + self.cols] })
     }
 }
 
@@ -831,7 +736,9 @@ impl IndexMut<[usize; 2]> for Array2<u8> {
 impl<'a> IntoIterator for &'a mut Array1<f32> {
     type Item = &'a mut f32;
     type IntoIter = std::slice::IterMut<'a, f32>;
-    fn into_iter(self) -> Self::IntoIter { self.data.iter_mut() }
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter_mut()
+    }
 }
 
 /// Generate delegating operator impls that forward owned args to &-& impl.
@@ -839,19 +746,25 @@ macro_rules! delegate_binop {
     ($Op:ident, $method:ident, $Lhs:ty, $Rhs:ty, $Out:ty) => {
         impl $Op<$Rhs> for $Lhs {
             type Output = $Out;
-            fn $method(self, rhs: $Rhs) -> $Out { (&self).$method(&rhs) }
+            fn $method(self, rhs: $Rhs) -> $Out {
+                (&self).$method(&rhs)
+            }
         }
     };
     (lref, $Op:ident, $method:ident, $Lhs:ty, $Rhs:ty, $Out:ty) => {
         impl $Op<$Rhs> for $Lhs {
             type Output = $Out;
-            fn $method(self, rhs: $Rhs) -> $Out { self.$method(&rhs) }
+            fn $method(self, rhs: $Rhs) -> $Out {
+                self.$method(&rhs)
+            }
         }
     };
     (rref, $Op:ident, $method:ident, $Lhs:ty, $Rhs:ty, $Out:ty) => {
         impl $Op<$Rhs> for $Lhs {
             type Output = $Out;
-            fn $method(self, rhs: $Rhs) -> $Out { (&self).$method(rhs) }
+            fn $method(self, rhs: $Rhs) -> $Out {
+                (&self).$method(rhs)
+            }
         }
     };
 }
@@ -866,7 +779,11 @@ delegate_binop!(Sub, sub, Array1<f32>, Array1<f32>, Array1<f32>);
 impl Div<f32> for &Array2<f32> {
     type Output = Array2<f32>;
     fn div(self, rhs: f32) -> Array2<f32> {
-        Array2 { data: self.data.iter().map(|&a| a / rhs).collect(), rows: self.rows, cols: self.cols }
+        Array2 {
+            data: self.data.iter().map(|&a| a / rhs).collect(),
+            rows: self.rows,
+            cols: self.cols,
+        }
     }
 }
 

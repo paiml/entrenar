@@ -128,18 +128,34 @@ fn run() -> Result<(), String> {
             for layer_idx in 0..n_layers {
                 rmsnorm(&mut hidden, s as usize, h);
                 // Attention: CPU matmul for QKV+O (small: [seq,h]@[h,dim])
-                let (q_w, k_w, v_w, o_w) = model.attn_cache[layer_idx].as_ref()
+                let (q_w, k_w, v_w, o_w) = model.attn_cache[layer_idx]
+                    .as_ref()
                     .map(|(q, k, vv, o)| (q.as_slice(), k.as_slice(), vv.as_slice(), o.as_slice()))
                     .expect("attn cache");
-                let (attn_out, _) = entrenar::train::transformer_trainer::wgpu_attention::attention_forward(
-                    &device, &hidden, q_w, k_w, v_w, o_w,
-                    &model.lora[layer_idx].q, &model.lora[layer_idx].v, lora_alpha,
-                    s, h as u32, nh, nkv, hd,
-                )?;
-                for j in 0..(s as usize * h) { hidden[j] += attn_out[j]; }
+                let (attn_out, _) =
+                    entrenar::train::transformer_trainer::wgpu_attention::attention_forward(
+                        &device,
+                        &hidden,
+                        q_w,
+                        k_w,
+                        v_w,
+                        o_w,
+                        &model.lora[layer_idx].q,
+                        &model.lora[layer_idx].v,
+                        lora_alpha,
+                        s,
+                        h as u32,
+                        nh,
+                        nkv,
+                        hd,
+                    )?;
+                for j in 0..(s as usize * h) {
+                    hidden[j] += attn_out[j];
+                }
                 rmsnorm(&mut hidden, s as usize, h);
                 // FFN forward
-                let (gw, uw, dw) = model.ffn_cache[layer_idx].as_ref()
+                let (gw, uw, dw) = model.ffn_cache[layer_idx]
+                    .as_ref()
                     .map(|(g, u, d)| (g.as_slice(), u.as_slice(), d.as_slice()))
                     .expect("ffn cache");
                 let sl = s as usize;
@@ -147,12 +163,19 @@ fn run() -> Result<(), String> {
                 device.matmul(&hidden, gw, &mut go, sl, h, i_size)?;
                 let mut uo = vec![0.0f32; sl * i_size];
                 device.matmul(&hidden, uw, &mut uo, sl, h, i_size)?;
-                let swiglu: Vec<f32> = go.iter().zip(uo.iter()).map(|(&g, &u)| {
-                    let sig = 1.0 / (1.0 + (-g).exp()); g * sig * u
-                }).collect();
+                let swiglu: Vec<f32> = go
+                    .iter()
+                    .zip(uo.iter())
+                    .map(|(&g, &u)| {
+                        let sig = 1.0 / (1.0 + (-g).exp());
+                        g * sig * u
+                    })
+                    .collect();
                 let mut fo = vec![0.0f32; sl * h];
                 device.matmul(&swiglu, dw, &mut fo, sl, i_size, h)?;
-                for j in 0..sl * h { hidden[j] += fo[j]; }
+                for j in 0..sl * h {
+                    hidden[j] += fo[j];
+                }
             }
         } // end if !fast
 
@@ -244,9 +267,15 @@ fn run() -> Result<(), String> {
 
 #[cfg(feature = "gpu")]
 fn cpu_matmul(a: &[f32], b: &[f32], c: &mut [f32], m: usize, k: usize, n: usize) {
-    for i in 0..m { for j in 0..n { let mut s = 0.0f32;
-        for p in 0..k { s += a[i*k+p] * b[p*n+j]; } c[i*n+j] = s;
-    }}
+    for i in 0..m {
+        for j in 0..n {
+            let mut s = 0.0f32;
+            for p in 0..k {
+                s += a[i * k + p] * b[p * n + j];
+            }
+            c[i * n + j] = s;
+        }
+    }
 }
 
 #[cfg(feature = "gpu")]

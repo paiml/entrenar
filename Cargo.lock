@@ -254,7 +254,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha2",
  "tempfile",
- "trueno 0.16.4",
+ "trueno 0.16.5",
  "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ureq",
 ]
@@ -1229,7 +1229,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -1919,7 +1919,7 @@ dependencies = [
  "toml",
  "tower 0.5.3",
  "tower-http",
- "trueno 0.16.4",
+ "trueno 0.16.5",
  "trueno-db",
  "trueno-gpu",
  "trueno-rag",
@@ -4703,7 +4703,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tower 0.4.13",
- "trueno 0.16.4",
+ "trueno 0.16.5",
  "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid",
 ]
@@ -6084,7 +6084,7 @@ dependencies = [
 
 [[package]]
 name = "trueno"
-version = "0.16.4"
+version = "0.16.5"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6221,7 +6221,7 @@ dependencies = [
  "libc",
  "png 0.17.16",
  "thiserror 2.0.18",
- "trueno 0.16.4",
+ "trueno 0.16.5",
 ]
 
 [[package]]
@@ -6811,7 +6811,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

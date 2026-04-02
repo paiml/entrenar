@@ -300,9 +300,11 @@ pub fn load_preference_pairs(path: &std::path::Path) -> Result<Vec<PreferenceSam
     let mut samples = Vec::new();
     for (i, line) in std::io::BufRead::lines(reader).enumerate() {
         let line = line.map_err(|e| format!("Line {i}: {e}"))?;
-        if line.trim().is_empty() { continue; }
-        let sample: PreferenceSample = serde_json::from_str(&line)
-            .map_err(|e| format!("Line {i}: {e}"))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let sample: PreferenceSample =
+            serde_json::from_str(&line).map_err(|e| format!("Line {i}: {e}"))?;
         // FALSIFY-DPO-002: validate non-empty fields
         if sample.prompt.is_empty() || sample.chosen.is_empty() || sample.rejected.is_empty() {
             return Err(format!("Line {i}: empty prompt/chosen/rejected"));
