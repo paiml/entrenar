@@ -1046,10 +1046,12 @@ impl InstructPipeline {
     ) -> InstructStepResult {
         // PMAT-420: Check if GPU embeddings are available. If not (VRAM-constrained),
         // skip forward_logits_gpu entirely to avoid CUDA context poisoning.
+        // entrenar#318 FIX: check embed_original (not embed_transposed which is placeholder=1
+        // after VRAM halving fix f9845e07 that skipped the transposed copy)
         let has_gpu_embed = self
             .gpu_training
             .as_ref()
-            .map(|t| t.embed_transposed.len() >= vocab_size * self.model.config().hidden_size)
+            .map(|t| t.embed_original.len() >= vocab_size * self.model.config().hidden_size)
             .unwrap_or(false);
 
         let logits_data = if has_gpu_embed {
