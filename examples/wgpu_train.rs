@@ -48,7 +48,9 @@ fn run() -> Result<(), String> {
         batch_size: 1,
         log_every: 1,
         save_every: steps,
-        output_dir: get_arg(&args, "--output").unwrap_or_else(|| "/home/noah/training-output".to_string()).into(),
+        output_dir: get_arg(&args, "--output")
+            .unwrap_or_else(|| "/home/noah/training-output".to_string())
+            .into(),
         accumulation_steps: 4,
     };
 

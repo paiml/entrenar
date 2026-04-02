@@ -3309,9 +3309,15 @@ impl CudaTransformerTrainer {
 
         // ALB-132: Report restore results — don't silently swallow failures
         if blocks_restored > 0 {
-            println!("  ✓ GPU block optimizer states restored ({blocks_restored}/{} blocks)", self.gpu_training.optimizer_states.len());
+            println!(
+                "  ✓ GPU block optimizer states restored ({blocks_restored}/{} blocks)",
+                self.gpu_training.optimizer_states.len()
+            );
         } else if !self.gpu_training.optimizer_states.is_empty() {
-            println!("  [WARN] GPU block optimizer states NOT restored (0/{} blocks — zeroed m/v)", self.gpu_training.optimizer_states.len());
+            println!(
+                "  [WARN] GPU block optimizer states NOT restored (0/{} blocks — zeroed m/v)",
+                self.gpu_training.optimizer_states.len()
+            );
         }
 
         true

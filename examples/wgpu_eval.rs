@@ -88,7 +88,9 @@ fn run() -> Result<(), String> {
     for (idx, (input, label)) in entries.iter().enumerate() {
         let tokens = tokenizer.encode(input);
         let len = tokens.len().min(64);
-        if len < 2 { continue; }
+        if len < 2 {
+            continue;
+        }
         let input_ids = &tokens[..len];
         let target_ids: Vec<u32> = tokens[1..len].to_vec();
         let s = target_ids.len() as u32;
@@ -97,7 +99,9 @@ fn run() -> Result<(), String> {
         let mut hidden = vec![0.0f32; s as usize * h];
         for (si, &tid) in input_ids[..s as usize].iter().enumerate() {
             let tid = (tid as usize).min(v - 1);
-            for hi in 0..h { hidden[si * h + hi] = model.lm_head[tid * h + hi]; }
+            for hi in 0..h {
+                hidden[si * h + hi] = model.lm_head[tid * h + hi];
+            }
         }
         // lm_head-only score (before transformer forward)
         let lm_loss = compute_ce_loss(&device, &hidden, &target_ids, &model.lm_head, h, v)?;
@@ -178,7 +182,11 @@ fn run() -> Result<(), String> {
 
         all_scores.push((ff_loss, lm_loss, s as usize, *label));
         if (idx + 1) % 50 == 0 {
-            eprintln!("  [{}/{}] ff={ff_loss:.1} lm={lm_loss:.1} label={label}", idx + 1, entries.len());
+            eprintln!(
+                "  [{}/{}] ff={ff_loss:.1} lm={lm_loss:.1} label={label}",
+                idx + 1,
+                entries.len()
+            );
         }
     }
 
@@ -188,14 +196,19 @@ fn run() -> Result<(), String> {
     // Method 2: lm_head raw (higher = unsafe)
     let scores_lm: Vec<(f32, i32)> = all_scores.iter().map(|(_, lm, _, l)| (*lm, *l)).collect();
     // Method 3: ensemble = lm_head_loss - alpha * full_forward_loss (inverted ff + raw lm)
-    let scores_ens: Vec<(f32, i32)> = all_scores.iter().map(|(ff, lm, _, l)| (lm - 0.5 * ff, *l)).collect();
+    let scores_ens: Vec<(f32, i32)> =
+        all_scores.iter().map(|(ff, lm, _, l)| (lm - 0.5 * ff, *l)).collect();
     // Method 4: length-normalized full-forward inverted
-    let scores_len: Vec<(f32, i32)> = all_scores.iter().map(|(ff, _, slen, l)| (-ff / (*slen as f32).sqrt(), *l)).collect();
+    let scores_len: Vec<(f32, i32)> =
+        all_scores.iter().map(|(ff, _, slen, l)| (-ff / (*slen as f32).sqrt(), *l)).collect();
     // Method 5: ensemble + length norm
-    let scores_ens_len: Vec<(f32, i32)> = all_scores.iter().map(|(ff, lm, slen, l)| {
-        let norm = (*slen as f32).sqrt();
-        (lm / norm - 0.5 * ff / norm, *l)
-    }).collect();
+    let scores_ens_len: Vec<(f32, i32)> = all_scores
+        .iter()
+        .map(|(ff, lm, slen, l)| {
+            let norm = (*slen as f32).sqrt();
+            (lm / norm - 0.5 * ff / norm, *l)
+        })
+        .collect();
 
     let (mcc_ff, _, tp_ff, fp_ff, tn_ff, fn_ff) = compute_best_mcc(&scores_ff_inv);
     let (mcc_lm, _, tp_lm, fp_lm, tn_lm, fn_lm) = compute_best_mcc(&scores_lm);
@@ -208,14 +221,18 @@ fn run() -> Result<(), String> {
     let mut best_alpha = 0.0f32;
     for a in 0..20 {
         let alpha = a as f32 * 0.1;
-        let sc: Vec<(f32, i32)> = all_scores.iter().map(|(ff, lm, _, l)| (lm - alpha * ff, *l)).collect();
+        let sc: Vec<(f32, i32)> =
+            all_scores.iter().map(|(ff, lm, _, l)| (lm - alpha * ff, *l)).collect();
         let (m, _, _, _, _, _) = compute_best_mcc(&sc);
-        if m > best_alpha_mcc { best_alpha_mcc = m; best_alpha = alpha; }
+        if m > best_alpha_mcc {
+            best_alpha_mcc = m;
+            best_alpha = alpha;
+        }
     }
 
     let best_mcc = mcc_ff.max(mcc_lm).max(mcc_ens).max(mcc_len).max(mcc_el).max(best_alpha_mcc);
 
-    eprintln!("\n=== Results ({}) ===", if fast {"lm_head-only"} else {"Ensemble"});
+    eprintln!("\n=== Results ({}) ===", if fast { "lm_head-only" } else { "Ensemble" });
     eprintln!("Entries scored: {}", all_scores.len());
     eprintln!("  FF inverted:  MCC={mcc_ff:.4} TP={tp_ff} FP={fp_ff} TN={tn_ff} FN={fn_ff}");
     eprintln!("  lm_head raw:  MCC={mcc_lm:.4} TP={tp_lm} FP={fp_lm} TN={tn_lm} FN={fn_lm}");
@@ -232,15 +249,29 @@ fn run() -> Result<(), String> {
     if !safe_ff.is_empty() && !unsafe_ff.is_empty() {
         let ms = safe_ff.iter().sum::<f32>() / safe_ff.len() as f32;
         let mu = unsafe_ff.iter().sum::<f32>() / unsafe_ff.len() as f32;
-        let ss = (safe_ff.iter().map(|x| (x-ms)*(x-ms)).sum::<f32>() / safe_ff.len() as f32).sqrt();
-        let su = (unsafe_ff.iter().map(|x| (x-mu)*(x-mu)).sum::<f32>() / unsafe_ff.len() as f32).sqrt();
-        eprintln!("FF  Safe: mean={ms:.1} std={ss:.1} (n={}) | Unsafe: mean={mu:.1} std={su:.1} (n={})", safe_ff.len(), unsafe_ff.len());
+        let ss = (safe_ff.iter().map(|x| (x - ms) * (x - ms)).sum::<f32>() / safe_ff.len() as f32)
+            .sqrt();
+        let su = (unsafe_ff.iter().map(|x| (x - mu) * (x - mu)).sum::<f32>()
+            / unsafe_ff.len() as f32)
+            .sqrt();
+        eprintln!(
+            "FF  Safe: mean={ms:.1} std={ss:.1} (n={}) | Unsafe: mean={mu:.1} std={su:.1} (n={})",
+            safe_ff.len(),
+            unsafe_ff.len()
+        );
     }
     Ok(())
 }
 
 #[cfg(feature = "gpu")]
-fn compute_ce_loss(device: &trueno::backends::gpu::GpuDevice, hidden: &[f32], targets: &[u32], lm_head: &[f32], h: usize, v: usize) -> Result<f32, String> {
+fn compute_ce_loss(
+    device: &trueno::backends::gpu::GpuDevice,
+    hidden: &[f32],
+    targets: &[u32],
+    lm_head: &[f32],
+    h: usize,
+    v: usize,
+) -> Result<f32, String> {
     let s = targets.len();
     let mut logits = vec![0.0f32; s * v];
     device.gemm_backward_a(hidden, lm_head, &mut logits, s as u32, v as u32, h as u32)?;
@@ -250,7 +281,9 @@ fn compute_ce_loss(device: &trueno::backends::gpu::GpuDevice, hidden: &[f32], ta
         let mx = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let lse = mx + row.iter().map(|&x| (x - mx).exp()).sum::<f32>().ln();
         let t = targets[si] as usize;
-        if t < v { loss -= logits[si * v + t] - lse; }
+        if t < v {
+            loss -= logits[si * v + t] - lse;
+        }
     }
     Ok(loss / s as f32)
 }

@@ -195,7 +195,9 @@ impl WgslCrossEntropy {
 
         let slice = staging.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| { tx.send(r).ok(); });
+        slice.map_async(wgpu::MapMode::Read, move |r| {
+            tx.send(r).ok();
+        });
         self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).ok();
         rx.recv().unwrap().unwrap();
 
@@ -220,7 +222,9 @@ impl WgslCrossEntropy {
         loss_start: u32,
         loss_end: u32,
     ) -> f32 {
-        self.forward_async(logits, labels, losses, logsumexp, seq_len, vocab_size, loss_start, loss_end);
+        self.forward_async(
+            logits, labels, losses, logsumexp, seq_len, vocab_size, loss_start, loss_end,
+        );
         self.read_loss(losses, seq_len, loss_start, loss_end)
     }
 
