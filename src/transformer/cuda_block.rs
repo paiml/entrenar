@@ -174,11 +174,11 @@ impl CudaBlockScratch {
     }
 
     pub(crate) fn zero_forward_buffers(&mut self, stream: &CudaStream) {
-        let z = |buf: &mut GpuBuffer<f32>| { buf.zero_async(stream).ok(); };
-        z(&mut self.norm1_out); z(&mut self.q); z(&mut self.k); z(&mut self.v);
-        z(&mut self.attn_scores); z(&mut self.attn_out); z(&mut self.o_proj_out);
-        z(&mut self.residual1); z(&mut self.norm2_out); z(&mut self.gate_out);
-        z(&mut self.up_out); z(&mut self.swiglu_out); z(&mut self.ffn_out);
+        let z = |b: &mut GpuBuffer<f32>| { b.zero_async(stream).ok(); };
+        z(&mut self.norm1_out); z(&mut self.q); z(&mut self.k); z(&mut self.v); z(&mut self.attn_scores); z(&mut self.attn_out);
+        z(&mut self.o_proj_out); z(&mut self.residual1); z(&mut self.norm2_out); z(&mut self.gate_out); z(&mut self.up_out);
+        z(&mut self.swiglu_out); z(&mut self.ffn_out); z(&mut self.attn_q_batched); z(&mut self.attn_kv_temp); z(&mut self.attn_kv_temp2);
+        z(&mut self.grad_hidden); z(&mut self.grad_swiglu); z(&mut self.grad_attn_scores); z(&mut self.lora_inter); z(&mut self.lora_temp);
         self.causal_mask_cached_seq_len = 0;
     }
 

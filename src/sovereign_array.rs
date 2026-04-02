@@ -5,8 +5,6 @@
 
 use std::ops::{Add, Div, Index, IndexMut, Mul, Sub};
 
-// ─── Array1<f32> ────────────────────────────────────────────────────────────
-
 /// 1-D array backed by `Vec<f32>`. Drop-in replacement for `ndarray::Array1<f32>`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Array1<T = f32> {
@@ -109,24 +107,12 @@ impl Array1<f32> {
 }
 
 impl<T> Array1<T> {
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.data.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
-        self.data.iter_mut()
-    }
+    pub fn len(&self) -> usize { self.data.len() }
+    pub fn is_empty(&self) -> bool { self.data.is_empty() }
+    pub fn iter(&self) -> std::slice::Iter<'_, T> { self.data.iter() }
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> { self.data.iter_mut() }
 }
 
-// assign: copy data from another Array1
 impl Array1<f32> {
     pub fn assign(&mut self, other: &Array1<f32>) {
         self.data.clear();
@@ -337,8 +323,6 @@ pub fn arr1(data: &[f32]) -> Array1<f32> {
         data: data.to_vec(),
     }
 }
-
-// ─── Array2<T> ──────────────────────────────────────────────────────────────
 
 /// Axis for Array2 operations (replaces `ndarray::Axis`)
 #[derive(Clone, Copy, Debug)]
@@ -650,8 +634,6 @@ impl Div<f32> for Array2<f32> {
     }
 }
 
-// ─── ArrayView1 ─────────────────────────────────────────────────────────────
-
 /// Read-only 1-D view (returned by `Array2::row`)
 pub struct ArrayView1<'a> {
     data: &'a [f32],
@@ -695,8 +677,6 @@ impl<'a> Index<usize> for ArrayView1<'a> {
         &self.data[i]
     }
 }
-
-// ─── ArrayViewMut1 ──────────────────────────────────────────────────────────
 
 /// Mutable 1-D view (returned by `axis_iter_mut`)
 pub struct ArrayViewMut1<'a> {
@@ -749,8 +729,6 @@ impl<'a> IndexMut<usize> for ArrayViewMut1<'a> {
     }
 }
 
-// ─── Axis Iterators ─────────────────────────────────────────────────────────
-
 pub struct AxisIter<'a> {
     data: &'a [f32],
     cols: usize,
@@ -785,8 +763,6 @@ macro_rules! array {
         $crate::sovereign_array::Array2::from_shape_vec((rows, cols), flat).unwrap()
     }};
 }
-
-// ─── Array2<u32> / Array2<u8> support ───────────────────────────────────────
 
 impl Array2<u32> {
     pub fn nrows(&self) -> usize {
@@ -852,86 +828,104 @@ impl IndexMut<[usize; 2]> for Array2<u8> {
     }
 }
 
-// ─── RowsMut iterator ──────────────────────────────────────────────────────
-
-// RowsMut removed — using chunks_mut() in rows_mut()
-
-// ─── IntoIterator for &mut Array1 ──────────────────────────────────────────
-
 impl<'a> IntoIterator for &'a mut Array1<f32> {
     type Item = &'a mut f32;
     type IntoIter = std::slice::IterMut<'a, f32>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.data.iter_mut()
-    }
+    fn into_iter(self) -> Self::IntoIter { self.data.iter_mut() }
 }
 
-// ─── Array2 owned operators ─────────────────────────────────────────────────
-
-// Array2 + Array2 (owned)
-impl Add<Array2<f32>> for Array2<f32> {
-    type Output = Array2<f32>;
-    fn add(self, rhs: Array2<f32>) -> Array2<f32> {
-        &self + &rhs
-    }
+/// Generate delegating operator impls that forward owned args to &-& impl.
+macro_rules! delegate_binop {
+    ($Op:ident, $method:ident, $Lhs:ty, $Rhs:ty, $Out:ty) => {
+        impl $Op<$Rhs> for $Lhs {
+            type Output = $Out;
+            fn $method(self, rhs: $Rhs) -> $Out { (&self).$method(&rhs) }
+        }
+    };
+    (lref, $Op:ident, $method:ident, $Lhs:ty, $Rhs:ty, $Out:ty) => {
+        impl $Op<$Rhs> for $Lhs {
+            type Output = $Out;
+            fn $method(self, rhs: $Rhs) -> $Out { self.$method(&rhs) }
+        }
+    };
+    (rref, $Op:ident, $method:ident, $Lhs:ty, $Rhs:ty, $Out:ty) => {
+        impl $Op<$Rhs> for $Lhs {
+            type Output = $Out;
+            fn $method(self, rhs: $Rhs) -> $Out { (&self).$method(rhs) }
+        }
+    };
 }
+delegate_binop!(Add, add, Array2<f32>, Array2<f32>, Array2<f32>);
+delegate_binop!(rref, Add, add, Array2<f32>, &Array2<f32>, Array2<f32>);
+delegate_binop!(lref, Add, add, &Array1<f32>, Array1<f32>, Array1<f32>);
+delegate_binop!(rref, Add, add, Array1<f32>, &Array1<f32>, Array1<f32>);
+delegate_binop!(Add, add, Array1<f32>, Array1<f32>, Array1<f32>);
+delegate_binop!(rref, Sub, sub, Array1<f32>, &Array1<f32>, Array1<f32>);
+delegate_binop!(Sub, sub, Array1<f32>, Array1<f32>, Array1<f32>);
 
-// Array2 + &Array2
-impl Add<&Array2<f32>> for Array2<f32> {
-    type Output = Array2<f32>;
-    fn add(self, rhs: &Array2<f32>) -> Array2<f32> {
-        &self + rhs
-    }
-}
-
-// &Array2 / f32
 impl Div<f32> for &Array2<f32> {
     type Output = Array2<f32>;
     fn div(self, rhs: f32) -> Array2<f32> {
-        Array2 {
-            data: self.data.iter().map(|&a| a / rhs).collect(),
-            rows: self.rows,
-            cols: self.cols,
-        }
+        Array2 { data: self.data.iter().map(|&a| a / rhs).collect(), rows: self.rows, cols: self.cols }
     }
 }
 
-// &Array1 + Array1
-impl Add<Array1<f32>> for &Array1<f32> {
-    type Output = Array1<f32>;
-    fn add(self, rhs: Array1<f32>) -> Array1<f32> {
-        self + &rhs
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-// Array1 + &Array1
-impl Add<&Array1<f32>> for Array1<f32> {
-    type Output = Array1<f32>;
-    fn add(self, rhs: &Array1<f32>) -> Array1<f32> {
-        &self + rhs
+    #[test]
+    fn array1_zeros() {
+        let a = Array1::<f32>::zeros(4);
+        assert_eq!(a.len(), 4);
+        assert!(a.as_slice().iter().all(|&x| x == 0.0));
     }
-}
 
-// Array1 + Array1 (owned)
-impl Add<Array1<f32>> for Array1<f32> {
-    type Output = Array1<f32>;
-    fn add(self, rhs: Array1<f32>) -> Array1<f32> {
-        &self + &rhs
+    #[test]
+    fn array1_from_vec_and_index() {
+        let a = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        assert_eq!(a[0], 1.0);
+        assert_eq!(a[2], 3.0);
     }
-}
 
-// Array1 - &Array1
-impl Sub<&Array1<f32>> for Array1<f32> {
-    type Output = Array1<f32>;
-    fn sub(self, rhs: &Array1<f32>) -> Array1<f32> {
-        &self - rhs
+    #[test]
+    fn array1_arithmetic() {
+        let a = Array1::from_vec(vec![1.0, 2.0]);
+        let b = Array1::from_vec(vec![3.0, 4.0]);
+        assert_eq!((&a + &b)[0], 4.0);
+        assert_eq!((&a - &b)[0], -2.0);
     }
-}
 
-// Array1 - Array1
-impl Sub<Array1<f32>> for Array1<f32> {
-    type Output = Array1<f32>;
-    fn sub(self, rhs: Array1<f32>) -> Array1<f32> {
-        &self - &rhs
+    #[test]
+    fn array1_dot() {
+        let a = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        let b = Array1::from_vec(vec![4.0, 5.0, 6.0]);
+        assert_eq!(a.dot(&b), 32.0);
+    }
+
+    #[test]
+    fn array2_zeros_and_shape() {
+        let m = Array2::<f32>::zeros((2, 3));
+        assert_eq!(m.shape(), [2, 3]);
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 3);
+    }
+
+    #[test]
+    fn array2_index_and_row() {
+        let mut m = Array2::<f32>::zeros((2, 2));
+        m[[0, 1]] = 5.0;
+        assert_eq!(m[[0, 1]], 5.0);
+        let m2 = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        assert_eq!(m2.row(0).len(), 3);
+    }
+
+    #[test]
+    fn array2_transpose() {
+        let m = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let t = m.t();
+        assert_eq!(t.shape(), [3, 2]);
+        assert_eq!(t[[1, 0]], 2.0);
+        assert_eq!(t[[0, 1]], 4.0);
     }
 }

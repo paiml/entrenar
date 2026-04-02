@@ -89,6 +89,7 @@ pub mod safety;
 pub mod search;
 pub mod server;
 pub mod sovereign;
+pub mod sovereign_array;
 pub mod staging;
 pub mod storage;
 pub mod tokenizer;

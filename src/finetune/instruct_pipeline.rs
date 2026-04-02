@@ -2034,10 +2034,9 @@ impl InstructPipeline {
 
         // Run through CUDA transformer blocks, saving inputs
         let stream = trainer.stream();
-        // entrenar#318 Tier 1: GPU-side scratch zeroing via cuMemsetD32Async (no PCIe).
-        if let Some(ref mut scratch) = shared_scratch.as_mut() {
-            scratch.zero_forward_buffers(stream);
-        }
+        // entrenar#318: GPU-side scratch + training state zeroing (PMAT-453 NaN cascade fix).
+        if let Some(ref mut scratch) = shared_scratch.as_mut() { scratch.zero_forward_buffers(stream); }
+        for b in [&mut training_state.grad_buf_a, &mut training_state.grad_buf_b, &mut training_state.grad_hidden_buf, &mut training_state.output_scratch, &mut training_state.logits_buf] { b.zero_async(stream).ok(); }
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
             // SAFETY: scratch_a_ptr and scratch_b_ptr point to disjoint struct fields.
             // Only one is written (output) while the other is read (input) per iteration.
@@ -2054,7 +2053,7 @@ impl InstructPipeline {
             if training_state.layer_inputs[i].len() != gpu_input.len() {
                 training_state.layer_inputs[i] = trainer.zeros(gpu_input.len()).map_err(|e| eprintln!("[CUDA] layer_input realloc failed L{i}: {e}")).ok()?;
             }
-            let _ = training_state.layer_inputs[i].copy_from_buffer(gpu_input);
+            training_state.layer_inputs[i].copy_from_buffer(gpu_input).map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}")).ok()?;
 
             // Forward uses actual seq_len for attention masking; padded positions
             // produce zeros that don't affect loss (loss only covers actual tokens).
@@ -2154,7 +2153,7 @@ impl InstructPipeline {
         if training_state.blocks_output.len() != final_output.len() {
             training_state.blocks_output = trainer.zeros(final_output.len()).map_err(|e| eprintln!("[CUDA] blocks_output realloc failed: {e}")).ok()?;
         }
-        let _ = training_state.blocks_output.copy_from_buffer(final_output);
+        training_state.blocks_output.copy_from_buffer(final_output).map_err(|e| eprintln!("[CUDA] blocks_output copy: {e}")).ok()?;
 
         // KAIZEN-066: GPU RMSNorm forward — output goes directly to lm_head_hidden_buf.
         // Eliminates ~5MB D2H download + CPU RMSNorm + ~5MB H2D upload.
@@ -2522,7 +2521,7 @@ impl InstructPipeline {
                             training.layer_inputs[i] = buf;
                         }
                     }
-                    let _ = training.layer_inputs[i].copy_from_buffer(&gpu_input);
+                    training.layer_inputs[i].copy_from_buffer(&gpu_input).map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}")).ok();
                 }
             }
 
@@ -2548,7 +2547,7 @@ impl InstructPipeline {
                     training.blocks_output = buf;
                 }
             }
-            let _ = training.blocks_output.copy_from_buffer(&gpu_input);
+            training.blocks_output.copy_from_buffer(&gpu_input).map_err(|e| eprintln!("[CUDA] blocks_output copy: {e}")).ok();
         }
 
         // Download hidden states for CPU RMSNorm + lm_head
