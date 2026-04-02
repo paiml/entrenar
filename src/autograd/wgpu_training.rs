@@ -150,9 +150,9 @@ struct ClipConfig {
 impl WgpuTrainer {
     /// Create a new wgpu trainer. Requests a GPU device via Vulkan/Metal/DX12.
     pub fn new() -> Result<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN | wgpu::Backends::METAL,
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         let adapter = trueno::backends::gpu::runtime::block_on(instance.request_adapter(
@@ -196,8 +196,8 @@ impl WgpuTrainer {
         });
         let matmul_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("gemm_pl"),
-            bind_group_layouts: &[&matmul_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&matmul_bgl)],
+            immediate_size: 0,
         });
         let matmul_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("tiled_gemm_pipe"),
@@ -225,8 +225,8 @@ impl WgpuTrainer {
         });
         let adamw_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("adamw_pl"),
-            bind_group_layouts: &[&adamw_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&adamw_bgl)],
+            immediate_size: 0,
         });
         let adamw_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("adamw_pipe"),
@@ -248,8 +248,8 @@ impl WgpuTrainer {
         });
         let clip_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("clip_pl"),
-            bind_group_layouts: &[&clip_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&clip_bgl)],
+            immediate_size: 0,
         });
         let clip_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("clip_pipe"),
@@ -536,8 +536,8 @@ impl WgpuTrainer {
         });
         let matmul_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("gemm_pl"),
-            bind_group_layouts: &[&matmul_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&matmul_bgl)],
+            immediate_size: 0,
         });
         let matmul_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("tiled_gemm_pipe"),
@@ -564,8 +564,8 @@ impl WgpuTrainer {
         });
         let adamw_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("adamw_pl"),
-            bind_group_layouts: &[&adamw_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&adamw_bgl)],
+            immediate_size: 0,
         });
         let adamw_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("adamw_pipe"),
@@ -586,8 +586,8 @@ impl WgpuTrainer {
         });
         let clip_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("clip_pl"),
-            bind_group_layouts: &[&clip_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&clip_bgl)],
+            immediate_size: 0,
         });
         let clip_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("clip_pipe"),
