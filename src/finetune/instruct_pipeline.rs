@@ -677,7 +677,7 @@ impl InstructPipeline {
             Self::compute_causal_lm_loss(&logits_data, &full_ids, loss_start, loss_end, vocab_size);
 
         // 4. Backward through autograd
-        logits.set_grad(grad_logits);
+        logits.set_grad(ndarray::Array1::from(grad_logits));
         if let Some(op) = logits.backward_op() {
             op.backward();
         }
@@ -977,7 +977,7 @@ impl InstructPipeline {
         let wgpu = self.wgpu_training.as_ref().unwrap();
         let grad_logits_data = wgpu.trainer.download(&wgpu.logits_buf);
         logits_tensor
-            .set_grad(grad_logits_data[..seq_len * vocab_size].to_vec());
+            .set_grad(ndarray::Array1::from(grad_logits_data[..seq_len * vocab_size].to_vec()));
         if let Some(op) = logits_tensor.backward_op() {
             op.backward();
         }
@@ -1851,36 +1851,38 @@ impl InstructPipeline {
         let embed_data = model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
-        // entrenar#317: Use single embedding layout only (not both orig + transposed).
-        // Original embed is [vocab, hidden], lm_head uses transposed GEMM.
-        // Old: 2x embed (1780 MB) did not fit 8GB yoga. New: 1x embed (890 MB) fits.
-        let embed_bytes = vocab_size * hidden_size * 4; // single layout only
+        let embed_bytes = vocab_size * hidden_size * 4 * 2; // both layouts
         let vram_available_mb = trainer.free_memory_mb().unwrap_or(0);
         let embed_mb = embed_bytes / (1024 * 1024);
-        let use_gpu_embed = vram_available_mb > (embed_mb + 256) as u64; // need 256MB headroom
+        let use_gpu_embed = vram_available_mb > (embed_mb + 512) as u64; // need 512MB headroom
 
-        // entrenar#317: Upload only original embedding, use transposed GEMM for lm_head.
-        // This halves VRAM from 1780MB to 890MB, fitting 8GB yoga.
         let (embed_original, embed_transposed) = if use_gpu_embed {
             eprintln!(
-                "[CUDA] GPU-resident embeddings: {embed_mb}MB (VRAM free: {vram_available_mb}MB) \
-                 — single layout, transposed GEMM for lm_head"
+                "[CUDA] GPU-resident embeddings: {embed_mb}MB (VRAM free: {vram_available_mb}MB)"
             );
             let orig = trainer
                 .upload(embed_slice)
                 .map_err(|e| eprintln!("[CUDA] embed_original upload failed: {e}"))
                 .ok()?;
 
-            // entrenar#317: Skip pre-transposed copy — use orig with CUBLAS_OP_T instead.
-            // Set embed_transposed = clone of orig so downstream code can reference it,
-            // but the actual lm_head computation should use transposed GEMM on orig.
-            let trans = trainer.zeros(1).ok()?; // placeholder — lm_head uses orig with OP_T
+            let mut embed_t = vec![0.0f32; hidden_size * vocab_size];
+            for v in 0..vocab_size {
+                for k in 0..hidden_size {
+                    embed_t[k * vocab_size + v] = embed_slice[v * hidden_size + k];
+                }
+            }
+            let trans = trainer
+                .upload(&embed_t)
+                .map_err(|e| eprintln!("[CUDA] embed_transposed upload failed: {e}"))
+                .ok()?;
             (orig, trans)
         } else {
             eprintln!(
                 "[CUDA] Skipping GPU embeddings ({embed_mb}MB > {vram_available_mb}MB free). \
                  Using CPU lm_head — GPU for transformer blocks only."
             );
+            // Minimal 1-element buffers so struct construction succeeds.
+            // forward_logits_gpu_resident() will detect size mismatch and use CPU path.
             let orig = trainer.zeros(1).ok()?;
             let trans = trainer.zeros(1).ok()?;
             (orig, trans)
