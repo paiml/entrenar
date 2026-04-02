@@ -2701,6 +2701,10 @@ impl CudaNf4TransformerBlock {
         };
 
         // Quantize all 7 projection weights (shape contracts already verified above)
+        // trueno#233: detect zero V-projection weights before NF4 quantization
+        if w_v.iter().all(|&x| x == 0.0) {
+            eprintln!("[trueno#233] layer {layer_idx}: w_v ALL ZEROS before NF4 quant (w_k has {} nz)", w_k.iter().filter(|&&x| x != 0.0).count());
+        }
         let (w_q_nf4, w_q_scales, w_q_nf4_q) = quantize_and_upload(w_q, q_dim * hidden_size)?;
         let (w_k_nf4, w_k_scales, w_k_nf4_q) =
             quantize_and_upload(w_k, kv_hidden_size * hidden_size)?;
