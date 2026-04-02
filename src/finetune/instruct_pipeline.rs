@@ -1990,12 +1990,11 @@ impl InstructPipeline {
         let max_seq_len = model
             .config
             .max_position_embeddings
-            .min(training_state.layer_inputs.first().map_or(seq_len, |b| b.len() / hidden_size));
+            .min(512); // entrenar#318: use 512 as cap, not layer_inputs size (gets shrunk after first sample realloc)
 
-        if seq_len > max_seq_len {
-            eprintln!("[CUDA] seq_len ({seq_len}) > max_seq_len ({max_seq_len}), truncating");
-            return None;
-        }
+        // entrenar#318: truncate instead of aborting when seq_len > max_seq_len
+        let seq_len = if seq_len > max_seq_len { max_seq_len } else { seq_len };
+        if seq_len == 0 { return None; }
 
         // Embed on CPU, then zero-pad to max_seq_len for GPU buffer compatibility.
         // Training state buffers are allocated at max_seq_len * hidden_size;
