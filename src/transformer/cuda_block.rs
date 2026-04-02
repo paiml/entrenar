@@ -2893,7 +2893,7 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_forward;
+        use crate::autograd::cuda_forward::{gemm_forward, gemm_nf4_forward};
 
         let hidden_size = self.config.hidden_size;
         let q_dim = self.config.q_dim();
@@ -2913,12 +2913,14 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // === Q, K, V Projections (cuBLAS fp32 GEMM + LoRA) ===
-        // ENT-287: Q proj is C[seq,q_dim] = A[seq,hidden] @ W_t_q[hidden,q_dim]
+        // === Q, K, V Projections (NF4 fused dequant+GEMM — 8x less bandwidth) ===
+        // entrenar#318: use NF4 packed data directly instead of fp32 cuBLAS.
+        // Reads 1.2 MB (NF4) vs 9.4 MB (fp32) per weight matrix.
 
-        gemm_forward(
+        gemm_nf4_forward(
             &scratch.norm1_out,
-            &self.w_q_fp32,
+            &self.w_q_nf4,
+            &self.w_q_scales,
             &mut scratch.q,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -2940,20 +2942,13 @@ impl CudaNf4TransformerBlock {
             cuda_add_inplace(&mut scratch.q, &scratch.lora_temp, seq_len * q_dim, stream)?;
         }
 
-        gemm_forward(
-            &scratch.norm1_out,
-            &self.w_k_fp32,
-            &mut scratch.k,
-            saturating_u32(seq_len),
-            saturating_u32(hidden_size),
-            saturating_u32(kv_hidden_size),
-            stream,
+        gemm_nf4_forward(
+            &scratch.norm1_out, &self.w_k_nf4, &self.w_k_scales, &mut scratch.k,
+            saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream,
         )?;
 
-        gemm_forward(
-            &scratch.norm1_out,
-            &self.w_v_fp32,
-            &mut scratch.v,
+        gemm_nf4_forward(
+            &scratch.norm1_out, &self.w_v_nf4, &self.w_v_scales, &mut scratch.v,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
             saturating_u32(kv_hidden_size),
@@ -2979,9 +2974,9 @@ impl CudaNf4TransformerBlock {
 
         // === Output Projection ===
         // ENT-287: O proj is C[seq,hidden] = A[seq,q_dim] @ W_o[hidden,q_dim]^T
-        gemm_forward(
+        gemm_nf4_forward(
             &scratch.attn_out,
-            &self.w_o_fp32,
+            &self.w_o_nf4, &self.w_o_scales,
             &mut scratch.o_proj_out,
             saturating_u32(seq_len),
             saturating_u32(q_dim),
@@ -3009,9 +3004,9 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === FFN: Gate + Up Projections (cuBLAS fp32) ===
-        gemm_forward(
+        gemm_nf4_forward(
             &scratch.norm2_out,
-            &self.w_gate_fp32,
+            &self.w_gate_nf4, &self.w_gate_scales,
             &mut scratch.gate_out,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -3019,9 +3014,9 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        gemm_forward(
+        gemm_nf4_forward(
             &scratch.norm2_out,
-            &self.w_up_fp32,
+            &self.w_up_nf4, &self.w_up_scales,
             &mut scratch.up_out,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -3039,9 +3034,9 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === FFN: Down Projection (cuBLAS fp32) ===
-        gemm_forward(
+        gemm_nf4_forward(
             &scratch.swiglu_out,
-            &self.w_down_fp32,
+            &self.w_down_nf4, &self.w_down_scales,
             &mut scratch.ffn_out,
             saturating_u32(seq_len),
             saturating_u32(intermediate_size),
