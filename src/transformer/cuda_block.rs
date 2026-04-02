@@ -167,9 +167,9 @@ pub(crate) struct CudaBlockScratch {
 #[cfg(feature = "cuda")]
 impl CudaBlockScratch {
     /// Zero all forward scratch buffers to prevent backward gradient contamination.
-    /// entrenar#318: call once per training step, before the layer loop.
-    pub(crate) fn zero_forward_buffers(&mut self) {
-        let z = |buf: &mut GpuBuffer<f32>| { let v = vec![0.0f32; buf.len()]; buf.copy_from_host(&v).ok(); };
+    /// entrenar#318 Tier 1: GPU-side memset via cuMemsetD32Async (no PCIe transfer).
+    pub(crate) fn zero_forward_buffers(&mut self, stream: &CudaStream) {
+        let z = |buf: &mut GpuBuffer<f32>| { buf.zero_async(stream).ok(); };
         z(&mut self.norm1_out); z(&mut self.q); z(&mut self.k); z(&mut self.v);
         z(&mut self.attn_scores); z(&mut self.attn_out); z(&mut self.o_proj_out);
         z(&mut self.residual1); z(&mut self.norm2_out); z(&mut self.gate_out);

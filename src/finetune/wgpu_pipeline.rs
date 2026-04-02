@@ -85,6 +85,7 @@ pub struct WgpuInstructPipeline {
     lora_rank: usize,
     lora_scale: f32, // alpha / rank
     lora_step: u32,  // optimizer step counter
+    lora_target_set: Vec<String>,  // which projections to train
     /// Config
     num_layers: usize,
     hidden_dim: usize,
@@ -384,10 +385,14 @@ impl WgpuInstructPipeline {
             ("down_proj", inter, h),
         ];
 
-        let use_all = lora_targets.is_empty() || lora_targets.contains(&"all");
-        let proj_dims: Vec<(&str, usize, usize)> = all_proj_dims
-            .iter().filter(|(name, _, _)| use_all || lora_targets.contains(name)).copied().collect();
+        let _use_all = true; // Always create all 7 for QkvLoRA forward
+        let proj_dims: Vec<(&str, usize, usize)> = all_proj_dims.to_vec();
         let num_targets = proj_dims.len();
+        let lora_target_set: Vec<String> = if lora_targets.is_empty() || lora_targets.contains(&"all") {
+            all_proj_dims.iter().map(|(n,_,_)| n.to_string()).collect()
+        } else {
+            lora_targets.iter().map(|s| s.to_string()).collect()
+        };
 
         let mut lora = Vec::with_capacity(num_layers);
         for layer_idx in 0..num_layers {
@@ -452,6 +457,7 @@ impl WgpuInstructPipeline {
             lora_rank: r,
             lora_scale: scale,
             lora_step: 0,
+            lora_target_set: lora_target_set,
             num_layers,
             hidden_dim,
             vocab_size,
@@ -685,6 +691,7 @@ impl WgpuInstructPipeline {
 
         for (layer_idx, layer_lora) in self.lora.iter().enumerate() {
             for proj in &layer_lora.projections {
+                if !self.lora_target_set.iter().any(|t| t == &proj.name) { continue; }
                 let a = self.trainer.download(&proj.a);
                 let b = self.trainer.download(&proj.b);
                 // Naming: layer.{i}.{proj_name}.lora_a  (matches apr merge convention)
@@ -1003,6 +1010,7 @@ impl WgpuInstructPipeline {
             let saved = &_saved_activations[layer_idx];
 
             for proj in &layer_lora.projections {
+                if !self.lora_target_set.iter().any(|t| t == &proj.name) { continue; }
                 // Select saved input based on projection name
                 let input_buf = match proj.name.as_str() {
                     "q_proj" | "k_proj" | "v_proj" => &saved.attn_norm_out,
