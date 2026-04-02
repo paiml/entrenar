@@ -2230,14 +2230,11 @@ impl InstructPipeline {
         let hidden_size = self.model.config.hidden_size;
 
         // KAIZEN-065: grad_hidden_buf already contains the gradient from lm_head backward GEMM.
-        // No D2H download or H2D upload needed — both are on the same CUDA stream,
-        // so the GEMM output is guaranteed complete before rms_norm_backward reads it.
         {
             let trainer = self.cuda_trainer.as_ref()?;
             let training_state = self.gpu_training.as_mut()?;
             let stream = trainer.stream();
 
-            // RMSNorm backward on GPU — read gradient directly from grad_hidden_buf
             crate::autograd::cuda_backward::rms_norm_backward(
                 &training_state.blocks_output,
                 &training_state.final_norm_weight,
@@ -2252,7 +2249,13 @@ impl InstructPipeline {
             .ok()?;
         }
 
-        self.backward_nf4_gpu_blocks_loop(seq_len)
+        let result = self.backward_nf4_gpu_blocks_loop(seq_len);
+        // entrenar#318: invalidate shared scratch causal mask after backward
+        // to prevent gradient contamination on next forward (backward writes to shared scratch)
+        if let Some(ref mut scratch) = self.shared_scratch {
+            scratch.causal_mask_cached_seq_len = 0;
+        }
+        result
     }
 
     /// Shared backward loop for NF4 blocks — called by both CPU-upload and

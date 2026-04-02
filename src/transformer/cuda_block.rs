@@ -161,7 +161,7 @@ pub(crate) struct CudaBlockScratch {
     /// PMAT-420: Contiguous causal mask for current seq_len [seq_len * seq_len]
     causal_mask_contiguous: GpuBuffer<f32>,
     /// PMAT-420: seq_len that causal_mask_contiguous was generated for (cache key)
-    causal_mask_cached_seq_len: usize,
+    pub(crate) causal_mask_cached_seq_len: usize,
 }
 
 #[cfg(feature = "cuda")]
