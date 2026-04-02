@@ -2741,10 +2741,16 @@ impl CudaNf4TransformerBlock {
                 &deq[..5.min(deq.len())]
             );
             assert_eq!(deq.len(), n * k, "dequant size mismatch: {} vs {}x{}", deq.len(), n, k);
-            // entrenar#318: NO transpose — match fp32 CudaTransformerBlock layout
-            let buf = GpuBuffer::from_host(&ctx, &deq).map_err(|e| {
+            // Transpose [N,K] → [K,N]
+            let mut transposed = vec![0.0f32; n * k];
+            for row in 0..n {
+                for col in 0..k {
+                    transposed[col * n + row] = deq[row * k + col];
+                }
+            }
+            let buf = GpuBuffer::from_host(&ctx, &transposed).map_err(|e| {
                 crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                    "dequant upload: {e:?}"
+                    "dequant transpose upload: {e:?}"
                 ))
             })?;
             // Verify upload: must read FULL buffer then slice
@@ -2907,8 +2913,19 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // ENT-153: Q LoRA DISABLED for entrenar#318 testing
-        // if let (Some(a_q), Some(b_q)) = (&self.lora_a_q, &self.lora_b_q) { ... }
+        // ENT-153: Q LoRA: q += (norm1_out @ A_q) @ B_q  (B_q pre-scaled by lora_scale)
+        if let (Some(a_q), Some(b_q)) = (&self.lora_a_q, &self.lora_b_q) {
+            let s = saturating_u32(seq_len);
+            let h = saturating_u32(hidden_size);
+            let r = saturating_u32(self.lora_rank);
+            let qd = saturating_u32(q_dim);
+            // lora_inter[seq, rank] = norm1_out[seq, hidden] @ A_q[hidden, rank]
+            gemm_forward(&scratch.norm1_out, a_q, &mut scratch.lora_inter, s, h, r, stream)?;
+            // lora_temp[seq, q_dim] = lora_inter[seq, rank] @ B_q[rank, q_dim]
+            gemm_forward(&scratch.lora_inter, b_q, &mut scratch.lora_temp, s, r, qd, stream)?;
+            // q += lora_temp (in-place add)
+            cuda_add_inplace(&mut scratch.q, &scratch.lora_temp, seq_len * q_dim, stream)?;
+        }
 
         gemm_forward(
             &scratch.norm1_out,
@@ -2931,8 +2948,18 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // ENT-153: V LoRA: v += (norm1_out @ A_v) @ B_v  (B_v pre-scaled by lora_scale)
-        // ENT-153: V LoRA DISABLED for entrenar#318 testing
-        // if let (Some(a_v), Some(b_v)) = (&self.lora_a_v, &self.lora_b_v) { ... }
+        if let (Some(a_v), Some(b_v)) = (&self.lora_a_v, &self.lora_b_v) {
+            let s = saturating_u32(seq_len);
+            let h = saturating_u32(hidden_size);
+            let r = saturating_u32(self.lora_rank);
+            let vd = saturating_u32(kv_hidden_size);
+            // lora_inter[seq, rank] = norm1_out[seq, hidden] @ A_v[hidden, rank]
+            gemm_forward(&scratch.norm1_out, a_v, &mut scratch.lora_inter, s, h, r, stream)?;
+            // lora_temp[seq, kv_hidden] = lora_inter[seq, rank] @ B_v[rank, kv_hidden]
+            gemm_forward(&scratch.lora_inter, b_v, &mut scratch.lora_temp, s, r, vd, stream)?;
+            // v += lora_temp (in-place add)
+            cuda_add_inplace(&mut scratch.v, &scratch.lora_temp, seq_len * kv_hidden_size, stream)?;
+        }
 
         // === Multi-Head Attention (GPU-only, zero CPU transfers) ===
         self.compute_attention_cuda(seq_len, stream, scratch)?;

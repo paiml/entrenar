@@ -727,7 +727,6 @@ impl InstructPipeline {
         // PMAT-420: If GPU embeddings are minimal (VRAM-constrained), skip the GPU-resident
         // logits path entirely — go straight to CPU-loss path which uses GPU transformer + CPU lm_head.
         // This avoids CUDA context poisoning from attempting GPU lm_head with undersized buffers.
-        // entrenar#318: check embed_original (not transposed placeholder)
         let has_gpu_embed = self
             .gpu_training
             .as_ref()
@@ -1047,8 +1046,6 @@ impl InstructPipeline {
     ) -> InstructStepResult {
         // PMAT-420: Check if GPU embeddings are available. If not (VRAM-constrained),
         // skip forward_logits_gpu entirely to avoid CUDA context poisoning.
-        // entrenar#318 FIX: check embed_original (not embed_transposed which is placeholder=1
-        // after VRAM halving fix f9845e07 that skipped the transposed copy)
         let has_gpu_embed = self
             .gpu_training
             .as_ref()
@@ -2438,6 +2435,11 @@ impl InstructPipeline {
         let training = self.gpu_training.as_mut()?;
         let stream = trainer.stream();
 
+        // entrenar#318: skip GPU lm_head if embed_transposed is placeholder (VRAM fix)
+        if training.embed_transposed.len() < hidden_size * vocab_size {
+            eprintln!("[CUDA] lm_head: embed_transposed is placeholder (len={}), using CPU", training.embed_transposed.len());
+            return None;
+        }
         if let Err(e) = gemm_forward(
             &training.lm_head_hidden_buf,
             &training.embed_transposed,

@@ -188,8 +188,8 @@ impl WgpuInstructPipeline {
         let scatter_pl =
             trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("scatter_pl"),
-                bind_group_layouts: &[Some(&scatter_bgl)],
-                immediate_size: 0,
+                bind_group_layouts: &[&scatter_bgl],
+                push_constant_ranges: &[],
             });
         let scatter_shader =
             trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -264,8 +264,8 @@ impl WgpuInstructPipeline {
         let transpose_pl =
             trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("transpose_pl"),
-                bind_group_layouts: &[Some(&transpose_bgl)],
-                immediate_size: 0,
+                bind_group_layouts: &[&transpose_bgl],
+                push_constant_ranges: &[],
             });
         let transpose_shader =
             trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -344,8 +344,8 @@ impl WgpuInstructPipeline {
         let lora_pl =
             trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("lora_pl"),
-                bind_group_layouts: &[Some(&lora_bgl)],
-                immediate_size: 0,
+                bind_group_layouts: &[&lora_bgl],
+                push_constant_ranges: &[],
             });
         let lora_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("lora_addmm"),
