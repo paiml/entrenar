@@ -40,11 +40,15 @@ mod generated_contracts;
 #[cfg(not(feature = "__has_embedding_contract"))]
 macro_rules! contract_pre_embedding_lookup {
     () => {{}};
-    ($input:expr) => {{ let _ = &$input; }};
+    ($input:expr) => {{
+        let _ = &$input;
+    }};
 }
 #[cfg(not(feature = "__has_embedding_contract"))]
 macro_rules! contract_post_embedding_lookup {
-    ($result:expr) => {{ let _ = &$result; }};
+    ($result:expr) => {{
+        let _ = &$result;
+    }};
 }
 
 pub mod aprender_compat;

@@ -160,7 +160,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -171,7 +171,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -219,7 +219,7 @@ dependencies = [
  "getrandom 0.2.17",
  "memmap2",
  "minijinja",
- "provable-contracts-macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "provable-contracts-macros 0.1.1",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
  "rayon",
@@ -244,7 +244,7 @@ dependencies = [
  "hf-hub",
  "memmap2",
  "minijinja",
- "provable-contracts-macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "provable-contracts-macros 0.1.1",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
  "rayon",
@@ -254,7 +254,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha2",
  "tempfile",
- "trueno 0.16.3",
+ "trueno 0.16.4",
  "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ureq",
 ]
@@ -1085,11 +1085,10 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.58"
+version = "1.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1e928d4b69e3077709075a938a05ffbedfa53a84c8f766efbf8220bb1ff60e1"
+checksum = "be714c154be609ec7f5dad223a33bf1482fff90472de28f7362806e6d4832b8c"
 dependencies = [
- "find-msvc-tools",
  "jobserver",
  "libc",
  "shlex",
@@ -1230,7 +1229,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.2.2",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1764,7 +1763,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1867,7 +1866,7 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "alimentar",
  "approx",
@@ -1900,7 +1899,7 @@ dependencies = [
  "presentar-terminal",
  "proptest",
  "provable-contracts",
- "provable-contracts-macros 0.1.1",
+ "provable-contracts-macros 0.2.1",
  "rand 0.9.2",
  "realizar",
  "regex",
@@ -1920,7 +1919,7 @@ dependencies = [
  "toml",
  "tower 0.5.3",
  "tower-http",
- "trueno 0.16.3",
+ "trueno 0.16.4",
  "trueno-db",
  "trueno-gpu",
  "trueno-rag",
@@ -2042,7 +2041,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2116,12 +2115,6 @@ dependencies = [
  "libc",
  "libredox",
 ]
-
-[[package]]
-name = "find-msvc-tools"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
 name = "flatbuffers"
@@ -3075,7 +3068,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3738,7 +3731,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4495,8 +4488,9 @@ dependencies = [
 
 [[package]]
 name = "provable-contracts"
-version = "0.1.1"
+version = "0.2.1"
 dependencies = [
+ "provable-contracts-macros 0.2.1",
  "regex",
  "serde",
  "serde_json",
@@ -4507,6 +4501,8 @@ dependencies = [
 [[package]]
 name = "provable-contracts-macros"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c383d865124fe9fda96af4a04d0c2641bcb93e16eb5e13f7c665f98c15333447"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4515,9 +4511,7 @@ dependencies = [
 
 [[package]]
 name = "provable-contracts-macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c383d865124fe9fda96af4a04d0c2641bcb93e16eb5e13f7c665f98c15333447"
+version = "0.2.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4709,7 +4703,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tower 0.4.13",
- "trueno 0.16.3",
+ "trueno 0.16.4",
  "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid",
 ]
@@ -5021,7 +5015,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5460,7 +5454,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5622,7 +5616,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6090,7 +6084,7 @@ dependencies = [
 
 [[package]]
 name = "trueno"
-version = "0.16.3"
+version = "0.16.4"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6099,7 +6093,7 @@ dependencies = [
  "hostname",
  "num_cpus",
  "pollster",
- "provable-contracts-macros 0.1.1",
+ "provable-contracts-macros 0.2.1",
  "rayon",
  "serde",
  "serde_json",
@@ -6227,7 +6221,7 @@ dependencies = [
  "libc",
  "png 0.17.16",
  "thiserror 2.0.18",
- "trueno 0.16.3",
+ "trueno 0.16.4",
 ]
 
 [[package]]
@@ -6817,7 +6811,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

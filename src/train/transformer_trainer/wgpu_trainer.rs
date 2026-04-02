@@ -5,15 +5,23 @@
 //! - Gradients flow through all ops (no zero gradients after step 1)
 
 #[cfg(feature = "gpu")]
-use crate::transformer::TransformerConfig;
-#[cfg(feature = "gpu")]
 use crate::transformer::wgpu_block::WgpuForwardPass;
+#[cfg(feature = "gpu")]
+use crate::transformer::TransformerConfig;
 #[cfg(feature = "gpu")]
 use trueno::backends::gpu::GpuDevice;
 
 /// Transpose [rows, cols] → [cols, rows]. One-time cost during cache population.
 #[cfg(feature = "gpu")]
-fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> { let mut o = vec![0.0f32; rows*cols]; for r in 0..rows { for c in 0..cols { o[c*rows+r] = data[r*cols+c]; } } o }
+fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
+    let mut o = vec![0.0f32; rows * cols];
+    for r in 0..rows {
+        for c in 0..cols {
+            o[c * rows + r] = data[r * cols + c];
+        }
+    }
+    o
+}
 
 #[cfg(feature = "gpu")]
 pub struct WgpuTransformerTrainer {
@@ -77,8 +85,8 @@ impl WgpuModelState {
         let config_path = model_dir.join("config.json");
         let config_str = fs::read_to_string(&config_path)
             .map_err(|e| format!("Cannot read config.json: {e}"))?;
-        let config: serde_json::Value = serde_json::from_str(&config_str)
-            .map_err(|e| format!("Invalid config.json: {e}"))?;
+        let config: serde_json::Value =
+            serde_json::from_str(&config_str).map_err(|e| format!("Invalid config.json: {e}"))?;
 
         let hidden_size = config["hidden_size"].as_u64().unwrap_or(2560) as usize;
         let num_layers = config["num_hidden_layers"].as_u64().unwrap_or(36) as usize;
@@ -113,7 +121,8 @@ impl WgpuModelState {
         }
 
         // Parse all shards upfront
-        let parsed: Vec<safetensors::SafeTensors<'_>> = all_data.iter()
+        let parsed: Vec<safetensors::SafeTensors<'_>> = all_data
+            .iter()
             .map(|d| safetensors::SafeTensors::deserialize(d))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("Deserialize error: {e}"))?;
@@ -127,8 +136,10 @@ impl WgpuModelState {
             let prefix = format!("model.layers.{layer_idx}");
 
             // Helper: find tensor across all shards
-            let find_and_quantize = |name: &str, rows: usize, cols: usize|
-                -> Result<(Vec<u32>, Vec<f32>, u32), String> {
+            let find_and_quantize = |name: &str,
+                                     rows: usize,
+                                     cols: usize|
+             -> Result<(Vec<u32>, Vec<f32>, u32), String> {
                 for tensors in &parsed {
                     if tensors.tensor(name).is_ok() {
                         return super::wgpu_nf4::Nf4LayerWeights::quantize_projection_from_tensors(
@@ -140,23 +151,64 @@ impl WgpuModelState {
             };
 
             let kv_dim = num_kv_heads * head_dim;
-            let (gate_p, gate_s, gate_n) = find_and_quantize(&format!("{prefix}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
-            let (up_p, up_s, up_n) = find_and_quantize(&format!("{prefix}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
-            let (down_p, down_s, down_n) = find_and_quantize(&format!("{prefix}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
-            let (q_p, q_s, q_n) = find_and_quantize(&format!("{prefix}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
-            let (k_p, k_s, k_n) = find_and_quantize(&format!("{prefix}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
-            let (v_p, v_s, v_n) = find_and_quantize(&format!("{prefix}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
-            let (o_p, o_s, o_n) = find_and_quantize(&format!("{prefix}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
+            let (gate_p, gate_s, gate_n) = find_and_quantize(
+                &format!("{prefix}.mlp.gate_proj.weight"),
+                intermediate_size,
+                hidden_size,
+            )?;
+            let (up_p, up_s, up_n) = find_and_quantize(
+                &format!("{prefix}.mlp.up_proj.weight"),
+                intermediate_size,
+                hidden_size,
+            )?;
+            let (down_p, down_s, down_n) = find_and_quantize(
+                &format!("{prefix}.mlp.down_proj.weight"),
+                hidden_size,
+                intermediate_size,
+            )?;
+            let (q_p, q_s, q_n) = find_and_quantize(
+                &format!("{prefix}.self_attn.q_proj.weight"),
+                q_dim,
+                hidden_size,
+            )?;
+            let (k_p, k_s, k_n) = find_and_quantize(
+                &format!("{prefix}.self_attn.k_proj.weight"),
+                kv_dim,
+                hidden_size,
+            )?;
+            let (v_p, v_s, v_n) = find_and_quantize(
+                &format!("{prefix}.self_attn.v_proj.weight"),
+                kv_dim,
+                hidden_size,
+            )?;
+            let (o_p, o_s, o_n) = find_and_quantize(
+                &format!("{prefix}.self_attn.o_proj.weight"),
+                hidden_size,
+                q_dim,
+            )?;
 
             let layer = super::wgpu_nf4::Nf4LayerWeights {
-                gate_packed: gate_p, gate_scales: gate_s,
-                up_packed: up_p, up_scales: up_s,
-                down_packed: down_p, down_scales: down_s,
-                q_packed: q_p, q_scales: q_s,
-                k_packed: k_p, k_scales: k_s,
-                v_packed: v_p, v_scales: v_s,
-                o_packed: o_p, o_scales: o_s,
-                gate_n, up_n, down_n, q_n, k_n, v_n, o_n,
+                gate_packed: gate_p,
+                gate_scales: gate_s,
+                up_packed: up_p,
+                up_scales: up_s,
+                down_packed: down_p,
+                down_scales: down_s,
+                q_packed: q_p,
+                q_scales: q_s,
+                k_packed: k_p,
+                k_scales: k_s,
+                v_packed: v_p,
+                v_scales: v_s,
+                o_packed: o_p,
+                o_scales: o_s,
+                gate_n,
+                up_n,
+                down_n,
+                q_n,
+                k_n,
+                v_n,
+                o_n,
                 block_size,
             };
 
@@ -171,8 +223,11 @@ impl WgpuModelState {
         let mut lora = Vec::with_capacity(num_layers);
         for _ in 0..num_layers {
             lora.push(super::wgpu_checkpoint::LoraLayerSet::new(
-                lora_rank, hidden_size as u32, q_dim as u32,
-                (num_kv_heads * head_dim) as u32, intermediate_size as u32,
+                lora_rank,
+                hidden_size as u32,
+                q_dim as u32,
+                (num_kv_heads * head_dim) as u32,
+                intermediate_size as u32,
             ));
         }
 
@@ -190,14 +245,16 @@ impl WgpuModelState {
                 if let Ok(v) = t.tensor(name) {
                     // Need to copy since t borrows data
                     let fp32: Vec<f32> = match v.dtype() {
-                        safetensors::Dtype::F16 => {
-                            v.data().chunks_exact(2)
-                                .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32()).collect()
-                        }
-                        safetensors::Dtype::BF16 => {
-                            v.data().chunks_exact(2)
-                                .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32()).collect()
-                        }
+                        safetensors::Dtype::F16 => v
+                            .data()
+                            .chunks_exact(2)
+                            .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32())
+                            .collect(),
+                        safetensors::Dtype::BF16 => v
+                            .data()
+                            .chunks_exact(2)
+                            .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32())
+                            .collect(),
                         _ => bytemuck::cast_slice(v.data()).to_vec(),
                     };
                     eprintln!("  LM head from {name}: {} elements", fp32.len());
@@ -205,13 +262,19 @@ impl WgpuModelState {
                     break;
                 }
             }
-            if lm_head_view.is_some() { break; }
+            if lm_head_view.is_some() {
+                break;
+            }
         }
         let lm_head = lm_head_view.ok_or("lm_head/embed_tokens not found in any shard")?;
         let lm_head_len = lm_head.len();
         let lora_params: usize = lora.iter().map(|l| l.num_params()).sum();
         eprintln!("  LoRA params: {lora_params} (rank={lora_rank}, 7 modules/layer)");
-        eprintln!("  LM head: {} elements ({:.1} MB)", lm_head_len, lm_head_len as f64 * 4.0 / 1024.0 / 1024.0);
+        eprintln!(
+            "  LM head: {} elements ({:.1} MB)",
+            lm_head_len,
+            lm_head_len as f64 * 4.0 / 1024.0 / 1024.0
+        );
         Ok(Self {
             layers,
             lora,
@@ -231,7 +294,10 @@ impl WgpuModelState {
     }
 
     /// Populate weight caches (pre-transposed for standard matmul).
-    pub fn populate_weight_cache(&mut self, device: &trueno::backends::gpu::GpuDevice) -> Result<(), String> {
+    pub fn populate_weight_cache(
+        &mut self,
+        device: &trueno::backends::gpu::GpuDevice,
+    ) -> Result<(), String> {
         let (h, i) = (self.hidden_size, self.intermediate_size);
         let (qd, kvd) = (self.num_heads * self.head_dim, self.num_kv_heads * self.head_dim);
         for li in 0..self.num_layers {
@@ -250,21 +316,45 @@ impl WgpuModelState {
                     transpose(&layer.dequant_v(device)?, kvd, h),
                     transpose(&layer.dequant_o(device)?, h, qd),
                 ));
-                if li % 12 == 0 || li == self.num_layers - 1 { eprintln!("  Cached layer {li}"); }
+                if li % 12 == 0 || li == self.num_layers - 1 {
+                    eprintln!("  Cached layer {li}");
+                }
             }
         }
         Ok(())
     }
 
     /// Total trainable parameters
-    pub fn trainable_params(&self) -> usize { self.lora.iter().map(|l| l.num_params()).sum::<usize>() + self.lm_head.len() }
-    pub fn save_checkpoint(&self, dir: &std::path::Path, step: u32, loss: f32, rank: u32, alpha: f32) -> Result<std::path::PathBuf, String> {
-        super::wgpu_checkpoint::save_lora_checkpoint(&self.lora, self.hidden_size, dir, step, loss, rank, alpha)
+    pub fn trainable_params(&self) -> usize {
+        self.lora.iter().map(|l| l.num_params()).sum::<usize>() + self.lm_head.len()
+    }
+    pub fn save_checkpoint(
+        &self,
+        dir: &std::path::Path,
+        step: u32,
+        loss: f32,
+        rank: u32,
+        alpha: f32,
+    ) -> Result<std::path::PathBuf, String> {
+        super::wgpu_checkpoint::save_lora_checkpoint(
+            &self.lora,
+            self.hidden_size,
+            dir,
+            step,
+            loss,
+            rank,
+            alpha,
+        )
     }
 
     /// Load LoRA checkpoint (delegates to wgpu_checkpoint)
     pub fn load_checkpoint(&mut self, path: &std::path::Path) -> Result<(u32, f32), String> {
-        super::wgpu_checkpoint::load_lora_checkpoint(&mut self.lora, self.num_layers, self.hidden_size, path)
+        super::wgpu_checkpoint::load_lora_checkpoint(
+            &mut self.lora,
+            self.num_layers,
+            self.hidden_size,
+            path,
+        )
     }
 }
 
@@ -319,7 +409,7 @@ impl WgpuTransformerTrainer {
     /// # Contract (C-WGPU-TRAIN-001)
     pub fn layer_train_step(
         &mut self,
-        hidden: &[f32],                           // [seq_len, hidden_size]
+        hidden: &[f32], // [seq_len, hidden_size]
         model: &mut super::wgpu_nf4::Nf4LayerWeights,
         lora_q: &mut super::wgpu_nf4::LoraAdapter,
         _lora_v: &mut super::wgpu_nf4::LoraAdapter,
@@ -362,12 +452,15 @@ impl WgpuTransformerTrainer {
         }
 
         // 4. SiLU(gate) * up → swiglu_out [s, i]
-        let silu_gate: Vec<f32> = gate_out.iter().map(|&x| {
-            let sig = 1.0 / (1.0 + (-x).exp());
-            x * sig
-        }).collect();
-        let swiglu_out: Vec<f32> = silu_gate.iter().zip(up_out.iter())
-            .map(|(&sg, &u)| sg * u).collect();
+        let silu_gate: Vec<f32> = gate_out
+            .iter()
+            .map(|&x| {
+                let sig = 1.0 / (1.0 + (-x).exp());
+                x * sig
+            })
+            .collect();
+        let swiglu_out: Vec<f32> =
+            silu_gate.iter().zip(up_out.iter()).map(|(&sg, &u)| sg * u).collect();
 
         // 5. Down forward: ffn_out = swiglu @ down^T → [s, h]
         let mut ffn_out = vec![0.0f32; (s * h) as usize];
@@ -382,8 +475,7 @@ impl WgpuTransformerTrainer {
         }
 
         // 6. Residual: output = hidden + ffn_out
-        let output: Vec<f32> = hidden.iter().zip(ffn_out.iter())
-            .map(|(&h, &f)| h + f).collect();
+        let output: Vec<f32> = hidden.iter().zip(ffn_out.iter()).map(|(&h, &f)| h + f).collect();
 
         // --- FFN Backward (using existing method) ---
         // Use ffn_out as pseudo-gradient for now (in full pipeline, comes from next layer)
@@ -398,7 +490,9 @@ impl WgpuTransformerTrainer {
             &gate_out,
             &up_out,
             &silu_gate,
-            s, h, i,
+            s,
+            h,
+            i,
         )?;
 
         let grad_norm: f32 = grad_input.iter().map(|g| g * g).sum::<f32>().sqrt();
@@ -430,7 +524,12 @@ impl WgpuTransformerTrainer {
             &grad_a,
             &mut ma_buf,
             &mut va_buf,
-            self.lr, self.beta1, self.beta2, self.eps, self.weight_decay, self.step,
+            self.lr,
+            self.beta1,
+            self.beta2,
+            self.eps,
+            self.weight_decay,
+            self.step,
         )?;
 
         lora_q.a = a_buf;
@@ -443,8 +542,8 @@ impl WgpuTransformerTrainer {
     /// Full 36-layer forward + lm_head + loss + backward. Contract (C-WGPU-TRAIN-001)
     pub fn full_train_step(
         &mut self,
-        token_hidden: &[f32],      // [seq_len, hidden_size] — embedding output
-        target_ids: &[u32],        // [seq_len] — target token IDs
+        token_hidden: &[f32], // [seq_len, hidden_size] — embedding output
+        target_ids: &[u32],   // [seq_len] — target token IDs
         model: &mut WgpuModelState,
     ) -> Result<(f32, f32), String> {
         let s = target_ids.len() as u32;
@@ -458,56 +557,119 @@ impl WgpuTransformerTrainer {
         let mut hidden = token_hidden.to_vec();
         // NEFTune (C-WGPU-NEFTUNE-001)
         let ns = 5.0f32 / ((s as f32) * (h as f32)).sqrt();
-        for (i, v) in hidden.iter_mut().enumerate() { *v += ((i as u64).wrapping_mul(6364136223846793005).wrapping_add(self.step as u64) as f32 / u64::MAX as f32 * 2.0 - 1.0) * ns; }
+        for (i, v) in hidden.iter_mut().enumerate() {
+            *v += ((i as u64).wrapping_mul(6364136223846793005).wrapping_add(self.step as u64)
+                as f32
+                / u64::MAX as f32
+                * 2.0
+                - 1.0)
+                * ns;
+        }
         let mut layer_acts = Vec::with_capacity(n_layers);
         // Inline RMSNorm helper
         let rmsnorm = |buf: &mut [f32], s: usize, h: usize| {
             let eps = 1e-5f32;
             for si in 0..s {
-                let rms = (buf[si*h..(si+1)*h].iter().map(|x| x*x).sum::<f32>() / h as f32 + eps).sqrt();
-                for hi in 0..h { buf[si*h+hi] /= rms; }
+                let rms = (buf[si * h..(si + 1) * h].iter().map(|x| x * x).sum::<f32>() / h as f32
+                    + eps)
+                    .sqrt();
+                for hi in 0..h {
+                    buf[si * h + hi] /= rms;
+                }
             }
         };
 
         for layer_idx in 0..n_layers {
             rmsnorm(&mut hidden, s as usize, h as usize);
-            let (q_w, k_w, v_w, o_w) = model.attn_cache[layer_idx].as_ref()
+            let (q_w, k_w, v_w, o_w) = model.attn_cache[layer_idx]
+                .as_ref()
                 .map(|(q, k, v, o)| (q.as_slice(), k.as_slice(), v.as_slice(), o.as_slice()))
                 .expect("attn cache");
             let (attn_out, attn_cache) = super::wgpu_attention::attention_forward(
-                &self.device, &hidden, q_w, k_w, v_w, o_w,
-                &model.lora[layer_idx].q, &model.lora[layer_idx].v, self.lora_alpha,
-                s, h, model.num_heads as u32, model.num_kv_heads as u32, model.head_dim as u32,
+                &self.device,
+                &hidden,
+                q_w,
+                k_w,
+                v_w,
+                o_w,
+                &model.lora[layer_idx].q,
+                &model.lora[layer_idx].v,
+                self.lora_alpha,
+                s,
+                h,
+                model.num_heads as u32,
+                model.num_kv_heads as u32,
+                model.head_dim as u32,
             )?;
             let attn_input = hidden.clone(); // save pre-attention input for backward
-            for j in 0..(s * h) as usize { hidden[j] += attn_out[j]; }
+            for j in 0..(s * h) as usize {
+                hidden[j] += attn_out[j];
+            }
             rmsnorm(&mut hidden, s as usize, h as usize); // pre-FFN norm
 
             let hidden_input = hidden.clone(); // cache for backward
 
-            let (gate_fp32, up_fp32, down_fp32) = model.ffn_cache[layer_idx].as_ref()
+            let (gate_fp32, up_fp32, down_fp32) = model.ffn_cache[layer_idx]
+                .as_ref()
                 .map(|(g, u, d)| (g.as_slice(), u.as_slice(), d.as_slice()))
                 .expect("cache populated above");
 
             let mut gate_out = vec![0.0f32; (s * i) as usize];
-            self.device.matmul(&hidden, gate_fp32, &mut gate_out, s as usize, h as usize, i as usize)?;
+            self.device.matmul(
+                &hidden,
+                gate_fp32,
+                &mut gate_out,
+                s as usize,
+                h as usize,
+                i as usize,
+            )?;
             let mut up_out = vec![0.0f32; (s * i) as usize];
-            self.device.matmul(&hidden, up_fp32, &mut up_out, s as usize, h as usize, i as usize)?;
+            self.device.matmul(
+                &hidden,
+                up_fp32,
+                &mut up_out,
+                s as usize,
+                h as usize,
+                i as usize,
+            )?;
 
-            let silu_gate: Vec<f32> = gate_out.iter().map(|&x| { let sig = 1.0 / (1.0 + (-x).exp()); x * sig }).collect();
-            let swiglu: Vec<f32> = silu_gate.iter().zip(up_out.iter()).map(|(&sg, &u)| sg * u).collect();
+            let silu_gate: Vec<f32> = gate_out
+                .iter()
+                .map(|&x| {
+                    let sig = 1.0 / (1.0 + (-x).exp());
+                    x * sig
+                })
+                .collect();
+            let swiglu: Vec<f32> =
+                silu_gate.iter().zip(up_out.iter()).map(|(&sg, &u)| sg * u).collect();
 
             let mut ffn_out = vec![0.0f32; (s * h) as usize];
-            self.device.matmul(&swiglu, down_fp32, &mut ffn_out, s as usize, i as usize, h as usize)?;
+            self.device.matmul(
+                &swiglu,
+                down_fp32,
+                &mut ffn_out,
+                s as usize,
+                i as usize,
+                h as usize,
+            )?;
 
-            for j in 0..(s * h) as usize { hidden[j] += ffn_out[j]; }
+            for j in 0..(s * h) as usize {
+                hidden[j] += ffn_out[j];
+            }
 
             layer_acts.push(super::wgpu_backward::LayerActivations {
-                attn_input, hidden_input,
-                gate_output: gate_out, up_output: up_out, silu_gate,
-                q: attn_cache.q, k: attn_cache.k, v: attn_cache.v,
-                attn_weights: attn_cache.attn_weights, context: attn_cache.context,
-                lora_q_h: attn_cache.lora_q_h, lora_v_h: attn_cache.lora_v_h,
+                attn_input,
+                hidden_input,
+                gate_output: gate_out,
+                up_output: up_out,
+                silu_gate,
+                q: attn_cache.q,
+                k: attn_cache.k,
+                v: attn_cache.v,
+                attn_weights: attn_cache.attn_weights,
+                context: attn_cache.context,
+                lora_q_h: attn_cache.lora_q_h,
+                lora_v_h: attn_cache.lora_v_h,
             });
         }
 
@@ -526,26 +688,33 @@ impl WgpuTransformerTrainer {
             }
             for vi in 0..v as usize {
                 grad_logits[si * v as usize + vi] = (logits[si * v as usize + vi] - lse).exp();
-                if vi == t { grad_logits[si * v as usize + vi] -= 1.0; }
+                if vi == t {
+                    grad_logits[si * v as usize + vi] -= 1.0;
+                }
             }
         }
         loss /= s as f32;
         // Focal weighting (C-WGPU-FOCAL-001)
-        for si in 0..s as usize { let t = target_ids[si] as usize; if t < v as usize {
-            let w = 0.3 + 0.7*(1.0-(grad_logits[si*v as usize+t]+1.0).clamp(0.0,1.0));
-            for vi in 0..v as usize { grad_logits[si*v as usize+vi] *= w; } }}
-        for g in &mut grad_logits { *g /= s as f32; }
+        for si in 0..s as usize {
+            let t = target_ids[si] as usize;
+            if t < v as usize {
+                let w =
+                    0.3 + 0.7 * (1.0 - (grad_logits[si * v as usize + t] + 1.0).clamp(0.0, 1.0));
+                for vi in 0..v as usize {
+                    grad_logits[si * v as usize + vi] *= w;
+                }
+            }
+        }
+        for g in &mut grad_logits {
+            *g /= s as f32;
+        }
 
         // LM head backward
         let mut grad_hidden = vec![0.0f32; (s * h) as usize];
-        self.device.gemm_backward_a(
-            &grad_logits, &model.lm_head, &mut grad_hidden, s, h, v,
-        )?;
+        self.device.gemm_backward_a(&grad_logits, &model.lm_head, &mut grad_hidden, s, h, v)?;
 
         let mut grad_lm_head_t = vec![0.0f32; (h * v) as usize];
-        self.device.gemm_backward_b(
-            &hidden, &grad_logits, &mut grad_lm_head_t, s, h, v,
-        )?;
+        self.device.gemm_backward_b(&hidden, &grad_logits, &mut grad_lm_head_t, s, h, v)?;
         let mut grad_lm = vec![0.0f32; (v * h) as usize];
         for hi in 0..h as usize {
             for vi in 0..v as usize {
@@ -555,7 +724,16 @@ impl WgpuTransformerTrainer {
 
         self.step += 1;
         // Gradient clipping (max_norm=1.0)
-        let clip = |g: &mut [f32]| { let n: f32 = g.iter().map(|x| x*x).sum::<f32>().sqrt(); if n > 1.0 { let s = 1.0/n; for v in g.iter_mut() { *v *= s; } } n };
+        let clip = |g: &mut [f32]| {
+            let n: f32 = g.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if n > 1.0 {
+                let s = 1.0 / n;
+                for v in g.iter_mut() {
+                    *v *= s;
+                }
+            }
+            n
+        };
         let lm_gnorm = clip(&mut grad_lm);
         clip(&mut grad_hidden);
 
@@ -563,8 +741,16 @@ impl WgpuTransformerTrainer {
         let mut lm_m = std::mem::take(&mut model.lm_head_m);
         let mut lm_v = std::mem::take(&mut model.lm_head_v);
         self.device.adamw_step(
-            &mut lm, &grad_lm, &mut lm_m, &mut lm_v,
-            self.lr, self.beta1, self.beta2, self.eps, self.weight_decay, self.step,
+            &mut lm,
+            &grad_lm,
+            &mut lm_m,
+            &mut lm_v,
+            self.lr,
+            self.beta1,
+            self.beta2,
+            self.eps,
+            self.weight_decay,
+            self.step,
         )?;
         model.lm_head = lm;
         model.lm_head_m = lm_m;
@@ -572,9 +758,20 @@ impl WgpuTransformerTrainer {
 
         // Backward through all layers + LoRA AdamW
         let lora_gnorm = super::wgpu_backward::backward_through_layers(
-            &self.device, &mut grad_hidden, &layer_acts, model,
-            s, h, i, self.lr, self.beta1, self.beta2, self.eps,
-            self.weight_decay, self.step, self.lora_alpha,
+            &self.device,
+            &mut grad_hidden,
+            &layer_acts,
+            model,
+            s,
+            h,
+            i,
+            self.lr,
+            self.beta1,
+            self.beta2,
+            self.eps,
+            self.weight_decay,
+            self.step,
+            self.lora_alpha,
         )?;
 
         let grad_norm = (lm_gnorm * lm_gnorm + lora_gnorm * lora_gnorm).sqrt();
@@ -585,9 +782,9 @@ impl WgpuTransformerTrainer {
     pub fn lora_forward(
         &self,
         x: &[f32],
-        w_fp32: &[f32],       // dequanted base weight [out_dim, in_dim]
-        lora_a: &[f32],       // [rank, in_dim]
-        lora_b: &[f32],       // [out_dim, rank]
+        w_fp32: &[f32], // dequanted base weight [out_dim, in_dim]
+        lora_a: &[f32], // [rank, in_dim]
+        lora_b: &[f32], // [out_dim, rank]
         seq_len: u32,
         in_dim: u32,
         out_dim: u32,
@@ -647,12 +844,12 @@ impl WgpuTransformerTrainer {
     /// LoRA backward: grad_A, grad_B, grad_x via GPU GEMM
     pub fn lora_backward(
         &self,
-        grad_output: &[f32],   // [seq_len, out_dim]
-        x: &[f32],             // [seq_len, in_dim]
-        w_fp32: &[f32],        // [out_dim, in_dim] (for grad_x through base)
-        lora_a: &[f32],        // [rank, in_dim]
-        lora_b: &[f32],        // [out_dim, rank]
-        h_cached: &[f32],      // [seq_len, rank] (x @ A^T from forward)
+        grad_output: &[f32], // [seq_len, out_dim]
+        x: &[f32],           // [seq_len, in_dim]
+        w_fp32: &[f32],      // [out_dim, in_dim] (for grad_x through base)
+        lora_a: &[f32],      // [rank, in_dim]
+        lora_b: &[f32],      // [out_dim, rank]
+        h_cached: &[f32],    // [seq_len, rank] (x @ A^T from forward)
         seq_len: u32,
         in_dim: u32,
         out_dim: u32,
@@ -666,27 +863,13 @@ impl WgpuTransformerTrainer {
         // grad_output [s, out], W [out, in] → grad_x [s, in]
         // This is GEMM backward A: grad_x = grad_output @ W (W acts as B^T)
         let mut grad_x = vec![0.0f32; (seq_len * in_dim) as usize];
-        self.device.gemm_backward_a(
-            grad_output,
-            w_fp32,
-            &mut grad_x,
-            seq_len,
-            in_dim,
-            out_dim,
-        )?;
+        self.device.gemm_backward_a(grad_output, w_fp32, &mut grad_x, seq_len, in_dim, out_dim)?;
 
         // LoRA backward: grad through B @ A path
         // grad_h = grad_output @ B * scaling → [seq_len, rank]
         // B is [out_dim, rank]
         let mut grad_h = vec![0.0f32; (seq_len * rank) as usize];
-        self.device.gemm_backward_a(
-            grad_output,
-            lora_b,
-            &mut grad_h,
-            seq_len,
-            rank,
-            out_dim,
-        )?;
+        self.device.gemm_backward_a(grad_output, lora_b, &mut grad_h, seq_len, rank, out_dim)?;
         for v in &mut grad_h {
             *v *= scaling;
         }
@@ -707,7 +890,8 @@ impl WgpuTransformerTrainer {
         let mut grad_b = vec![0.0f32; (out_dim * rank) as usize];
         for i in 0..rank as usize {
             for j in 0..out_dim as usize {
-                grad_b[j * rank as usize + i] = grad_b_transposed[i * out_dim as usize + j] * scaling;
+                grad_b[j * rank as usize + i] =
+                    grad_b_transposed[i * out_dim as usize + j] * scaling;
             }
         }
 
@@ -716,12 +900,12 @@ impl WgpuTransformerTrainer {
         // grad_h^T[rank, seq] @ x[seq, in] = [rank, in]
         let mut grad_a = vec![0.0f32; (rank * in_dim) as usize];
         self.device.gemm_backward_b(
-            &grad_h,  // "A" in the GEMM A^T @ dC formulation
-            x,        // treated as grad_c [seq, in_dim]
+            &grad_h, // "A" in the GEMM A^T @ dC formulation
+            x,       // treated as grad_c [seq, in_dim]
             &mut grad_a,
             seq_len,
-            rank,     // K = rank (cols of grad_h)
-            in_dim,   // N = in_dim (cols of x)
+            rank,   // K = rank (cols of grad_h)
+            in_dim, // N = in_dim (cols of x)
         )?;
 
         // grad_x through LoRA: grad_x_lora = grad_h @ A
@@ -767,8 +951,7 @@ impl WgpuTransformerTrainer {
             for j in 0..n as usize {
                 let mut sum = 0.0f32;
                 for p in 0..k as usize {
-                    sum += hidden_states[i * k as usize + p]
-                        * lm_head_weight[j * k as usize + p];
+                    sum += hidden_states[i * k as usize + p] * lm_head_weight[j * k as usize + p];
                 }
                 logits[i * n as usize + j] = sum;
             }
@@ -803,14 +986,7 @@ impl WgpuTransformerTrainer {
 
         // --- Backward A: grad_hidden = grad_logits @ lm_head (GPU GEMM) ---
         let mut grad_hidden = vec![0.0f32; (m * k) as usize];
-        self.device.gemm_backward_a(
-            &grad_logits,
-            lm_head_weight,
-            &mut grad_hidden,
-            m,
-            k,
-            n,
-        )?;
+        self.device.gemm_backward_a(&grad_logits, lm_head_weight, &mut grad_hidden, m, k, n)?;
 
         // --- Backward B: grad_lm_head = hidden^T @ grad_logits (GPU GEMM) ---
         // grad_lm_head[vocab, hidden] = grad_logits^T[vocab, seq] @ hidden[seq, hidden]
@@ -822,22 +998,21 @@ impl WgpuTransformerTrainer {
         // = grad_lm_head^T[hidden, vocab]
         // We need grad_lm_head[vocab, hidden] = transpose of that
         let mut grad_lm_head_t = vec![0.0f32; (k * n) as usize];
-        self.device.gemm_backward_b(
-            hidden_states,
-            &grad_logits,
-            &mut grad_lm_head_t,
-            m,
-            k,
-            n,
-        )?;
+        self.device.gemm_backward_b(hidden_states, &grad_logits, &mut grad_lm_head_t, m, k, n)?;
 
         let mut grad_lm_head = vec![0.0f32; (n * k) as usize];
         for i in 0..k as usize {
-            for j in 0..n as usize { grad_lm_head[j * k as usize + i] = grad_lm_head_t[i * n as usize + j]; }
+            for j in 0..n as usize {
+                grad_lm_head[j * k as usize + i] = grad_lm_head_t[i * n as usize + j];
+            }
         }
         let grad_norm: f32 = grad_lm_head.iter().map(|g| g * g).sum::<f32>().sqrt();
         self.device.adamw_step(
-            lm_head_weight, &grad_lm_head, m_state, v_state, self.lr,
+            lm_head_weight,
+            &grad_lm_head,
+            m_state,
+            v_state,
+            self.lr,
             self.beta1,
             self.beta2,
             self.eps,
@@ -861,13 +1036,13 @@ impl WgpuTransformerTrainer {
     /// Weight layout: gate[I,H], up[I,H], down[H,I] (HuggingFace convention)
     pub fn ffn_backward(
         &self,
-        grad_output: &[f32],     // [seq_len, hidden_size]
-        hidden_input: &[f32],    // [seq_len, hidden_size] — input to FFN (after RMSNorm)
-        gate_weight: &[f32],     // [intermediate, hidden]
-        up_weight: &[f32],       // [intermediate, hidden]
-        down_weight: &[f32],     // [hidden, intermediate]
-        gate_output: &[f32],     // [seq_len, intermediate] — cached from forward
-        up_output: &[f32],       // [seq_len, intermediate] — cached from forward
+        grad_output: &[f32],      // [seq_len, hidden_size]
+        hidden_input: &[f32],     // [seq_len, hidden_size] — input to FFN (after RMSNorm)
+        gate_weight: &[f32],      // [intermediate, hidden]
+        up_weight: &[f32],        // [intermediate, hidden]
+        down_weight: &[f32],      // [hidden, intermediate]
+        gate_output: &[f32],      // [seq_len, intermediate] — cached from forward
+        up_output: &[f32],        // [seq_len, intermediate] — cached from forward
         silu_gate_output: &[f32], // [seq_len, intermediate] — SiLU(gate) cached
         seq_len: u32,
         hidden_size: u32,
@@ -881,10 +1056,12 @@ impl WgpuTransformerTrainer {
         //    down_weight is [h,i], so down^T[i,h]. This is gemm_backward_a with M=s, K=i, N=h
         let mut grad_swiglu = vec![0.0f32; (s * i) as usize]; // gradient of SwiGLU output
         self.device.gemm_backward_a(
-            grad_output,   // grad_c [s, h]
-            down_weight,   // b [i, h] (stored as [h, i] but treated as B in C=A@B where B=[K,N]=[i,h])
+            grad_output, // grad_c [s, h]
+            down_weight, // b [i, h] (stored as [h, i] but treated as B in C=A@B where B=[K,N]=[i,h])
             &mut grad_swiglu,
-            s, i, h,
+            s,
+            i,
+            h,
         )?;
 
         // 2. SiLU backward: grad_gate = grad_swiglu * up_output * silu'(gate_output)
@@ -911,18 +1088,22 @@ impl WgpuTransformerTrainer {
         let mut grad_input_gate = vec![0.0f32; (s * h) as usize];
         self.device.gemm_backward_a(
             &grad_gate,
-            gate_weight,  // [i, h]
+            gate_weight, // [i, h]
             &mut grad_input_gate,
-            s, h, i,
+            s,
+            h,
+            i,
         )?;
 
         // Up projection backward: grad_input_up[s,h] = grad_up[s,i] @ up^T[i,h]
         let mut grad_input_up = vec![0.0f32; (s * h) as usize];
         self.device.gemm_backward_a(
             &grad_up,
-            up_weight,  // [i, h]
+            up_weight, // [i, h]
             &mut grad_input_up,
-            s, h, i,
+            s,
+            h,
+            i,
         )?;
 
         // 4. Sum gate + up gradients → grad_ffn_input
@@ -954,8 +1135,7 @@ mod tests {
         config.intermediate_size = 64;
         config.max_position_embeddings = 8;
 
-        let mut trainer =
-            WgpuTransformerTrainer::new(&config, 5e-2).expect("WGPU trainer");
+        let mut trainer = WgpuTransformerTrainer::new(&config, 5e-2).expect("WGPU trainer");
 
         eprintln!("WGPU adapter: {}", trainer.adapter_info());
 
@@ -994,7 +1174,10 @@ mod tests {
 
         eprintln!(
             "WGPU convergence: loss {:.3} -> {:.3} (best {:.3}, {} steps)",
-            first_loss, last_loss, best_loss, losses.len()
+            first_loss,
+            last_loss,
+            best_loss,
+            losses.len()
         );
 
         assert!(first_loss.is_finite(), "First loss not finite: {first_loss}");
@@ -1011,17 +1194,18 @@ mod tests {
         config.hidden_size = 8;
         config.intermediate_size = 16;
 
-        let trainer =
-            WgpuTransformerTrainer::new(&config, 1e-3).expect("trainer");
+        let trainer = WgpuTransformerTrainer::new(&config, 1e-3).expect("trainer");
 
         let (s, h, i) = (2u32, 8u32, 16u32);
 
         // Simulate forward pass caches
         let grad_output: Vec<f32> = (0..(s * h) as usize).map(|j| (j as f32 - 8.0) * 0.1).collect();
         let hidden_input: Vec<f32> = (0..(s * h) as usize).map(|j| j as f32 * 0.05).collect();
-        let gate_weight: Vec<f32> = (0..(i * h) as usize).map(|j| (j as f32 - 64.0) * 0.01).collect();
+        let gate_weight: Vec<f32> =
+            (0..(i * h) as usize).map(|j| (j as f32 - 64.0) * 0.01).collect();
         let up_weight: Vec<f32> = (0..(i * h) as usize).map(|j| (j as f32 - 64.0) * 0.01).collect();
-        let down_weight: Vec<f32> = (0..(h * i) as usize).map(|j| (j as f32 - 64.0) * 0.01).collect();
+        let down_weight: Vec<f32> =
+            (0..(h * i) as usize).map(|j| (j as f32 - 64.0) * 0.01).collect();
 
         // Simulated forward: gate = hidden @ gate^T, up = hidden @ up^T
         let mut gate_output = vec![0.0f32; (s * i) as usize];
@@ -1037,17 +1221,29 @@ mod tests {
             }
         }
         // silu_gate = silu(gate)
-        let silu_gate: Vec<f32> = gate_output.iter().map(|&x| {
-            let sig = 1.0 / (1.0 + (-x).exp());
-            x * sig
-        }).collect();
+        let silu_gate: Vec<f32> = gate_output
+            .iter()
+            .map(|&x| {
+                let sig = 1.0 / (1.0 + (-x).exp());
+                x * sig
+            })
+            .collect();
 
-        let grad_input = trainer.ffn_backward(
-            &grad_output, &hidden_input,
-            &gate_weight, &up_weight, &down_weight,
-            &gate_output, &up_output, &silu_gate,
-            s, h, i,
-        ).expect("ffn_backward");
+        let grad_input = trainer
+            .ffn_backward(
+                &grad_output,
+                &hidden_input,
+                &gate_weight,
+                &up_weight,
+                &down_weight,
+                &gate_output,
+                &up_output,
+                &silu_gate,
+                s,
+                h,
+                i,
+            )
+            .expect("ffn_backward");
 
         // Gradient must be non-zero (gradient flow works)
         let norm: f32 = grad_input.iter().map(|g| g * g).sum::<f32>().sqrt();
@@ -1076,17 +1272,18 @@ mod tests {
         let a: Vec<f32> = (0..(r * in_d) as usize).map(|i| (i as f32 - 16.0) * 0.05).collect();
         let b_zero = vec![0.0f32; (out_d * r) as usize];
 
-        let y_base = trainer.lora_forward(&x, &w, &a, &b_zero, s, in_d, out_d, r, alpha)
+        let y_base = trainer
+            .lora_forward(&x, &w, &a, &b_zero, s, in_d, out_d, r, alpha)
             .expect("lora_forward base");
 
         // Non-zero B → LoRA should contribute
         let b: Vec<f32> = (0..(out_d * r) as usize).map(|i| (i as f32 - 32.0) * 0.02).collect();
-        let y_lora = trainer.lora_forward(&x, &w, &a, &b, s, in_d, out_d, r, alpha)
+        let y_lora = trainer
+            .lora_forward(&x, &w, &a, &b, s, in_d, out_d, r, alpha)
             .expect("lora_forward lora");
 
         // y_lora should differ from y_base
-        let diff: f32 = y_base.iter().zip(y_lora.iter())
-            .map(|(a, b)| (a - b).abs()).sum();
+        let diff: f32 = y_base.iter().zip(y_lora.iter()).map(|(a, b)| (a - b).abs()).sum();
         assert!(diff > 1e-3, "LoRA should change output, diff={diff}");
     }
 
@@ -1112,17 +1309,18 @@ mod tests {
         for i in 0..s as usize {
             for j in 0..r as usize {
                 for p in 0..in_d as usize {
-                    h_cached[i * r as usize + j] += x[i * in_d as usize + p] * a[j * in_d as usize + p];
+                    h_cached[i * r as usize + j] +=
+                        x[i * in_d as usize + p] * a[j * in_d as usize + p];
                 }
             }
         }
 
-        let grad_output: Vec<f32> = (0..(s * out_d) as usize).map(|i| (i as f32 - 16.0) * 0.05).collect();
+        let grad_output: Vec<f32> =
+            (0..(s * out_d) as usize).map(|i| (i as f32 - 16.0) * 0.05).collect();
 
-        let (grad_a, grad_b, grad_x) = trainer.lora_backward(
-            &grad_output, &x, &w, &a, &b, &h_cached,
-            s, in_d, out_d, r, alpha,
-        ).expect("lora_backward");
+        let (grad_a, grad_b, grad_x) = trainer
+            .lora_backward(&grad_output, &x, &w, &a, &b, &h_cached, s, in_d, out_d, r, alpha)
+            .expect("lora_backward");
 
         let norm_a: f32 = grad_a.iter().map(|g| g * g).sum::<f32>().sqrt();
         let norm_b: f32 = grad_b.iter().map(|g| g * g).sum::<f32>().sqrt();
@@ -1135,7 +1333,9 @@ mod tests {
         assert!(grad_b.iter().all(|g| g.is_finite()), "grad_B must be finite");
         assert!(grad_x.iter().all(|g| g.is_finite()), "grad_x must be finite");
 
-        eprintln!("LoRA backward: |grad_A|={norm_a:.4}, |grad_B|={norm_b:.4}, |grad_x|={norm_x:.4}");
+        eprintln!(
+            "LoRA backward: |grad_A|={norm_a:.4}, |grad_B|={norm_b:.4}, |grad_x|={norm_x:.4}"
+        );
     }
 
     /// Load full Qwen3-4B model and verify memory fits in 16GB
@@ -1147,8 +1347,7 @@ mod tests {
             return;
         }
 
-        let model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0)
-            .expect("load_qwen3_4b");
+        let model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0).expect("load_qwen3_4b");
 
         assert_eq!(model.num_layers, 36);
         assert_eq!(model.hidden_size, 2560);
@@ -1156,8 +1355,8 @@ mod tests {
         assert_eq!(model.lora_q.len(), 36);
         assert_eq!(model.lora_v.len(), 36);
 
-        let total_nf4_mb: f64 = model.layers.iter()
-            .map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
+        let total_nf4_mb: f64 =
+            model.layers.iter().map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
         let trainable = model.trainable_params();
 
         eprintln!("Qwen3-4B loaded: {total_nf4_mb:.0} MB NF4, {trainable} trainable params");
@@ -1191,11 +1390,9 @@ mod tests {
         config.num_kv_heads = 8;
         config.vocab_size = 151936;
 
-        let mut model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0)
-            .expect("load model");
+        let mut model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0).expect("load model");
 
-        let mut trainer = WgpuTransformerTrainer::new(&config, 1e-3)
-            .expect("trainer");
+        let mut trainer = WgpuTransformerTrainer::new(&config, 1e-3).expect("trainer");
 
         // Simulate hidden states (as if from embedding + prior layers)
         let seq_len = 4u32;
@@ -1204,15 +1401,17 @@ mod tests {
             .collect();
 
         let start = std::time::Instant::now();
-        let (output, grad_norm) = trainer.layer_train_step(
-            &hidden,
-            &mut model.layers[0],
-            &mut model.lora_q[0],
-            &mut model.lora_v[0],
-            seq_len,
-            2560,
-            9728,
-        ).expect("layer_train_step");
+        let (output, grad_norm) = trainer
+            .layer_train_step(
+                &hidden,
+                &mut model.layers[0],
+                &mut model.lora_q[0],
+                &mut model.lora_v[0],
+                seq_len,
+                2560,
+                9728,
+            )
+            .expect("layer_train_step");
         let elapsed = start.elapsed();
 
         assert_eq!(output.len(), (seq_len * 2560) as usize);
@@ -1247,11 +1446,9 @@ mod tests {
         config.num_kv_heads = 8;
         config.vocab_size = 151936;
 
-        let mut model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0)
-            .expect("load model");
+        let mut model = WgpuModelState::load_qwen3_4b(model_dir, 16, 32.0).expect("load model");
 
-        let mut trainer = WgpuTransformerTrainer::new(&config, 5e-4)
-            .expect("trainer");
+        let mut trainer = WgpuTransformerTrainer::new(&config, 5e-4).expect("trainer");
 
         // Simulate embedding output (seq_len=2 to keep it fast)
         let seq_len = 2u32;
@@ -1264,13 +1461,16 @@ mod tests {
         let mut losses = Vec::new();
         for step in 0..3 {
             let start = std::time::Instant::now();
-            let (loss, gnorm) = trainer.full_train_step(&hidden, &targets, &mut model)
-                .expect("full_train_step");
+            let (loss, gnorm) =
+                trainer.full_train_step(&hidden, &targets, &mut model).expect("full_train_step");
             let elapsed = start.elapsed();
 
             eprintln!(
                 "Step {}: loss={:.3}, gnorm={:.4}, time={:.1}s",
-                step + 1, loss, gnorm, elapsed.as_secs_f64()
+                step + 1,
+                loss,
+                gnorm,
+                elapsed.as_secs_f64()
             );
             losses.push(loss);
 
@@ -1281,7 +1481,9 @@ mod tests {
 
         eprintln!(
             "Qwen3-4B 36-layer training: loss {:.3} -> {:.3} ({} steps)",
-            losses[0], losses.last().unwrap(), losses.len()
+            losses[0],
+            losses.last().unwrap(),
+            losses.len()
         );
     }
 }

@@ -35,11 +35,7 @@ fn test_wgpu_matmul_forward() {
 
     for i in 0..(m * n) as usize {
         let err = (result[i] - expected[i]).abs();
-        assert!(
-            err < 1e-3,
-            "Mismatch at {}: gpu={} cpu={} err={}",
-            i, result[i], expected[i], err
-        );
+        assert!(err < 1e-3, "Mismatch at {}: gpu={} cpu={} err={}", i, result[i], expected[i], err);
     }
 }
 
@@ -130,7 +126,7 @@ fn test_wgpu_matmul_lora_dims() {
         Err(_) => return,
     };
 
-    let m = 64u32;  // rank
+    let m = 64u32; // rank
     let k = 512u32; // seq_len
     let n = 128u32; // smaller out_dim for fast test
 
@@ -148,7 +144,8 @@ fn test_wgpu_matmul_lora_dims() {
     for i in 0..m as usize {
         for j in 0..n as usize {
             for kk in 0..k as usize {
-                expected[i * n as usize + j] += a_data[i * k as usize + kk] * b_data[kk * n as usize + j];
+                expected[i * n as usize + j] +=
+                    a_data[i * k as usize + kk] * b_data[kk * n as usize + j];
             }
         }
     }
@@ -189,7 +186,9 @@ fn test_wgpu_matmul_backward_shared_device() {
         Err(_) => return,
     };
 
-    let m = 64u32; let k = 32u32; let n = 128u32;
+    let m = 64u32;
+    let k = 32u32;
+    let n = 128u32;
     let a_data: Vec<f32> = (0..m * k).map(|i| ((i as f32) * 0.013).sin()).collect();
     let b_data: Vec<f32> = (0..k * n).map(|i| ((i as f32) * 0.009).cos()).collect();
     let gc_data: Vec<f32> = (0..m * n).map(|i| ((i as f32) * 0.011).sin()).collect();
@@ -203,7 +202,7 @@ fn test_wgpu_matmul_backward_shared_device() {
     trainer.matmul_backward(&a, &b, &gc, &ga, &gb, m, k, n);
     let gb_result = trainer.download(&gb);
 
-    let gb_norm: f32 = gb_result.iter().map(|x| x*x).sum::<f32>().sqrt();
+    let gb_norm: f32 = gb_result.iter().map(|x| x * x).sum::<f32>().sqrt();
     eprintln!("Shared device backward: gb_norm={:.6}", gb_norm);
     assert!(gb_norm > 0.0, "grad_b should be non-zero");
 }

@@ -35,6 +35,9 @@ pub mod cuda_optim;
 pub mod cuda_tensor;
 pub mod cuda_training;
 pub mod graph_opt;
+pub(crate) mod ops;
+pub mod precision;
+mod tensor;
 #[cfg(feature = "gpu")]
 pub mod wgpu_backward;
 #[cfg(feature = "gpu")]
@@ -43,9 +46,6 @@ pub mod wgpu_block;
 pub mod wgpu_cross_entropy;
 #[cfg(feature = "gpu")]
 pub mod wgpu_training;
-pub(crate) mod ops;
-pub mod precision;
-mod tensor;
 
 #[cfg(test)]
 mod tests;

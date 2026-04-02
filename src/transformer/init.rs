@@ -115,12 +115,8 @@ mod tests {
         // FALSIFY-INIT-001: autocorrelation at lag 1 should be < 0.1
         let data = rand_normal_seeded(1000, 42, "autocorr_test");
         let mean: f32 = data.iter().sum::<f32>() / data.len() as f32;
-        let var: f32 =
-            data.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / data.len() as f32;
-        let autocorr: f32 = data
-            .windows(2)
-            .map(|w| (w[0] - mean) * (w[1] - mean))
-            .sum::<f32>()
+        let var: f32 = data.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / data.len() as f32;
+        let autocorr: f32 = data.windows(2).map(|w| (w[0] - mean) * (w[1] - mean)).sum::<f32>()
             / (data.len() as f32 * var);
         assert!(
             autocorr.abs() < 0.1,

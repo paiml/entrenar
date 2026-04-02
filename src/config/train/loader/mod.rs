@@ -1003,7 +1003,11 @@ fn train_loop_cuda(
 
             // ALB-068/R-009: Intermediate checkpoint saving at save_interval
             let current_step = trainer.step();
-            let do_save = should_save_checkpoint(current_step, last_save_step, save_interval);
+            // ALB-132: Skip save on the first step after resume — the checkpoint we just
+            // loaded is already at this step. Re-saving would overwrite the original with
+            // potentially incomplete GPU optimizer state, corrupting subsequent resumes.
+            let is_resume_step = resume_batch_idx > 0 && current_step == resume_batch_idx / grad_accum;
+            let do_save = !is_resume_step && should_save_checkpoint(current_step, last_save_step, save_interval);
             let do_eval = current_step > 0
                 && current_step != last_eval_step
                 && current_step.is_multiple_of(eval_interval);

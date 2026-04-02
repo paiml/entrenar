@@ -63,6 +63,20 @@ impl PeftAdapterBundle {
         self.adapters.push((layer_path.into(), weights));
     }
 
+    /// Add raw LoRA weights (for GPU pipeline where LoRALayer isn't available)
+    pub fn add_raw_adapter(
+        &mut self,
+        layer_path: impl Into<String>,
+        lora_a: Vec<f32>,
+        lora_b: Vec<f32>,
+        rank: usize,
+        d_in: usize,
+        d_out: usize,
+    ) {
+        self.adapters
+            .push((layer_path.into(), AdapterWeights { lora_a, lora_b, rank, d_in, d_out }));
+    }
+
     /// Save PEFT-compatible adapter to output directory
     ///
     /// Creates:

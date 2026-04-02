@@ -11,11 +11,11 @@
 //! Zero unsafe, zero FFI.
 
 #[cfg(feature = "gpu")]
-use trueno::backends::gpu::wgpu;
-#[cfg(feature = "gpu")]
 use trueno::backends::gpu::shaders::backward::{
-    CROSS_ENTROPY_FORWARD_SHADER, CROSS_ENTROPY_BACKWARD_SHADER,
+    CROSS_ENTROPY_BACKWARD_SHADER, CROSS_ENTROPY_FORWARD_SHADER,
 };
+#[cfg(feature = "gpu")]
+use trueno::backends::gpu::wgpu;
 
 /// Fused cross-entropy loss computation on GPU.
 #[cfg(feature = "gpu")]
@@ -130,34 +130,29 @@ impl WgslCrossEntropy {
             cache: None,
         });
 
-        Self {
-            device,
-            queue,
-            forward_pipeline,
-            backward_pipeline,
-            forward_bgl,
-            backward_bgl,
-        }
+        Self { device, queue, forward_pipeline, backward_pipeline, forward_bgl, backward_bgl }
     }
 
     /// Compute forward cross-entropy loss on GPU.
     ///
     /// Returns average loss over response tokens.
     /// Saves logsumexp for backward pass.
-    pub fn forward(
+    /// Dispatch CE forward compute — no GPU sync, no loss download.
+    /// KAIZEN: the old `forward()` blocked 10s waiting for ALL prior GPU work.
+    /// Call `read_loss()` later (after backward) to get the actual loss value.
+    pub fn forward_async(
         &self,
-        logits: &wgpu::Buffer,     // [seq_len, vocab_size]
-        labels: &wgpu::Buffer,     // [seq_len] u32
-        losses: &wgpu::Buffer,     // [seq_len] output
-        logsumexp: &wgpu::Buffer,  // [seq_len] output (saved for backward)
+        logits: &wgpu::Buffer,
+        labels: &wgpu::Buffer,
+        losses: &wgpu::Buffer,
+        logsumexp: &wgpu::Buffer,
         seq_len: u32,
         vocab_size: u32,
         loss_start: u32,
         loss_end: u32,
-    ) -> f32 {
+    ) {
         let params = CEForwardParams { seq_len, vocab_size, loss_start, loss_end };
         let params_buf = self.make_uniform(&params);
-
         let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.forward_bgl,
@@ -169,7 +164,6 @@ impl WgslCrossEntropy {
                 wgpu::BindGroupEntry { binding: 4, resource: params_buf.as_entire_binding() },
             ],
         });
-
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_compute_pass(&Default::default());
@@ -177,14 +171,25 @@ impl WgslCrossEntropy {
             pass.set_bind_group(0, &bg, &[]);
             pass.dispatch_workgroups(seq_len, 1, 1);
         }
+        self.queue.submit(Some(encoder.finish()));
+    }
 
-        // Read back losses to compute average
+    /// Read back loss from GPU (blocks until all prior GPU work completes).
+    /// Call this AFTER backward + LoRA updates to avoid blocking the pipeline.
+    pub fn read_loss(
+        &self,
+        losses: &wgpu::Buffer,
+        seq_len: u32,
+        loss_start: u32,
+        loss_end: u32,
+    ) -> f32 {
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: (seq_len as u64) * 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_buffer_to_buffer(losses, 0, &staging, 0, (seq_len as u64) * 4);
         self.queue.submit(Some(encoder.finish()));
 
@@ -197,15 +202,26 @@ impl WgslCrossEntropy {
         let data = slice.get_mapped_range();
         let loss_data: &[f32] = bytemuck::cast_slice(&data);
         let num_tokens = (loss_end - loss_start) as f32;
-        let avg_loss = if num_tokens > 0.0 {
-            loss_data.iter().sum::<f32>() / num_tokens
-        } else {
-            0.0
-        };
+        let avg = if num_tokens > 0.0 { loss_data.iter().sum::<f32>() / num_tokens } else { 0.0 };
         drop(data);
         staging.unmap();
+        avg
+    }
 
-        avg_loss
+    /// Synchronous forward (legacy — blocks on GPU). Prefer forward_async + read_loss.
+    pub fn forward(
+        &self,
+        logits: &wgpu::Buffer,
+        labels: &wgpu::Buffer,
+        losses: &wgpu::Buffer,
+        logsumexp: &wgpu::Buffer,
+        seq_len: u32,
+        vocab_size: u32,
+        loss_start: u32,
+        loss_end: u32,
+    ) -> f32 {
+        self.forward_async(logits, labels, losses, logsumexp, seq_len, vocab_size, loss_start, loss_end);
+        self.read_loss(losses, seq_len, loss_start, loss_end)
     }
 
     /// Compute backward cross-entropy gradient IN-PLACE into logits buffer.
@@ -213,9 +229,9 @@ impl WgslCrossEntropy {
     /// After this call, logits[i] = (softmax(logits)[i] - one_hot(label)[i]) * scale
     pub fn backward(
         &self,
-        logits: &wgpu::Buffer,     // [seq_len, vocab_size] — overwritten with gradient
-        labels: &wgpu::Buffer,     // [seq_len] u32
-        logsumexp: &wgpu::Buffer,  // [seq_len] from forward
+        logits: &wgpu::Buffer, // [seq_len, vocab_size] — overwritten with gradient
+        labels: &wgpu::Buffer, // [seq_len] u32
+        logsumexp: &wgpu::Buffer, // [seq_len] from forward
         seq_len: u32,
         vocab_size: u32,
         loss_start: u32,
@@ -225,8 +241,14 @@ impl WgslCrossEntropy {
         let scale = 1.0 / num_tokens as f32;
 
         let params = CEBackwardParams {
-            seq_len, vocab_size, loss_start, loss_end, scale,
-            _pad0: 0, _pad1: 0, _pad2: 0,
+            seq_len,
+            vocab_size,
+            loss_start,
+            loss_end,
+            scale,
+            _pad0: 0,
+            _pad1: 0,
+            _pad2: 0,
         };
         let params_buf = self.make_uniform(&params);
 
@@ -300,9 +322,8 @@ mod tests {
         let vocab = 8u32;
 
         // Random logits
-        let logits_data: Vec<f32> = (0..seq_len * vocab)
-            .map(|i| ((i as f32) * 0.3).sin())
-            .collect();
+        let logits_data: Vec<f32> =
+            (0..seq_len * vocab).map(|i| ((i as f32) * 0.3).sin()).collect();
         let labels_data: Vec<u32> = vec![2, 5, 1, 7]; // target tokens
 
         let buf = |data: &[u8], rw: bool| -> wgpu::Buffer {
@@ -325,7 +346,8 @@ mod tests {
         let logsumexp_buf = buf(&vec![0u8; seq_len as usize * 4], true);
 
         // All tokens are response (loss_start=0, loss_end=4)
-        let gpu_loss = ce.forward(&logits, &labels, &losses, &logsumexp_buf, seq_len, vocab, 0, seq_len);
+        let gpu_loss =
+            ce.forward(&logits, &labels, &losses, &logsumexp_buf, seq_len, vocab, 0, seq_len);
 
         // CPU reference
         let mut cpu_loss = 0.0f32;

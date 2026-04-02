@@ -22,14 +22,11 @@ fn main() {
         let num_steps = 10;
 
         // Random input activations [seq_len, hidden]
-        let x_data: Vec<f32> = (0..seq_len * hidden)
-            .map(|i| ((i as f32) * 0.01).sin())
-            .collect();
+        let x_data: Vec<f32> = (0..seq_len * hidden).map(|i| ((i as f32) * 0.01).sin()).collect();
 
         // Frozen base weight [hidden, hidden] (simulates dequantized NF4)
-        let w_data: Vec<f32> = (0..hidden * hidden)
-            .map(|i| ((i as f32) * 0.001).cos() * 0.1)
-            .collect();
+        let w_data: Vec<f32> =
+            (0..hidden * hidden).map(|i| ((i as f32) * 0.001).cos() * 0.1).collect();
 
         // LoRA A [hidden, rank] — Kaiming init
         let lora_a_data: Vec<f32> = (0..hidden * rank)
@@ -40,9 +37,8 @@ fn main() {
         let lora_b_data = vec![0.0f32; (rank * hidden) as usize];
 
         // Target: random labels for cross-entropy-like loss
-        let target_data: Vec<f32> = (0..seq_len * hidden)
-            .map(|i| ((i as f32) * 0.007 + 1.0).sin() * 0.5)
-            .collect();
+        let target_data: Vec<f32> =
+            (0..seq_len * hidden).map(|i| ((i as f32) * 0.007 + 1.0).sin() * 0.5).collect();
 
         // Upload to GPU
         let x = trainer.upload(&x_data);
@@ -66,8 +62,10 @@ fn main() {
         let grad_b = trainer.zeros((rank * hidden) as usize);
 
         println!("[wgpu] Buffers allocated");
-        println!("[wgpu] Training {} steps (hidden={}, seq={}, rank={})...\n",
-            num_steps, hidden, seq_len, rank);
+        println!(
+            "[wgpu] Training {} steps (hidden={}, seq={}, rank={})...\n",
+            num_steps, hidden, seq_len, rank
+        );
 
         let total_start = Instant::now();
 
@@ -109,13 +107,23 @@ fn main() {
             //   grad_xa = grad_output @ B^T  [seq, rank]
             //   grad_B  = xa^T @ grad_output [rank, hidden]
             let grad_xa = trainer.zeros((seq_len * rank) as usize);
-            trainer.matmul_backward(&xa, &lora_b, &grad_buf, &grad_xa, &grad_b, seq_len, rank, hidden);
+            trainer
+                .matmul_backward(&xa, &lora_b, &grad_buf, &grad_xa, &grad_b, seq_len, rank, hidden);
 
             // xa = X @ A, so backward gives:
             //   grad_x = grad_xa @ A^T [seq, hidden] (not needed, base is frozen)
             //   grad_A = X^T @ grad_xa [hidden, rank]
             let grad_x_dummy = trainer.zeros((seq_len * hidden) as usize);
-            trainer.matmul_backward(&x, &lora_a, &grad_xa, &grad_x_dummy, &grad_a, seq_len, hidden, rank);
+            trainer.matmul_backward(
+                &x,
+                &lora_a,
+                &grad_xa,
+                &grad_x_dummy,
+                &grad_a,
+                seq_len,
+                hidden,
+                rank,
+            );
 
             // === OPTIMIZER ===
             trainer.adamw_step(&lora_a, &grad_a, &m_a, &v_a, lr, 0.9, 0.999, 1e-8, 0.01);
@@ -126,8 +134,12 @@ fn main() {
         }
 
         let total_s = total_start.elapsed().as_secs_f64();
-        println!("\n[wgpu] Training complete: {} steps in {:.1}s ({:.0}ms/step)",
-            num_steps, total_s, total_s * 1000.0 / num_steps as f64);
+        println!(
+            "\n[wgpu] Training complete: {} steps in {:.1}s ({:.0}ms/step)",
+            num_steps,
+            total_s,
+            total_s * 1000.0 / num_steps as f64
+        );
 
         // Verify LoRA B is no longer zero
         let final_b = trainer.download(&lora_b);

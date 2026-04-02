@@ -155,10 +155,12 @@ impl WgpuTrainer {
             ..Default::default()
         });
 
-        let adapter = trueno::backends::gpu::runtime::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            ..Default::default()
-        }))
+        let adapter = trueno::backends::gpu::runtime::block_on(instance.request_adapter(
+            &wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                ..Default::default()
+            },
+        ))
         .map_err(|e| CudaTensorError::CudaNotAvailable(format!("No wgpu adapter: {e}")))?;
 
         let (device, queue) = trueno::backends::gpu::runtime::block_on(adapter.request_device(
@@ -166,7 +168,8 @@ impl WgpuTrainer {
                 label: Some("WgpuTrainer"),
                 required_features: wgpu::Features::empty(),
                 required_limits: wgpu::Limits {
-                    max_storage_buffer_binding_size: adapter.limits().max_storage_buffer_binding_size,
+                    max_storage_buffer_binding_size:
+                        adapter.limits().max_storage_buffer_binding_size,
                     max_buffer_size: adapter.limits().max_buffer_size,
                     ..Default::default()
                 },
@@ -298,9 +301,7 @@ impl WgpuTrainer {
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mut encoder = self
-            .device
-            .create_command_encoder(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
         self.queue.submit(Some(encoder.finish()));
 
@@ -309,12 +310,7 @@ impl WgpuTrainer {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             tx.send(r).ok();
         });
-        self.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .ok();
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).ok();
         rx.recv().unwrap().unwrap();
 
         let data = slice.get_mapped_range();
@@ -345,17 +341,20 @@ impl WgpuTrainer {
     /// - ∂L/∂B = A^T @ ∂L/∂C  (shape: K×M @ M×N = K×N)
     pub fn matmul_backward(
         &self,
-        a: &wgpu::Buffer,       // [M, K] input from forward
-        b: &wgpu::Buffer,       // [K, N] weight from forward
-        grad_c: &wgpu::Buffer,  // [M, N] upstream gradient
-        grad_a: &wgpu::Buffer,  // [M, K] output: grad w.r.t. A
-        grad_b: &wgpu::Buffer,  // [K, N] output: grad w.r.t. B
+        a: &wgpu::Buffer,      // [M, K] input from forward
+        b: &wgpu::Buffer,      // [K, N] weight from forward
+        grad_c: &wgpu::Buffer, // [M, N] upstream gradient
+        grad_a: &wgpu::Buffer, // [M, K] output: grad w.r.t. A
+        grad_b: &wgpu::Buffer, // [K, N] output: grad w.r.t. B
         m: u32,
         k: u32,
         n: u32,
     ) {
         // Contract: matmul_backward (backward-pass-v1)
-        debug_assert!(m > 0 && k > 0 && n > 0, "Contract matmul_backward: dimensions must be positive");
+        debug_assert!(
+            m > 0 && k > 0 && n > 0,
+            "Contract matmul_backward: dimensions must be positive"
+        );
         // grad_a[M,K] = grad_c[M,N] @ B^T[N,K]
         // This is a GEMM with (M, N, K) → output is M×K
         // We need B transposed. Since B is stored as [K,N] row-major,
@@ -436,39 +435,21 @@ impl WgpuTrainer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue
-            .write_buffer(&cfg_buf, 0, bytemuck::bytes_of(&cfg));
+        self.queue.write_buffer(&cfg_buf, 0, bytemuck::bytes_of(&cfg));
 
         let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.adamw_bgl,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: params.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: grads.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: m_state.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: v_state.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: cfg_buf.as_entire_binding(),
-                },
+                wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: grads.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: m_state.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: v_state.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: cfg_buf.as_entire_binding() },
             ],
         });
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&self.adamw_pipeline);
@@ -489,39 +470,25 @@ impl WgpuTrainer {
         };
 
         let n = grad_data.len() as u32;
-        let cfg = ClipConfig {
-            scale,
-            n,
-            _pad0: 0,
-            _pad1: 0,
-        };
+        let cfg = ClipConfig { scale, n, _pad0: 0, _pad1: 0 };
         let cfg_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: 16,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue
-            .write_buffer(&cfg_buf, 0, bytemuck::bytes_of(&cfg));
+        self.queue.write_buffer(&cfg_buf, 0, bytemuck::bytes_of(&cfg));
 
         let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.clip_bgl,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: grads.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: cfg_buf.as_entire_binding(),
-                },
+                wgpu::BindGroupEntry { binding: 0, resource: grads.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: cfg_buf.as_entire_binding() },
             ],
         });
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&self.clip_pipeline);
@@ -688,11 +655,8 @@ impl WgpuTrainer {
                 // C is [M, N] row-major. Chunk covers columns [n_start..n_start+chunk_n].
                 let c_chunk_data = self.download(&c_chunk_buf);
                 // Write directly into C buffer at column offsets (per-row write)
-                let mut c_data = if n_start == 0 {
-                    vec![0.0f32; (m * n) as usize]
-                } else {
-                    self.download(c)
-                };
+                let mut c_data =
+                    if n_start == 0 { vec![0.0f32; (m * n) as usize] } else { self.download(c) };
                 for row in 0..m as usize {
                     let dst_start = row * n as usize + n_start as usize;
                     let src_start = row * chunk_n as usize;
@@ -705,47 +669,27 @@ impl WgpuTrainer {
             return;
         }
 
-        let dims = GemmDims {
-            m,
-            k,
-            n,
-            alpha_bits: alpha.to_bits(),
-        };
+        let dims = GemmDims { m, k, n, alpha_bits: alpha.to_bits() };
         let dims_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: 16,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue
-            .write_buffer(&dims_buf, 0, bytemuck::bytes_of(&dims));
+        self.queue.write_buffer(&dims_buf, 0, bytemuck::bytes_of(&dims));
 
         let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.matmul_bgl,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: a.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: b.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: c.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: dims_buf.as_entire_binding(),
-                },
+                wgpu::BindGroupEntry { binding: 0, resource: a.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: b.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: c.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: dims_buf.as_entire_binding() },
             ],
         });
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&self.matmul_pipeline);

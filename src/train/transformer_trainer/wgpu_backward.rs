@@ -12,8 +12,16 @@ use trueno::backends::gpu::GpuDevice;
 /// LoRA A: rank×hidden = 16×2560 = 40K params → ~0.1ms on CPU vs ~50ms GPU dispatch
 #[cfg(feature = "gpu")]
 fn cpu_adamw(
-    params: &mut [f32], grad: &[f32], m: &mut [f32], v: &mut [f32],
-    lr: f32, beta1: f32, beta2: f32, eps: f32, wd: f32, step: u32,
+    params: &mut [f32],
+    grad: &[f32],
+    m: &mut [f32],
+    v: &mut [f32],
+    lr: f32,
+    beta1: f32,
+    beta2: f32,
+    eps: f32,
+    wd: f32,
+    step: u32,
 ) {
     let bc1 = 1.0 / (1.0 - beta1.powi(step as i32));
     let bc2 = 1.0 / (1.0 - beta2.powi(step as i32));
@@ -135,7 +143,8 @@ pub fn backward_through_layers(
         let nh = model.num_heads;
         let nkv = model.num_kv_heads;
         let heads_per_kv = nh / nkv;
-        let (_, _, _, o_w) = model.attn_cache[layer_idx].as_ref()
+        let (_, _, _, o_w) = model.attn_cache[layer_idx]
+            .as_ref()
             .map(|(q, k, v, o)| (q.as_slice(), k.as_slice(), v.as_slice(), o.as_slice()))
             .expect("attn cache");
         // O is transposed [q_dim, h], so grad_hidden[s,h] @ O^T[h,q_dim]... but we need
@@ -166,13 +175,19 @@ pub fn backward_through_layers(
                 for ki in 0..s as usize {
                     let g_pre = act.attn_weights[aw_off + ki] * (grad_scores[ki] - dot_sum) * scale;
                     // grad_q[qi] += g_pre * k[ki]
-                    for d in 0..hd { grad_q[qi * q_dim + head * hd + d] += g_pre * act.k[ki * kv_dim + kv_head * hd + d]; }
+                    for d in 0..hd {
+                        grad_q[qi * q_dim + head * hd + d] +=
+                            g_pre * act.k[ki * kv_dim + kv_head * hd + d];
+                    }
                 }
                 // grad_v[ki] += attn_w[qi,ki] * grad_context[qi]
                 for ki in 0..s as usize {
                     let w = act.attn_weights[aw_off + ki];
                     if w > 0.0 {
-                        for d in 0..hd { grad_v[ki * kv_dim + kv_head * hd + d] += w * grad_context[qi * q_dim + head * hd + d]; }
+                        for d in 0..hd {
+                            grad_v[ki * kv_dim + kv_head * hd + d] +=
+                                w * grad_context[qi * q_dim + head * hd + d];
+                        }
                     }
                 }
             }
@@ -184,27 +199,64 @@ pub fn backward_through_layers(
             let scaling = lora_alpha / rank as f32;
             // dL/dB_q [q_dim, rank] = scaling * grad_q^T[q_dim, s] @ h_cached[s, rank]
             let mut grad_b = vec![0.0f32; q_dim * rank];
-            for qi in 0..q_dim { for ri in 0..rank { let mut sum = 0.0f32;
-                for si in 0..s as usize { sum += grad_q[si * q_dim + qi] * act.lora_q_h[si * rank + ri]; }
-                grad_b[qi * rank + ri] = sum * scaling;
-            }}
+            for qi in 0..q_dim {
+                for ri in 0..rank {
+                    let mut sum = 0.0f32;
+                    for si in 0..s as usize {
+                        sum += grad_q[si * q_dim + qi] * act.lora_q_h[si * rank + ri];
+                    }
+                    grad_b[qi * rank + ri] = sum * scaling;
+                }
+            }
             // dL/dA_q [rank, h] = scaling * (B^T @ grad_q)^T @ x = scaling * grad_q^T @ B → then transpose...
             // Simpler: dL/dA = scaling * sum_s(grad_h_cached[s,rank] outer x[s,h]) where grad_h_cached = grad_q @ B
             let mut grad_h_cached = vec![0.0f32; s as usize * rank];
-            for si in 0..s as usize { for ri in 0..rank { let mut sum = 0.0f32;
-                for qi in 0..q_dim { sum += grad_q[si * q_dim + qi] * model.lora[layer_idx].q.b[qi * rank + ri]; }
-                grad_h_cached[si * rank + ri] = sum * scaling;
-            }}
+            for si in 0..s as usize {
+                for ri in 0..rank {
+                    let mut sum = 0.0f32;
+                    for qi in 0..q_dim {
+                        sum += grad_q[si * q_dim + qi] * model.lora[layer_idx].q.b[qi * rank + ri];
+                    }
+                    grad_h_cached[si * rank + ri] = sum * scaling;
+                }
+            }
             let mut grad_a = vec![0.0f32; rank * h as usize];
-            for ri in 0..rank { for hi in 0..h as usize { let mut sum = 0.0f32;
-                for si in 0..s as usize { sum += grad_h_cached[si * rank + ri] * act.attn_input[si * h as usize + hi]; }
-                grad_a[ri * h as usize + hi] = sum;
-            }}
+            for ri in 0..rank {
+                for hi in 0..h as usize {
+                    let mut sum = 0.0f32;
+                    for si in 0..s as usize {
+                        sum += grad_h_cached[si * rank + ri] * act.attn_input[si * h as usize + hi];
+                    }
+                    grad_a[ri * h as usize + hi] = sum;
+                }
+            }
             total_lora_gnorm += grad_a.iter().map(|g| g * g).sum::<f32>();
             // C-WGPU-LORAPLUS-001: LoRA+ — lr_B = 16 * lr_A (Hayou et al. 2024)
             let lq = &mut model.lora[layer_idx].q;
-            cpu_adamw(&mut lq.a, &grad_a, &mut lq.m_a, &mut lq.v_a, lr, beta1, beta2, eps, weight_decay, step);
-            cpu_adamw(&mut lq.b, &grad_b, &mut lq.m_b, &mut lq.v_b, lr * 16.0, beta1, beta2, eps, weight_decay, step);
+            cpu_adamw(
+                &mut lq.a,
+                &grad_a,
+                &mut lq.m_a,
+                &mut lq.v_a,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            );
+            cpu_adamw(
+                &mut lq.b,
+                &grad_b,
+                &mut lq.m_b,
+                &mut lq.v_b,
+                lr * 16.0,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            );
         }
 
         // 4. LoRA V backward: same pattern with grad_v
@@ -212,24 +264,63 @@ pub fn backward_through_layers(
         if v_rank > 0 {
             let scaling = lora_alpha / v_rank as f32;
             let mut grad_b = vec![0.0f32; kv_dim * v_rank];
-            for vi in 0..kv_dim { for ri in 0..v_rank { let mut sum = 0.0f32;
-                for si in 0..s as usize { sum += grad_v[si * kv_dim + vi] * act.lora_v_h[si * v_rank + ri]; }
-                grad_b[vi * v_rank + ri] = sum * scaling;
-            }}
+            for vi in 0..kv_dim {
+                for ri in 0..v_rank {
+                    let mut sum = 0.0f32;
+                    for si in 0..s as usize {
+                        sum += grad_v[si * kv_dim + vi] * act.lora_v_h[si * v_rank + ri];
+                    }
+                    grad_b[vi * v_rank + ri] = sum * scaling;
+                }
+            }
             let mut grad_h_cached = vec![0.0f32; s as usize * v_rank];
-            for si in 0..s as usize { for ri in 0..v_rank { let mut sum = 0.0f32;
-                for vi in 0..kv_dim { sum += grad_v[si * kv_dim + vi] * model.lora[layer_idx].v.b[vi * v_rank + ri]; }
-                grad_h_cached[si * v_rank + ri] = sum * scaling;
-            }}
+            for si in 0..s as usize {
+                for ri in 0..v_rank {
+                    let mut sum = 0.0f32;
+                    for vi in 0..kv_dim {
+                        sum +=
+                            grad_v[si * kv_dim + vi] * model.lora[layer_idx].v.b[vi * v_rank + ri];
+                    }
+                    grad_h_cached[si * v_rank + ri] = sum * scaling;
+                }
+            }
             let mut grad_a = vec![0.0f32; v_rank * h as usize];
-            for ri in 0..v_rank { for hi in 0..h as usize { let mut sum = 0.0f32;
-                for si in 0..s as usize { sum += grad_h_cached[si * v_rank + ri] * act.attn_input[si * h as usize + hi]; }
-                grad_a[ri * h as usize + hi] = sum;
-            }}
+            for ri in 0..v_rank {
+                for hi in 0..h as usize {
+                    let mut sum = 0.0f32;
+                    for si in 0..s as usize {
+                        sum +=
+                            grad_h_cached[si * v_rank + ri] * act.attn_input[si * h as usize + hi];
+                    }
+                    grad_a[ri * h as usize + hi] = sum;
+                }
+            }
             total_lora_gnorm += grad_a.iter().map(|g| g * g).sum::<f32>();
             let lv = &mut model.lora[layer_idx].v;
-            cpu_adamw(&mut lv.a, &grad_a, &mut lv.m_a, &mut lv.v_a, lr, beta1, beta2, eps, weight_decay, step);
-            cpu_adamw(&mut lv.b, &grad_b, &mut lv.m_b, &mut lv.v_b, lr * 16.0, beta1, beta2, eps, weight_decay, step);
+            cpu_adamw(
+                &mut lv.a,
+                &grad_a,
+                &mut lv.m_a,
+                &mut lv.v_a,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            );
+            cpu_adamw(
+                &mut lv.b,
+                &grad_b,
+                &mut lv.m_b,
+                &mut lv.v_b,
+                lr * 16.0,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+            );
         }
     }
 
@@ -255,7 +346,13 @@ mod tests {
 
         let mut model = super::super::wgpu_trainer::WgpuModelState {
             layers: vec![],
-            lora: (0..n_layers).map(|_| crate::train::transformer_trainer::wgpu_checkpoint::LoraLayerSet::new(rank, h, h, h, i_size)).collect(),
+            lora: (0..n_layers)
+                .map(|_| {
+                    crate::train::transformer_trainer::wgpu_checkpoint::LoraLayerSet::new(
+                        rank, h, h, h, i_size,
+                    )
+                })
+                .collect(),
             lm_head: vec![0.0f32; 32 * h as usize],
             lm_head_m: vec![0.0f32; 32 * h as usize],
             lm_head_v: vec![0.0f32; 32 * h as usize],

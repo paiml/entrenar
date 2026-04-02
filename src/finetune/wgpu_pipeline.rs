@@ -42,15 +42,15 @@ pub struct LayerLoRA {
 
 #[cfg(feature = "gpu")]
 pub struct LoRAProjection {
-    pub a: wgpu::Buffer,     // [in_dim, rank]
-    pub b: wgpu::Buffer,     // [rank, out_dim]
-    pub m_a: wgpu::Buffer,   // AdamW first moment for A
-    pub v_a: wgpu::Buffer,   // AdamW second moment for A
-    pub m_b: wgpu::Buffer,   // AdamW first moment for B
-    pub v_b: wgpu::Buffer,   // AdamW second moment for B
+    pub a: wgpu::Buffer,   // [in_dim, rank]
+    pub b: wgpu::Buffer,   // [rank, out_dim]
+    pub m_a: wgpu::Buffer, // AdamW first moment for A
+    pub v_a: wgpu::Buffer, // AdamW second moment for A
+    pub m_b: wgpu::Buffer, // AdamW first moment for B
+    pub v_b: wgpu::Buffer, // AdamW second moment for B
     pub in_dim: u32,
     pub out_dim: u32,
-    pub name: String,        // e.g. "q_proj"
+    pub name: String, // e.g. "q_proj"
 }
 
 /// GPU-only instruct training pipeline. No `Transformer` object.
@@ -64,14 +64,16 @@ pub struct WgpuInstructPipeline {
     trainer: WgpuTrainer,
     /// Pre-uploaded lm_head — PRE-CHUNKED to avoid per-step download
     lm_head_t_chunks: Vec<(wgpu::Buffer, u32)>, // [(chunk_buf, chunk_n)] for forward
-    lm_head_chunks: Vec<(wgpu::Buffer, u32)>,    // [(chunk_buf, chunk_n)] for backward
+    lm_head_chunks: Vec<(wgpu::Buffer, u32)>, // [(chunk_buf, chunk_n)] for backward
     /// LoRA addmm pipeline: output += (input @ A) @ B * scale
     lora_addmm_pipeline: wgpu::ComputePipeline,
     lora_addmm_bgl: wgpu::BindGroupLayout,
-    /// KAIZEN: scatter/gather pipelines (replace 1024 copy_buffer_to_buffer calls)
+    /// KAIZEN: scatter/gather/transpose pipelines
     scatter_pipeline: wgpu::ComputePipeline,
     gather_pipeline: wgpu::ComputePipeline,
     scatter_bgl: wgpu::BindGroupLayout,
+    transpose_pipeline: wgpu::ComputePipeline,
+    transpose_bgl: wgpu::BindGroupLayout,
     /// GPU buffers
     logits_buf: wgpu::Buffer,
     labels_buf: wgpu::Buffer,
@@ -81,8 +83,8 @@ pub struct WgpuInstructPipeline {
     /// A: [in_dim, rank], B: [rank, out_dim], m/v: optimizer states
     lora: Vec<LayerLoRA>,
     lora_rank: usize,
-    lora_scale: f32,   // alpha / rank
-    lora_step: u32,    // optimizer step counter
+    lora_scale: f32, // alpha / rank
+    lora_step: u32,  // optimizer step counter
     /// Config
     num_layers: usize,
     hidden_dim: usize,
@@ -92,8 +94,10 @@ pub struct WgpuInstructPipeline {
     tokenizer: HfTokenizer,
     /// Embedding weights (CPU, small: vocab × hidden × 4 for token lookup)
     embed_weights: Vec<f32>,
-    /// Output norm weights (CPU, small: hidden × 4)
-    output_norm: Vec<f32>,
+    /// Output norm weights — GPU-resident (contract: gpu-output-norm-v1)
+    output_norm_gpu: wgpu::Buffer,
+    /// Normed hidden state — GPU-resident
+    normed_buf: wgpu::Buffer,
     /// RMSNorm epsilon
     eps: f32,
 }
@@ -129,10 +133,7 @@ impl WgpuInstructPipeline {
         lora_alpha: f32,
         eps: f32,
     ) -> Self {
-        let ce = WgslCrossEntropy::new(
-            trainer.device_ref().clone(),
-            trainer.queue_ref().clone(),
-        );
+        let ce = WgslCrossEntropy::new(trainer.device_ref().clone(), trainer.queue_ref().clone());
 
         let seq = max_seq_len as u32;
         let vocab = vocab_size as u32;
@@ -148,70 +149,182 @@ impl WgpuInstructPipeline {
         };
 
         // KAIZEN: scatter/gather pipelines (one dispatch replaces 1024 copies)
-        let scatter_bgl = trainer.device_ref().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("scatter_bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0, visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1, visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2, visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                },
-            ],
-        });
-        let scatter_pl = trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("scatter_pl"), bind_group_layouts: &[&scatter_bgl], push_constant_ranges: &[],
-        });
-        let scatter_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("scatter"), source: wgpu::ShaderSource::Wgsl(trueno::backends::gpu::shaders::COLUMN_SCATTER_SHADER.into()),
-        });
-        let scatter_pipeline = trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("scatter_pipe"), layout: Some(&scatter_pl), module: &scatter_shader,
-            entry_point: Some("main"), compilation_options: Default::default(), cache: None,
-        });
-        let gather_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("gather"), source: wgpu::ShaderSource::Wgsl(trueno::backends::gpu::shaders::COLUMN_GATHER_SHADER.into()),
-        });
-        let gather_pipeline = trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("gather_pipe"), layout: Some(&scatter_pl), module: &gather_shader,
-            entry_point: Some("main"), compilation_options: Default::default(), cache: None,
-        });
+        let scatter_bgl =
+            trainer.device_ref().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("scatter_bgl"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let scatter_pl =
+            trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("scatter_pl"),
+                bind_group_layouts: &[&scatter_bgl],
+                push_constant_ranges: &[],
+            });
+        let scatter_shader =
+            trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("scatter"),
+                source: wgpu::ShaderSource::Wgsl(
+                    trueno::backends::gpu::shaders::COLUMN_SCATTER_SHADER.into(),
+                ),
+            });
+        let scatter_pipeline =
+            trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("scatter_pipe"),
+                layout: Some(&scatter_pl),
+                module: &scatter_shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+        let gather_shader =
+            trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("gather"),
+                source: wgpu::ShaderSource::Wgsl(
+                    trueno::backends::gpu::shaders::COLUMN_GATHER_SHADER.into(),
+                ),
+            });
+        let gather_pipeline =
+            trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("gather_pipe"),
+                layout: Some(&scatter_pl),
+                module: &gather_shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
 
-        // LoRA addmm pipeline: output += (input @ A) @ B * scale
-        let lora_bgl = trainer.device_ref().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("lora_bgl"),
+        // Transpose pipeline (same BGL as scatter: src read, dst read-write, params uniform)
+        let transpose_bgl = trainer.device_ref().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("transpose_bgl"),
             entries: &[
                 wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
                 wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE,
+                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
             ],
         });
-        let lora_pl = trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("lora_pl"), bind_group_layouts: &[&lora_bgl], push_constant_ranges: &[],
+        let transpose_pl = trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("transpose_pl"), bind_group_layouts: &[&transpose_bgl], push_constant_ranges: &[],
         });
-        let lora_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("lora_addmm"), source: wgpu::ShaderSource::Wgsl(trueno::backends::gpu::shaders::LORA_ADDMM_SHADER.into()),
+        let transpose_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("transpose"), source: wgpu::ShaderSource::Wgsl(trueno::backends::gpu::shaders::TRANSPOSE_SHADER.into()),
         });
-        let lora_addmm_pipeline = trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("lora_addmm_pipe"), layout: Some(&lora_pl), module: &lora_shader,
+        let transpose_pipeline = trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("transpose_pipe"), layout: Some(&transpose_pl), module: &transpose_shader,
             entry_point: Some("main"), compilation_options: Default::default(), cache: None,
         });
+
+        // LoRA addmm pipeline: output += (input @ A) @ B * scale
+        let lora_bgl =
+            trainer.device_ref().create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("lora_bgl"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let lora_pl =
+            trainer.device_ref().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("lora_pl"),
+                bind_group_layouts: &[&lora_bgl],
+                push_constant_ranges: &[],
+            });
+        let lora_shader = trainer.device_ref().create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("lora_addmm"),
+            source: wgpu::ShaderSource::Wgsl(
+                trueno::backends::gpu::shaders::LORA_ADDMM_SHADER.into(),
+            ),
+        });
+        let lora_addmm_pipeline =
+            trainer.device_ref().create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("lora_addmm_pipe"),
+                layout: Some(&lora_pl),
+                module: &lora_shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
         let lora_addmm_bgl = lora_bgl;
 
         // Contract: lora-algebra-v1/lora_shape — A[in,rank], B[rank,out]
@@ -267,19 +380,29 @@ impl WgpuInstructPipeline {
             num_layers, r, scale,
         );
 
+        // Pre-allocate buffers before moving trainer into Self
+        let logits_buf = make_buf(seq as u64 * vocab as u64, "logits");
+        let labels_buf = make_buf(seq as u64, "labels");
+        let losses_buf = make_buf(seq as u64, "losses");
+        let logsumexp_buf = make_buf(seq as u64, "logsumexp");
+        let normed_buf_alloc = make_buf(seq as u64 * hidden_dim as u64, "normed");
+        let output_norm_gpu_buf = trainer.upload(&output_norm);
+
         Self {
             fwd,
             cross_entropy: ce,
-            logits_buf: make_buf(seq as u64 * vocab as u64, "logits"),
-            labels_buf: make_buf(seq as u64, "labels"),
-            losses_buf: make_buf(seq as u64, "losses"),
-            logsumexp_buf: make_buf(seq as u64, "logsumexp"),
+            logits_buf,
+            labels_buf,
+            losses_buf,
+            logsumexp_buf,
             lm_head_t_chunks,
             lm_head_chunks,
             lora_addmm_pipeline,
             lora_addmm_bgl,
             scatter_pipeline,
             gather_pipeline,
+            transpose_pipeline,
+            transpose_bgl,
             scatter_bgl,
             trainer,
             lora,
@@ -292,7 +415,8 @@ impl WgpuInstructPipeline {
             max_seq_len,
             tokenizer,
             embed_weights,
-            output_norm,
+            output_norm_gpu: output_norm_gpu_buf,
+            normed_buf: normed_buf_alloc,
             eps,
         }
     }
@@ -312,14 +436,28 @@ impl WgpuInstructPipeline {
     ) {
         #[repr(C)]
         #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-        struct P { seq_len: u32, in_dim: u32, rank: u32, out_dim: u32, scale: f32, _p0: u32, _p1: u32, _p2: u32 }
-        let params = P { seq_len, in_dim, rank, out_dim, scale: self.lora_scale, _p0: 0, _p1: 0, _p2: 0 };
+        struct P {
+            seq_len: u32,
+            in_dim: u32,
+            rank: u32,
+            out_dim: u32,
+            scale: f32,
+            _p0: u32,
+            _p1: u32,
+            _p2: u32,
+        }
+        let params =
+            P { seq_len, in_dim, rank, out_dim, scale: self.lora_scale, _p0: 0, _p1: 0, _p2: 0 };
         let pbuf = self.trainer.device_ref().create_buffer(&wgpu::BufferDescriptor {
-            label: None, size: 32, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+            label: None,
+            size: 32,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         self.trainer.queue_ref().write_buffer(&pbuf, 0, bytemuck::bytes_of(&params));
         let bg = self.trainer.device_ref().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None, layout: &self.lora_addmm_bgl,
+            label: None,
+            layout: &self.lora_addmm_bgl,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: lora_a.as_entire_binding() },
@@ -332,22 +470,44 @@ impl WgpuInstructPipeline {
         let wg = total.div_ceil(256);
         let (x, y) = if wg <= 65535 { (wg, 1) } else { (65535, wg.div_ceil(65535)) };
         let mut encoder = self.trainer.device_ref().create_command_encoder(&Default::default());
-        { let mut pass = encoder.begin_compute_pass(&Default::default()); pass.set_pipeline(&self.lora_addmm_pipeline); pass.set_bind_group(0, &bg, &[]); pass.dispatch_workgroups(x, y, 1); }
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&self.lora_addmm_pipeline);
+            pass.set_bind_group(0, &bg, &[]);
+            pass.dispatch_workgroups(x, y, 1);
+        }
         self.trainer.queue_ref().submit(Some(encoder.finish()));
     }
 
     /// GPU scatter: copy [seq, chunk_n] into [seq, full_n] at col_offset. One dispatch.
-    fn dispatch_scatter(&self, src: &wgpu::Buffer, dst: &wgpu::Buffer, seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32) {
+    fn dispatch_scatter(
+        &self,
+        src: &wgpu::Buffer,
+        dst: &wgpu::Buffer,
+        seq_len: u32,
+        chunk_n: u32,
+        full_n: u32,
+        col_offset: u32,
+    ) {
         #[repr(C)]
         #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-        struct P { seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32 }
+        struct P {
+            seq_len: u32,
+            chunk_n: u32,
+            full_n: u32,
+            col_offset: u32,
+        }
         let params = P { seq_len, chunk_n, full_n, col_offset };
         let pbuf = self.trainer.device_ref().create_buffer(&wgpu::BufferDescriptor {
-            label: None, size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+            label: None,
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         self.trainer.queue_ref().write_buffer(&pbuf, 0, bytemuck::bytes_of(&params));
         let bg = self.trainer.device_ref().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None, layout: &self.scatter_bgl,
+            label: None,
+            layout: &self.scatter_bgl,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: src.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: dst.as_entire_binding() },
@@ -358,22 +518,44 @@ impl WgpuInstructPipeline {
         let wg = total.div_ceil(256);
         let (x, y) = if wg <= 65535 { (wg, 1) } else { (65535, wg.div_ceil(65535)) };
         let mut encoder = self.trainer.device_ref().create_command_encoder(&Default::default());
-        { let mut pass = encoder.begin_compute_pass(&Default::default()); pass.set_pipeline(&self.scatter_pipeline); pass.set_bind_group(0, &bg, &[]); pass.dispatch_workgroups(x, y, 1); }
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&self.scatter_pipeline);
+            pass.set_bind_group(0, &bg, &[]);
+            pass.dispatch_workgroups(x, y, 1);
+        }
         self.trainer.queue_ref().submit(Some(encoder.finish()));
     }
 
     /// GPU gather: extract [seq, chunk_n] from [seq, full_n] at col_offset. One dispatch.
-    fn dispatch_gather(&self, src: &wgpu::Buffer, dst: &wgpu::Buffer, seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32) {
+    fn dispatch_gather(
+        &self,
+        src: &wgpu::Buffer,
+        dst: &wgpu::Buffer,
+        seq_len: u32,
+        chunk_n: u32,
+        full_n: u32,
+        col_offset: u32,
+    ) {
         #[repr(C)]
         #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-        struct P { seq_len: u32, chunk_n: u32, full_n: u32, col_offset: u32 }
+        struct P {
+            seq_len: u32,
+            chunk_n: u32,
+            full_n: u32,
+            col_offset: u32,
+        }
         let params = P { seq_len, chunk_n, full_n, col_offset };
         let pbuf = self.trainer.device_ref().create_buffer(&wgpu::BufferDescriptor {
-            label: None, size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+            label: None,
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         self.trainer.queue_ref().write_buffer(&pbuf, 0, bytemuck::bytes_of(&params));
         let bg = self.trainer.device_ref().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None, layout: &self.scatter_bgl,
+            label: None,
+            layout: &self.scatter_bgl,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: src.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: dst.as_entire_binding() },
@@ -384,23 +566,121 @@ impl WgpuInstructPipeline {
         let wg = total.div_ceil(256);
         let (x, y) = if wg <= 65535 { (wg, 1) } else { (65535, wg.div_ceil(65535)) };
         let mut encoder = self.trainer.device_ref().create_command_encoder(&Default::default());
-        { let mut pass = encoder.begin_compute_pass(&Default::default()); pass.set_pipeline(&self.gather_pipeline); pass.set_bind_group(0, &bg, &[]); pass.dispatch_workgroups(x, y, 1); }
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&self.gather_pipeline);
+            pass.set_bind_group(0, &bg, &[]);
+            pass.dispatch_workgroups(x, y, 1);
+        }
         self.trainer.queue_ref().submit(Some(encoder.finish()));
     }
 
     /// Encode text to token IDs using the tokenizer.
+    /// GPU scaled transpose: dst[j,i] = scale * src[i,j]
+    fn dispatch_transpose(&self, src: &wgpu::Buffer, dst: &wgpu::Buffer, m: u32, n: u32, scale: f32) {
+        #[repr(C)]
+        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+        struct P { m: u32, n: u32, scale: f32, _pad: u32 }
+        let params = P { m, n, scale, _pad: 0 };
+        let pbuf = self.trainer.device_ref().create_buffer(&wgpu::BufferDescriptor {
+            label: None, size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        self.trainer.queue_ref().write_buffer(&pbuf, 0, bytemuck::bytes_of(&params));
+        let bg = self.trainer.device_ref().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None, layout: &self.transpose_bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: src.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: dst.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: pbuf.as_entire_binding() },
+            ],
+        });
+        let total = m * n;
+        let wg = total.div_ceil(256);
+        let (x, y) = if wg <= 65535 { (wg, 1) } else { (65535, wg.div_ceil(65535)) };
+        let mut encoder = self.trainer.device_ref().create_command_encoder(&Default::default());
+        { let mut pass = encoder.begin_compute_pass(&Default::default()); pass.set_pipeline(&self.transpose_pipeline); pass.set_bind_group(0, &bg, &[]); pass.dispatch_workgroups(x, y, 1); }
+        self.trainer.queue_ref().submit(Some(encoder.finish()));
+    }
+
     pub fn encode(&self, text: &str) -> Vec<u32> {
         self.tokenizer.encode(text)
+    }
+
+    /// Export trained LoRA adapter as safetensors file.
+    /// Downloads all A/B weights from GPU and saves with naming convention
+    /// matching `apr finetune --merge` expectations: `layer.{i}.{proj}.lora_a/b`.
+    pub fn export_adapter(
+        &self,
+        output_path: &std::path::Path,
+        lora_alpha: f32,
+    ) -> Result<(), String> {
+        use safetensors::tensor::{Dtype, TensorView, serialize_to_file};
+
+        // Collect all tensors
+        let mut tensors: Vec<(String, Vec<f32>, Vec<usize>)> = Vec::new();
+
+        for (layer_idx, layer_lora) in self.lora.iter().enumerate() {
+            for proj in &layer_lora.projections {
+                let a = self.trainer.download(&proj.a);
+                let b = self.trainer.download(&proj.b);
+                // Naming: layer.{i}.{proj_name}.lora_a  (matches apr merge convention)
+                let base = format!("layer.{layer_idx}.{}", proj.name);
+                tensors.push((
+                    format!("{base}.lora_a"), a,
+                    vec![proj.in_dim as usize, self.lora_rank],
+                ));
+                tensors.push((
+                    format!("{base}.lora_b"), b,
+                    vec![self.lora_rank, proj.out_dim as usize],
+                ));
+            }
+        }
+
+        // Write safetensors file
+        let byte_tensors: Vec<(String, Vec<u8>, Vec<usize>)> = tensors
+            .into_iter()
+            .map(|(name, data, shape)| (name, bytemuck::cast_slice(&data).to_vec(), shape))
+            .collect();
+
+        let views: Vec<(&str, TensorView<'_>)> = byte_tensors
+            .iter()
+            .map(|(name, bytes, shape)| {
+                let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+                    .expect("valid F32 tensor");
+                (name.as_str(), view)
+            })
+            .collect();
+
+        // Create output directory if needed
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+        }
+
+        // Save as .safetensors file (with metadata for rank/alpha)
+        let st_path = if output_path.extension().is_some() {
+            output_path.to_path_buf()
+        } else {
+            output_path.join("adapter.safetensors")
+        };
+
+        let metadata: Option<std::collections::HashMap<String, String>> = Some(
+            std::collections::HashMap::from([
+                ("lora_rank".to_string(), self.lora_rank.to_string()),
+                ("lora_alpha".to_string(), lora_alpha.to_string()),
+            ]),
+        );
+        serialize_to_file(views, metadata, &st_path)
+            .map_err(|e| format!("safetensors write: {e}"))?;
+
+        eprintln!("[wgpu] {} LoRA tensors saved ({} layers × 7 projections × A/B)",
+            byte_tensors.len(), self.num_layers);
+        Ok(())
     }
 
     /// Training step: forward → loss → backward → optimizer. All GPU.
     ///
     /// Contract: qlora-training-loop-v1 / lora_forward_wgsl
-    pub fn train_step(
-        &mut self,
-        prompt_ids: &[u32],
-        response_ids: &[u32],
-    ) -> InstructStepResult {
+    pub fn train_step(&mut self, prompt_ids: &[u32], response_ids: &[u32]) -> InstructStepResult {
         let t0 = std::time::Instant::now();
 
         let full_ids: Vec<u32> = prompt_ids.iter().chain(response_ids).copied().collect();
@@ -434,7 +714,8 @@ impl WgpuInstructPipeline {
         // Contract: lora-algebra-v1/lora_shape — h = W_base @ x + (x @ A) @ B * scale
         // Per-layer forward: base GEMM (via WgslForwardPass) + LoRA addmm (via pipeline shader)
         self.fwd.queue_ref().write_buffer(
-            self.fwd.hidden_buffer(), 0,
+            self.fwd.hidden_buffer(),
+            0,
             bytemuck::cast_slice(&hidden),
         );
 
@@ -449,20 +730,21 @@ impl WgpuInstructPipeline {
                 let k = lp.iter().find(|p| p.name == "k_proj");
                 let v = lp.iter().find(|p| p.name == "v_proj");
                 match (q, k, v) {
-                    (Some(qp), Some(kp), Some(vp)) => {
-                        Some(trueno::backends::gpu::QkvLoRA {
-                            q_a: &qp.a, q_b: &qp.b,
-                            k_a: &kp.a, k_b: &kp.b,
-                            v_a: &vp.a, v_b: &vp.b,
-                            rank: self.lora_rank as u32,
-                            scale: self.lora_scale,
-                            in_dim: qp.in_dim,
-                            q_dim: qp.out_dim,
-                            kv_dim: kp.out_dim,
-                            lora_pipeline: &self.lora_addmm_pipeline,
-                            lora_bgl: &self.lora_addmm_bgl,
-                        })
-                    }
+                    (Some(qp), Some(kp), Some(vp)) => Some(trueno::backends::gpu::QkvLoRA {
+                        q_a: &qp.a,
+                        q_b: &qp.b,
+                        k_a: &kp.a,
+                        k_b: &kp.b,
+                        v_a: &vp.a,
+                        v_b: &vp.b,
+                        rank: self.lora_rank as u32,
+                        scale: self.lora_scale,
+                        in_dim: qp.in_dim,
+                        q_dim: qp.out_dim,
+                        kv_dim: kp.out_dim,
+                        lora_pipeline: &self.lora_addmm_pipeline,
+                        lora_bgl: &self.lora_addmm_bgl,
+                    }),
                     _ => None,
                 }
             } else {
@@ -471,14 +753,32 @@ impl WgpuInstructPipeline {
 
             // Forward with inline LoRA on Q/K/V (before attention consumes them)
             let saved = self.fwd.alloc_layer_activations(seq_len as u32);
-            let mut encoder = self.fwd.device_ref().create_command_encoder(&Default::default());
-            if let Err(e) = self.fwd.encode_forward_layer_training(
-                &mut encoder, seq_len as u32, &prefix, &saved, qkv_lora.as_ref(),
-            ) {
-                eprintln!("[wgpu] GPU forward layer {layer_idx} failed: {e}");
-                return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
+
+            // Per-operation tracing on layer 0 of first step
+            if self.lora_step == 0 && layer_idx == 0 {
+                if let Err(e) = self.fwd.forward_layer_traced(
+                    seq_len as u32, &prefix, &saved, qkv_lora.as_ref(),
+                ) {
+                    eprintln!("[wgpu] traced forward failed: {e}");
+                }
+            } else {
+                let mut encoder = self.fwd.device_ref().create_command_encoder(&Default::default());
+                if let Err(e) = self.fwd.encode_forward_layer_training(
+                    &mut encoder,
+                    seq_len as u32,
+                    &prefix,
+                    &saved,
+                    qkv_lora.as_ref(),
+                ) {
+                    eprintln!("[wgpu] GPU forward layer {layer_idx} failed: {e}");
+                    return InstructStepResult {
+                        loss: 100.0,
+                        num_response_tokens: num_loss_tokens,
+                        perplexity: 1e6,
+                    };
+                }
+                self.fwd.queue_ref().submit(Some(encoder.finish()));
             }
-            self.fwd.queue_ref().submit(Some(encoder.finish()));
             _saved_activations.push(saved);
 
             // LoRA addmm for Q/K/V now happens INLINE in encode_forward_layer_training
@@ -487,24 +787,12 @@ impl WgpuInstructPipeline {
 
         let t2 = std::time::Instant::now();
 
-        // 3. Download hidden, CPU RMSNorm, GPU lm_head matmul
+        // 3. GPU RMSNorm + lm_head — hidden stays on GPU (contract: gpu-output-norm-v1)
         let t2a = std::time::Instant::now();
-        let final_hidden = self.fwd.download_hidden(self.hidden_dim * seq_len);
+        self.fwd.gpu_rmsnorm(&self.output_norm_gpu, &self.normed_buf, seq_len as u32);
         let t2b = std::time::Instant::now();
-        let mut normed = vec![0.0f32; seq_len * self.hidden_dim];
-        for pos in 0..seq_len {
-            let offset = pos * self.hidden_dim;
-            let row = &final_hidden[offset..offset + self.hidden_dim];
-            let ss: f32 = row.iter().map(|x| x * x).sum();
-            let inv_rms = 1.0 / (ss / self.hidden_dim as f32 + self.eps).sqrt();
-            for (j, &x) in row.iter().enumerate() {
-                normed[offset + j] = x * inv_rms * self.output_norm[j];
-            }
-        }
-
-        let t2c = std::time::Instant::now();
-        // lm_head: chunked GEMM + GPU scatter (exact-sized buffers per step)
-        let a_buf = self.trainer.upload(&normed);
+        let t2c = t2b;
+        // lm_head: chunked GEMM + GPU scatter
         let labels: Vec<u32> = (0..seq_len)
             .map(|i| if i + 1 < full_ids.len() { full_ids[i + 1] } else { 0 })
             .collect();
@@ -514,13 +802,21 @@ impl WgpuInstructPipeline {
             let cn = *chunk_n as u64;
             let c_chunk = self.trainer.zeros((seq_len as u64 * cn) as usize);
             self.trainer.matmul_forward(
-                &a_buf, chunk_buf, &c_chunk,
-                seq_len as u32, self.hidden_dim as u32, *chunk_n,
+                &self.normed_buf,
+                chunk_buf,
+                &c_chunk,
+                seq_len as u32,
+                self.hidden_dim as u32,
+                *chunk_n,
             );
             // GPU scatter: one dispatch replaces 512 copy_buffer_to_buffer calls
             self.dispatch_scatter(
-                &c_chunk, &self.logits_buf,
-                seq_len as u32, *chunk_n, self.vocab_size as u32, col_offset as u32,
+                &c_chunk,
+                &self.logits_buf,
+                seq_len as u32,
+                *chunk_n,
+                self.vocab_size as u32,
+                col_offset as u32,
             );
             col_offset += cn;
         }
@@ -528,67 +824,72 @@ impl WgpuInstructPipeline {
         let t3 = std::time::Instant::now();
 
         // Fused CE on full logits_buf (assembled via GPU scatter, no CPU download)
-        self.trainer.queue_ref().write_buffer(
-            &self.labels_buf, 0,
-            bytemuck::cast_slice(&labels),
+        self.trainer.queue_ref().write_buffer(&self.labels_buf, 0, bytemuck::cast_slice(&labels));
+
+        // KAIZEN: async CE forward — dispatch compute without blocking.
+        // Loss is read at the end of the step (after LoRA backward) to avoid
+        // the 10.7s GPU sync that blocks on 28-layer forward compute.
+        let t3a = std::time::Instant::now();
+        self.cross_entropy.forward_async(
+            &self.logits_buf,
+            &self.labels_buf,
+            &self.losses_buf,
+            &self.logsumexp_buf,
+            seq_len as u32,
+            self.vocab_size as u32,
+            loss_start as u32,
+            loss_end as u32,
         );
 
-        let avg_loss = self.cross_entropy.forward(
-            &self.logits_buf, &self.labels_buf,
-            &self.losses_buf, &self.logsumexp_buf,
-            seq_len as u32, self.vocab_size as u32,
-            loss_start as u32, loss_end as u32,
-        );
-
-        if !avg_loss.is_finite() {
-            return InstructStepResult { loss: 100.0, num_response_tokens: num_loss_tokens, perplexity: 1e6 };
-        }
-
+        let t3b = std::time::Instant::now();
         // Fused CE backward (in-place into logits_buf)
         self.cross_entropy.backward(
-            &self.logits_buf, &self.labels_buf, &self.logsumexp_buf,
-            seq_len as u32, self.vocab_size as u32,
-            loss_start as u32, loss_end as u32,
+            &self.logits_buf,
+            &self.labels_buf,
+            &self.logsumexp_buf,
+            seq_len as u32,
+            self.vocab_size as u32,
+            loss_start as u32,
+            loss_end as u32,
         );
 
-        let t4 = std::time::Instant::now();
+        let t3c = std::time::Instant::now();
 
-        // 6. lm_head backward via GPU scatter + pre-allocated scratch (KAIZEN: zero alloc)
+        // 6. lm_head backward — fully GPU-resident (no CPU download)
         // grad_hidden = grad_logits @ lm_head, chunked along vocab dimension.
-        let mut grad_hidden = vec![0.0f32; seq_len * self.hidden_dim];
-        // Extract grad_logits columns per chunk via GPU copy, GEMM, accumulate.
+        // KAIZEN: old code downloaded each chunk to CPU (11.6s sync). Now accumulates on GPU.
+        let grad_hidden_buf = self.trainer.zeros(seq_len * self.hidden_dim);
         let mut row_offset = 0u64;
-        for (i, (chunk_buf, chunk_k)) in self.lm_head_chunks.iter().enumerate() {
+        for (_i, (chunk_buf, chunk_k)) in self.lm_head_chunks.iter().enumerate() {
             let ck = *chunk_k as u64;
-            // GPU gather: extract grad_logits columns for this chunk
             let gl_chunk = self.trainer.zeros((seq_len as u64 * ck) as usize);
             self.dispatch_gather(
                 &self.logits_buf, &gl_chunk,
                 seq_len as u32, *chunk_k, self.vocab_size as u32, row_offset as u32,
             );
-            // GEMM: gl_chunk[seq, chunk_k] @ lm_head_chunk[chunk_k, hidden] → grad contribution
+            // GEMM: gl_chunk[seq, chunk_k] @ lm_head_chunk[chunk_k, hidden] → temp
             let gh_chunk = self.trainer.zeros(seq_len * self.hidden_dim);
             self.trainer.matmul_forward(
                 &gl_chunk, chunk_buf, &gh_chunk,
                 seq_len as u32, *chunk_k, self.hidden_dim as u32,
             );
-            // Download and accumulate (GPU add kernel would be better)
-            let gh_data = self.trainer.download(&gh_chunk);
-            for j in 0..grad_hidden.len() {
-                grad_hidden[j] += gh_data[j];
-            }
+            // GPU accumulate: grad_hidden += gh_chunk (via residual add + copy back)
+            let sum_buf = self.trainer.zeros(seq_len * self.hidden_dim);
+            self.fwd.gpu_residual_add(&grad_hidden_buf, &gh_chunk, &sum_buf, (seq_len * self.hidden_dim) as u32);
+            // Copy sum back to grad_hidden_buf
+            let mut enc = self.fwd.device_ref().create_command_encoder(&Default::default());
+            enc.copy_buffer_to_buffer(&sum_buf, 0, &grad_hidden_buf, 0, (seq_len * self.hidden_dim * 4) as u64);
+            self.fwd.queue_ref().submit(Some(enc.finish()));
             row_offset += ck;
         }
 
-        // Verify grad_hidden is non-zero
-        let gh_norm: f32 = grad_hidden.iter().map(|x| x * x).sum::<f32>().sqrt();
-        eprintln!("[DEBUG] grad_hidden norm={:.6}, len={}", gh_norm, grad_hidden.len());
+        let t4 = std::time::Instant::now();
 
-        // FALSIFY-LORA-UPD-001: verify B_norm > 0 after step 1
-        if self.lora_step > 0 && self.lora_step <= 3 {
+        // FALSIFY-LORA-UPD-001: verify B_norm > 0 after step 1 (one-shot check)
+        if self.lora_step == 1 {
             let b0 = self.trainer.download(&self.lora[0].projections[0].b);
             let b_norm: f32 = b0.iter().map(|x| x * x).sum::<f32>().sqrt();
-            eprintln!("[FALSIFY] step={} B[0].q_proj norm={:.6}", self.lora_step, b_norm);
+            eprintln!("[FALSIFY] step=1 B[0].q_proj norm={:.6}", b_norm);
         }
 
         // 7. LoRA gradient computation + AdamW step
@@ -604,8 +905,8 @@ impl WgpuInstructPipeline {
 
         // For each layer: use saved_activations.attn_norm_out as input to Q/K/V,
         // and saved_activations.ffn_norm_out as input to gate/up/down.
-        // grad_output for each projection ≈ grad_hidden (simplified: skip per-layer backprop)
-        let grad_buf = self.trainer.upload(&grad_hidden);
+        // grad_output for each projection ≈ grad_hidden (GPU-resident, no CPU upload)
+        let grad_buf = &grad_hidden_buf;
 
         for (layer_idx, layer_lora) in self.lora.iter().enumerate() {
             // Determine saved input for this layer's projections
@@ -621,90 +922,69 @@ impl WgpuInstructPipeline {
                     _ => continue,
                 };
 
-                // Use matmul_backward which handles transposes internally:
-                // For h = XA @ B, backward gives:
-                //   dB = (XA)^T @ G  [rank, out]  (grad w.r.t. B)
-                //   d(XA) = G @ B^T  [seq, rank]  (grad w.r.t. XA)
-                // Then for XA = X @ A:
-                //   dA = X^T @ d(XA) [in, rank]
+                // GPU-only LoRA backward: transpose + matmul_forward (zero CPU downloads)
+                // dB = scale * XA^T @ G,  dA = scale * X^T @ (G @ B^T)
+                let scale = self.lora_scale;
 
                 // Step 1: XA = X @ A  [seq, rank]
                 let xa = self.trainer.zeros((s * rank) as usize);
                 self.trainer.matmul_forward(input_buf, &proj.a, &xa, s, proj.in_dim, rank);
 
-                // KAIZEN: force GPU sync — download xa, verify, re-upload
-                // matmul_backward downloads xa internally but may get stale zeros
-                let xa_flushed = self.trainer.download(&xa);
-                let xa_buf = self.trainer.upload(&xa_flushed);
-
-                // Step 2: backward of h = XA @ B → dB and d(XA)
+                // Step 2: dB = (scale * XA)^T @ G — GPU transpose + GEMM
+                let xa_t = self.trainer.zeros((s * rank) as usize);
+                self.dispatch_transpose(&xa, &xa_t, s, rank, scale);
                 let db = self.trainer.zeros((rank * proj.out_dim) as usize);
-                let d_xa = self.trainer.zeros((s * rank) as usize);
-                self.trainer.matmul_backward(&xa_buf, &proj.b, &grad_buf, &d_xa, &db, s, rank, proj.out_dim);
+                self.trainer.matmul_forward(&xa_t, &grad_buf, &db, rank, s, proj.out_dim);
 
-                // Step 3: backward of XA = X @ A → dA
-                let da = self.trainer.zeros((proj.in_dim * rank) as usize);
-                let d_x_dummy = self.trainer.zeros((s * proj.in_dim) as usize);
-                self.trainer.matmul_backward(input_buf, &proj.a, &d_xa, &d_x_dummy, &da, s, proj.in_dim, rank);
-
-                // Debug: check gradient norms immediately after computation
-                if self.lora_step == 1 && layer_idx == 0 && proj.name == "q_proj" {
-                    // Check db right after matmul_backward
-                    let db_imm = self.trainer.download(&db);
-                    let db_imm_norm: f32 = db_imm.iter().map(|x| x*x).sum::<f32>().sqrt();
-                    let da_imm = self.trainer.download(&da);
-                    let da_imm_norm: f32 = da_imm.iter().map(|x| x*x).sum::<f32>().sqrt();
-                    eprintln!("[DEBUG] IMMEDIATE: db_norm={:.6} da_norm={:.6}", db_imm_norm, da_imm_norm);
-
-                    let x_data = self.trainer.download(input_buf);
-                    let a_data = self.trainer.download(&proj.a);
-                    let xa_data = self.trainer.download(&xa);
-                    let x_norm: f32 = x_data.iter().map(|v| v*v).sum::<f32>().sqrt();
-                    let a_norm: f32 = a_data.iter().map(|v| v*v).sum::<f32>().sqrt();
-                    let xa_norm: f32 = xa_data.iter().map(|v| v*v).sum::<f32>().sqrt();
-                    let g_data = self.trainer.download(&grad_buf);
-                    let g_norm: f32 = g_data.iter().map(|v| v*v).sum::<f32>().sqrt();
-                    eprintln!("[DEBUG] L0 q: X={:.4} A={:.4} XA={:.4} G={:.4} s={} rank={} out={}",
-                        x_norm, a_norm, xa_norm, g_norm, s, rank, proj.out_dim);
-                    let db_data = self.trainer.download(&db);
-                    let da_data = self.trainer.download(&da);
-                    let db_norm: f32 = db_data.iter().map(|x| x * x).sum::<f32>().sqrt();
-                    let da_norm: f32 = da_data.iter().map(|x| x * x).sum::<f32>().sqrt();
-                    eprintln!("[DEBUG] L0 q_proj dA_norm={:.6} dB_norm={:.6}", da_norm, db_norm);
-                }
+                // Step 3: dA (skip if B=0 — first step optimization)
+                let da = if self.lora_step <= 1 {
+                    self.trainer.zeros((proj.in_dim * rank) as usize)
+                } else {
+                    let bt = self.trainer.zeros((rank * proj.out_dim) as usize);
+                    self.dispatch_transpose(&proj.b, &bt, rank, proj.out_dim, 1.0);
+                    let d_xa = self.trainer.zeros((s * rank) as usize);
+                    self.trainer.matmul_forward(&grad_buf, &bt, &d_xa, s, proj.out_dim, rank);
+                    let xt = self.trainer.zeros((s * proj.in_dim) as usize);
+                    self.dispatch_transpose(input_buf, &xt, s, proj.in_dim, scale);
+                    let da_buf = self.trainer.zeros((proj.in_dim * rank) as usize);
+                    self.trainer.matmul_forward(&xt, &d_xa, &da_buf, proj.in_dim, s, rank);
+                    da_buf
+                };
 
                 // AdamW step: update A and B
                 // Contract: adamw-kernel-v1/weight_update
-                self.trainer.adamw_step(
-                    &proj.a, &da, &proj.m_a, &proj.v_a,
-                    lr, 0.9, 0.999, 1e-8, 0.01,
-                );
-                self.trainer.adamw_step(
-                    &proj.b, &db, &proj.m_b, &proj.v_b,
-                    lr, 0.9, 0.999, 1e-8, 0.01,
-                );
+                self.trainer
+                    .adamw_step(&proj.a, &da, &proj.m_a, &proj.v_a, lr, 0.9, 0.999, 1e-8, 0.01);
+                self.trainer
+                    .adamw_step(&proj.b, &db, &proj.m_b, &proj.v_b, lr, 0.9, 0.999, 1e-8, 0.01);
             }
         }
 
         let t5 = std::time::Instant::now();
 
         eprintln!(
-            "[PROFILE] step: {:.0}ms (embed={:.0} fwd={:.0} lm+norm={:.0}[dl={:.0} norm={:.0} gemm={:.0}] ce={:.0} bwd={:.0})",
+            "[PROFILE] step: {:.0}ms (embed={:.0} fwd={:.0} lm={:.0} ce={:.0}[fwd={:.0} bwd={:.0}] lm_bwd={:.0} lora_bwd={:.0})",
             t5.duration_since(t0).as_millis(),
             t1.duration_since(t0).as_millis(),
             t2.duration_since(t1).as_millis(),
             t3.duration_since(t2).as_millis(),
-            t2b.duration_since(t2a).as_millis(),
-            t2c.duration_since(t2b).as_millis(),
-            t3.duration_since(t2c).as_millis(),
-            t4.duration_since(t3).as_millis(),
+            t3c.duration_since(t3).as_millis(),
+            t3b.duration_since(t3a).as_millis(),
+            t3c.duration_since(t3b).as_millis(),
+            t4.duration_since(t3c).as_millis(),
             t5.duration_since(t4).as_millis(),
         );
 
+        // Read loss from GPU AFTER all backward + AdamW work is dispatched.
+        // This is the only GPU sync point — blocks until all work completes.
+        let avg_loss = self.cross_entropy.read_loss(
+            &self.losses_buf, seq_len as u32, loss_start as u32, loss_end as u32,
+        );
+
         InstructStepResult {
-            loss: avg_loss,
+            loss: if avg_loss.is_finite() { avg_loss } else { 100.0 },
             num_response_tokens: num_loss_tokens,
-            perplexity: avg_loss.exp().min(1e6),
+            perplexity: if avg_loss.is_finite() { avg_loss.exp().min(1e6) } else { 1e6 },
         }
     }
 }

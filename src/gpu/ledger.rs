@@ -452,9 +452,7 @@ fn sys_total_memory_mb() -> usize {
         .and_then(|s| {
             s.lines()
                 .find(|l| l.starts_with("MemTotal:"))
-                .and_then(|l| {
-                    l.split_whitespace().nth(1)?.parse::<usize>().ok()
-                })
+                .and_then(|l| l.split_whitespace().nth(1)?.parse::<usize>().ok())
         })
         .map(|kb| kb / 1024)
         .unwrap_or(0)
@@ -469,8 +467,11 @@ pub fn detect_memory_type() -> MemoryType {
         .map_or(MemoryType::Discrete, |out| {
             let name = String::from_utf8_lossy(&out.stdout).to_lowercase();
             // Unified memory: Jetson/Orin/Tegra + Project DIGITS GB10
-            if name.contains("jetson") || name.contains("orin") || name.contains("tegra")
-                || name.contains("gb10") || name.contains("digits")
+            if name.contains("jetson")
+                || name.contains("orin")
+                || name.contains("tegra")
+                || name.contains("gb10")
+                || name.contains("digits")
             {
                 MemoryType::Unified
             } else {

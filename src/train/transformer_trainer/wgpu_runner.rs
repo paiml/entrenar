@@ -94,7 +94,10 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
     // Scale lr by 1/accumulation_steps for gradient accumulation equivalence
     let effective_lr = config.lr / config.accumulation_steps.max(1) as f32;
     let mut trainer = WgpuTransformerTrainer::new(&tc, effective_lr)?;
-    eprintln!("Effective lr: {effective_lr} (lr={} / accum={})\n", config.lr, config.accumulation_steps);
+    eprintln!(
+        "Effective lr: {effective_lr} (lr={} / accum={})\n",
+        config.lr, config.accumulation_steps
+    );
 
     // 5. Training loop
     let mut total_loss = 0.0f32;
@@ -112,7 +115,8 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
             let seed = hasher.finish();
             // Fisher-Yates shuffle with deterministic seed
             for i in (1..indices.len()).rev() {
-                let j = ((seed.wrapping_mul(i as u64 + 1).wrapping_add(7)) % (i as u64 + 1)) as usize;
+                let j =
+                    ((seed.wrapping_mul(i as u64 + 1).wrapping_add(7)) % (i as u64 + 1)) as usize;
                 indices.swap(i, j);
             }
         }
@@ -152,9 +156,17 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
             }
 
             if config.save_every > 0 && step % config.save_every == 0 {
-                model.save_checkpoint(&config.output_dir, step as u32, loss, config.lora_rank, config.lora_alpha)?;
+                model.save_checkpoint(
+                    &config.output_dir,
+                    step as u32,
+                    loss,
+                    config.lora_rank,
+                    config.lora_alpha,
+                )?;
             }
-            if loss < best_loss { best_loss = loss; }
+            if loss < best_loss {
+                best_loss = loss;
+            }
         }
     }
 

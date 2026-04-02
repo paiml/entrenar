@@ -289,8 +289,14 @@ impl MultiHeadAttention {
         Self {
             config: config.clone(),
             w_q: Tensor::from_vec(rand_normal_seeded(q_dim * hidden_size, seed, "w_q"), true),
-            w_k: Tensor::from_vec(rand_normal_seeded(kv_hidden_size * hidden_size, seed, "w_k"), true),
-            w_v: Tensor::from_vec(rand_normal_seeded(kv_hidden_size * hidden_size, seed, "w_v"), true),
+            w_k: Tensor::from_vec(
+                rand_normal_seeded(kv_hidden_size * hidden_size, seed, "w_k"),
+                true,
+            ),
+            w_v: Tensor::from_vec(
+                rand_normal_seeded(kv_hidden_size * hidden_size, seed, "w_v"),
+                true,
+            ),
             w_o: Tensor::from_vec(rand_normal_seeded(hidden_size * q_dim, seed, "w_o"), true),
             b_q: None,
             b_k: None,

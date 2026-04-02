@@ -28,13 +28,13 @@ pub struct WgpuBlock {
 
     // Projection weights — pre-dequantized F32 on GPU
     // Stored row-major: [out_dim, in_dim]
-    pub w_q: wgpu::Buffer,     // [q_dim, hidden]
-    pub w_k: wgpu::Buffer,     // [kv_dim, hidden]
-    pub w_v: wgpu::Buffer,     // [kv_dim, hidden]
-    pub w_o: wgpu::Buffer,     // [hidden, q_dim]
-    pub w_gate: wgpu::Buffer,  // [inter, hidden]
-    pub w_up: wgpu::Buffer,    // [inter, hidden]
-    pub w_down: wgpu::Buffer,  // [hidden, inter]
+    pub w_q: wgpu::Buffer,    // [q_dim, hidden]
+    pub w_k: wgpu::Buffer,    // [kv_dim, hidden]
+    pub w_v: wgpu::Buffer,    // [kv_dim, hidden]
+    pub w_o: wgpu::Buffer,    // [hidden, q_dim]
+    pub w_gate: wgpu::Buffer, // [inter, hidden]
+    pub w_up: wgpu::Buffer,   // [inter, hidden]
+    pub w_down: wgpu::Buffer, // [hidden, inter]
 
     // LoRA adapters (trainable, F32)
     pub lora: Option<WgpuLoraAdapters>,
@@ -75,21 +75,21 @@ pub struct WgpuBlockManager {
     pub blocks: Vec<WgpuBlock>,
 
     // Shared buffers (reused across layers)
-    pub hidden_buf: wgpu::Buffer,      // [max_seq, hidden] — input/output per layer
-    pub hidden_buf2: wgpu::Buffer,     // [max_seq, hidden] — residual stream
-    pub attn_out_buf: wgpu::Buffer,    // [max_seq, hidden] — attention output
-    pub ffn_gate_buf: wgpu::Buffer,    // [max_seq, inter] — FFN gate projection
-    pub ffn_up_buf: wgpu::Buffer,      // [max_seq, inter] — FFN up projection
-    pub ffn_silu_buf: wgpu::Buffer,    // [max_seq, inter] — SiLU(gate) × up
-    pub norm_buf: wgpu::Buffer,        // [max_seq, hidden] — RMSNorm output
-    pub q_buf: wgpu::Buffer,           // [max_seq, q_dim]
-    pub k_buf: wgpu::Buffer,           // [max_seq, kv_dim]
-    pub v_buf: wgpu::Buffer,           // [max_seq, kv_dim]
+    pub hidden_buf: wgpu::Buffer, // [max_seq, hidden] — input/output per layer
+    pub hidden_buf2: wgpu::Buffer, // [max_seq, hidden] — residual stream
+    pub attn_out_buf: wgpu::Buffer, // [max_seq, hidden] — attention output
+    pub ffn_gate_buf: wgpu::Buffer, // [max_seq, inter] — FFN gate projection
+    pub ffn_up_buf: wgpu::Buffer, // [max_seq, inter] — FFN up projection
+    pub ffn_silu_buf: wgpu::Buffer, // [max_seq, inter] — SiLU(gate) × up
+    pub norm_buf: wgpu::Buffer,   // [max_seq, hidden] — RMSNorm output
+    pub q_buf: wgpu::Buffer,      // [max_seq, q_dim]
+    pub k_buf: wgpu::Buffer,      // [max_seq, kv_dim]
+    pub v_buf: wgpu::Buffer,      // [max_seq, kv_dim]
 
     // Embedding + lm_head
-    pub embed_weight: wgpu::Buffer,    // [vocab, hidden] — token embedding
-    pub lm_head_weight: wgpu::Buffer,  // [vocab, hidden] — output projection (may be tied)
-    pub logits_buf: wgpu::Buffer,      // [max_seq, vocab] — logits output
+    pub embed_weight: wgpu::Buffer, // [vocab, hidden] — token embedding
+    pub lm_head_weight: wgpu::Buffer, // [vocab, hidden] — output projection (may be tied)
+    pub logits_buf: wgpu::Buffer,   // [max_seq, vocab] — logits output
 
     // Gradient buffers (for backward pass)
     pub grad_hidden_buf: wgpu::Buffer, // [max_seq, hidden]
@@ -197,8 +197,7 @@ impl WgpuBlockManager {
                     | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            self.queue
-                .write_buffer(&buffer, 0, bytemuck::cast_slice(data));
+            self.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(data));
             buffer
         };
 
@@ -215,9 +214,7 @@ impl WgpuBlockManager {
             // Kaiming init for A, zero for B
             let kaiming = |fan_in: usize, len: usize| -> Vec<f32> {
                 let std = (2.0 / fan_in as f32).sqrt();
-                (0..len)
-                    .map(|i| ((i as f32 * 0.013 + layer_idx as f32).sin() * std))
-                    .collect()
+                (0..len).map(|i| ((i as f32 * 0.013 + layer_idx as f32).sin() * std)).collect()
             };
             let zeros = |len: usize| vec![0.0f32; len];
 
@@ -287,20 +284,14 @@ impl WgpuBlockManager {
             "[wgpu] Uploaded layer {}/{} ({})",
             layer_idx + 1,
             self.num_layers,
-            if self.blocks.last().unwrap().lora.is_some() {
-                "with LoRA"
-            } else {
-                "frozen"
-            }
+            if self.blocks.last().unwrap().lora.is_some() { "with LoRA" } else { "frozen" }
         );
     }
 
     /// Upload embedding + lm_head weights.
     pub fn upload_embeddings(&mut self, embed: &[f32], lm_head: &[f32]) {
-        self.queue
-            .write_buffer(&self.embed_weight, 0, bytemuck::cast_slice(embed));
-        self.queue
-            .write_buffer(&self.lm_head_weight, 0, bytemuck::cast_slice(lm_head));
+        self.queue.write_buffer(&self.embed_weight, 0, bytemuck::cast_slice(embed));
+        self.queue.write_buffer(&self.lm_head_weight, 0, bytemuck::cast_slice(lm_head));
         eprintln!(
             "[wgpu] Uploaded embeddings: embed=[{}×{}], lm_head=[{}×{}]",
             self.vocab_size, self.hidden_size, self.vocab_size, self.hidden_size
@@ -318,8 +309,10 @@ impl WgpuBlockManager {
         let l = self.num_layers as u64;
 
         // Per layer: norms + 7 projections + optional LoRA
-        let per_layer_weights = (2 * h + q * h + kv * h * 2 + h * q + inter * h * 2 + h * inter) * 4;
-        let shared_bufs = (s * h * 4 + s * inter * 3 + s * q + s * kv * 2 + s * v * 2 + v * h * 2) * 4;
+        let per_layer_weights =
+            (2 * h + q * h + kv * h * 2 + h * q + inter * h * 2 + h * inter) * 4;
+        let shared_bufs =
+            (s * h * 4 + s * inter * 3 + s * q + s * kv * 2 + s * v * 2 + v * h * 2) * 4;
 
         per_layer_weights * l + shared_bufs
     }
@@ -352,16 +345,17 @@ mod tests {
         };
 
         let mut mgr = WgpuBlockManager::new(
-            device, queue,
-            64,   // hidden
-            128,  // inter
-            4,    // heads
-            4,    // kv_heads
-            16,   // head_dim
-            2,    // layers
-            100,  // vocab
-            32,   // max_seq
-            Some(8), // rank
+            device,
+            queue,
+            64,        // hidden
+            128,       // inter
+            4,         // heads
+            4,         // kv_heads
+            16,        // head_dim
+            2,         // layers
+            100,       // vocab
+            32,        // max_seq
+            Some(8),   // rank
             Some(2.0), // alpha
         );
 

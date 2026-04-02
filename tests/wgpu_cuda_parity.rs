@@ -59,10 +59,7 @@ mod parity {
             }
         }
         eprintln!("[PARITY] Forward GEMM max error: {max_err}");
-        assert!(
-            max_err < 0.01,
-            "Forward GEMM parity failed: max_err={max_err} (threshold 0.01)"
-        );
+        assert!(max_err < 0.01, "Forward GEMM parity failed: max_err={max_err} (threshold 0.01)");
     }
 
     /// Step 0e: Backward GEMM parity
@@ -91,8 +88,7 @@ mod parity {
         let gc_c = cuda.upload(&gc_data).unwrap();
         let mut ga_c = cuda.zeros((m * k) as usize).unwrap();
         let mut gb_c = cuda.zeros((k * n) as usize).unwrap();
-        cuda.matmul_backward(&a_c, &b_c, &gc_c, &mut ga_c, &mut gb_c, m, k, n)
-            .unwrap();
+        cuda.matmul_backward(&a_c, &b_c, &gc_c, &mut ga_c, &mut gb_c, m, k, n).unwrap();
         let ga_cuda = cuda.download(&ga_c).unwrap();
         let gb_cuda = cuda.download(&gb_c).unwrap();
 
@@ -156,8 +152,7 @@ mod parity {
         let g_c = cuda.upload(&grads_data).unwrap();
         let mut m_c = cuda.zeros(n).unwrap();
         let mut v_c = cuda.zeros(n).unwrap();
-        cuda.adamw_step(&mut p_c, &g_c, &mut m_c, &mut v_c, lr, beta1, beta2, eps, wd)
-            .unwrap();
+        cuda.adamw_step(&mut p_c, &g_c, &mut m_c, &mut v_c, lr, beta1, beta2, eps, wd).unwrap();
         let cuda_params = cuda.download(&p_c).unwrap();
 
         // wgpu AdamW

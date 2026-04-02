@@ -2812,10 +2812,8 @@ impl CudaTransformerTrainer {
                 let model = tok.get("model")?;
                 let vocab_obj = model.get("vocab")?.as_object()?;
                 // Build sorted-by-id vocab list
-                let mut vocab_pairs: Vec<(String, u64)> = vocab_obj
-                    .iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.as_u64()?)))
-                    .collect();
+                let mut vocab_pairs: Vec<(String, u64)> =
+                    vocab_obj.iter().filter_map(|(k, v)| Some((k.clone(), v.as_u64()?))).collect();
                 vocab_pairs.sort_by_key(|(_, id)| *id);
                 let vocab: Vec<String> = vocab_pairs.into_iter().map(|(k, _)| k).collect();
                 // Merges as "token1 token2" strings
@@ -3309,7 +3307,12 @@ impl CudaTransformerTrainer {
             }
         }
 
-        let _ = blocks_restored; // used for diagnostics if tracing enabled
+        // ALB-132: Report restore results — don't silently swallow failures
+        if blocks_restored > 0 {
+            println!("  ✓ GPU block optimizer states restored ({blocks_restored}/{} blocks)", self.gpu_training.optimizer_states.len());
+        } else if !self.gpu_training.optimizer_states.is_empty() {
+            println!("  [WARN] GPU block optimizer states NOT restored (0/{} blocks — zeroed m/v)", self.gpu_training.optimizer_states.len());
+        }
 
         true
     }

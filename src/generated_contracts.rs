@@ -12,8 +12,10 @@ macro_rules! contract_pre_chain_rule {
     () => {{}};
     ($input:expr) => {{
         let grad_output = &$input;
-        debug_assert!(!grad_output.is_empty(),
-            "Contract chain_rule: precondition violated — !grad_output.is_empty()");
+        debug_assert!(
+            !grad_output.is_empty(),
+            "Contract chain_rule: precondition violated — !grad_output.is_empty()"
+        );
     }};
 }
 
@@ -22,8 +24,14 @@ macro_rules! contract_pre_chain_rule {
 macro_rules! contract_post_chain_rule {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(ret.len() == input.len(), "Contract chain_rule: postcondition violated — ret.len() == input.len()");
-        debug_assert!(ret.iter().all(|g| g.is_finite()), "Contract chain_rule: postcondition violated — ret.iter().all(|g| g.is_finite())");
+        debug_assert!(
+            ret.len() == input.len(),
+            "Contract chain_rule: postcondition violated — ret.len() == input.len()"
+        );
+        debug_assert!(
+            ret.iter().all(|g| g.is_finite()),
+            "Contract chain_rule: postcondition violated — ret.iter().all(|g| g.is_finite())"
+        );
     }};
 }
 
@@ -111,10 +119,11 @@ macro_rules! contract_softmax_backward {
 macro_rules! contract_pre_batch_partition {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(n > 0,
-            "Contract batch_partition: precondition violated — n > 0");
-        debug_assert!(batch_size > 0,
-            "Contract batch_partition: precondition violated — batch_size > 0");
+        debug_assert!(n > 0, "Contract batch_partition: precondition violated — n > 0");
+        debug_assert!(
+            batch_size > 0,
+            "Contract batch_partition: precondition violated — batch_size > 0"
+        );
     }};
 }
 
@@ -144,8 +153,10 @@ macro_rules! contract_pre_gradient_scaling {
     () => {{}};
     ($input:expr) => {{
         let gradients = &$input;
-        debug_assert!(!gradients.is_empty(),
-            "Contract gradient_scaling: precondition violated — !gradients.is_empty()");
+        debug_assert!(
+            !gradients.is_empty(),
+            "Contract gradient_scaling: precondition violated — !gradients.is_empty()"
+        );
     }};
 }
 
@@ -177,10 +188,14 @@ macro_rules! contract_gradient_scaling {
 macro_rules! contract_pre_checkpoint_memory {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(num_layers > 0,
-            "Contract checkpoint_memory: precondition violated — num_layers > 0");
-        debug_assert!(activation_size > 0,
-            "Contract checkpoint_memory: precondition violated — activation_size > 0");
+        debug_assert!(
+            num_layers > 0,
+            "Contract checkpoint_memory: precondition violated — num_layers > 0"
+        );
+        debug_assert!(
+            activation_size > 0,
+            "Contract checkpoint_memory: precondition violated — activation_size > 0"
+        );
     }};
 }
 
@@ -242,8 +257,10 @@ macro_rules! contract_pre_bf16_precision {
     () => {{}};
     ($input:expr) => {{
         let a = &$input;
-        debug_assert!(!a.is_empty(),
-            "Contract bf16_precision: precondition violated — !a.is_empty()");
+        debug_assert!(
+            !a.is_empty(),
+            "Contract bf16_precision: precondition violated — !a.is_empty()"
+        );
     }};
 }
 
@@ -252,8 +269,14 @@ macro_rules! contract_pre_bf16_precision {
 macro_rules! contract_post_bf16_precision {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(ret.iter().all(|v| v.is_finite()), "Contract bf16_precision: postcondition violated — ret.iter().all(|v| v.is_finite())");
-        debug_assert!(ret.len() == m * n, "Contract bf16_precision: postcondition violated — ret.len() == m * n");
+        debug_assert!(
+            ret.iter().all(|v| v.is_finite()),
+            "Contract bf16_precision: postcondition violated — ret.iter().all(|v| v.is_finite())"
+        );
+        debug_assert!(
+            ret.len() == m * n,
+            "Contract bf16_precision: postcondition violated — ret.len() == m * n"
+        );
     }};
 }
 
@@ -377,10 +400,22 @@ macro_rules! contract_pre_backward {
 macro_rules! contract_post_backward {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(grad_a.len() == m * k, "Contract backward: postcondition violated — grad_a.len() == m * k");
-        debug_assert!(grad_b.len() == k * n, "Contract backward: postcondition violated — grad_b.len() == k * n");
-        debug_assert!(grad_a.iter().all(|g| g.is_finite()), "Contract backward: postcondition violated — grad_a.iter().all(|g| g.is_finite())");
-        debug_assert!(grad_b.iter().all(|g| g.is_finite()), "Contract backward: postcondition violated — grad_b.iter().all(|g| g.is_finite())");
+        debug_assert!(
+            grad_a.len() == m * k,
+            "Contract backward: postcondition violated — grad_a.len() == m * k"
+        );
+        debug_assert!(
+            grad_b.len() == k * n,
+            "Contract backward: postcondition violated — grad_b.len() == k * n"
+        );
+        debug_assert!(
+            grad_a.iter().all(|g| g.is_finite()),
+            "Contract backward: postcondition violated — grad_a.iter().all(|g| g.is_finite())"
+        );
+        debug_assert!(
+            grad_b.iter().all(|g| g.is_finite()),
+            "Contract backward: postcondition violated — grad_b.iter().all(|g| g.is_finite())"
+        );
     }};
 }
 
@@ -408,8 +443,14 @@ macro_rules! contract_pre_matmul {
 macro_rules! contract_post_matmul {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(ret.len() == m * n, "Contract matmul: postcondition violated — ret.len() == m * n");
-        debug_assert!(ret.data().iter().all(|v| v.is_finite()), "Contract matmul: postcondition violated — ret.data().iter().all(|v| v.is_finite())");
+        debug_assert!(
+            ret.len() == m * n,
+            "Contract matmul: postcondition violated — ret.len() == m * n"
+        );
+        debug_assert!(
+            ret.data().iter().all(|v| v.is_finite()),
+            "Contract matmul: postcondition violated — ret.data().iter().all(|v| v.is_finite())"
+        );
     }};
 }
 
@@ -469,8 +510,14 @@ macro_rules! contract_pre_adamw_update {
 macro_rules! contract_post_adamw_update {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(params.iter().all(|p| p.is_finite()), "Contract adamw_update: postcondition violated — params.iter().all(|p| p.is_finite())");
-        debug_assert!(params.len() == params_before.len(), "Contract adamw_update: postcondition violated — params.len() == params_before.len()");
+        debug_assert!(
+            params.iter().all(|p| p.is_finite()),
+            "Contract adamw_update: postcondition violated — params.iter().all(|p| p.is_finite())"
+        );
+        debug_assert!(
+            params.len() == params_before.len(),
+            "Contract adamw_update: postcondition violated — params.len() == params_before.len()"
+        );
     }};
 }
 
@@ -498,8 +545,14 @@ macro_rules! contract_pre_convergence {
 macro_rules! contract_post_convergence {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(loss_final.is_finite(), "Contract convergence: postcondition violated — loss_final.is_finite()");
-        debug_assert!(loss_final <= loss_initial, "Contract convergence: postcondition violated — loss_final <= loss_initial");
+        debug_assert!(
+            loss_final.is_finite(),
+            "Contract convergence: postcondition violated — loss_final.is_finite()"
+        );
+        debug_assert!(
+            loss_final <= loss_initial,
+            "Contract convergence: postcondition violated — loss_final <= loss_initial"
+        );
     }};
 }
 
@@ -551,8 +604,10 @@ macro_rules! contract_pre_compression_ratio {
     () => {{}};
     ($input:expr) => {{
         let self = &$input;
-        debug_assert!(self.len > 0,
-            "Contract compression_ratio: precondition violated — self.len > 0");
+        debug_assert!(
+            self.len > 0,
+            "Contract compression_ratio: precondition violated — self.len > 0"
+        );
     }};
 }
 
@@ -582,8 +637,10 @@ macro_rules! contract_pre_quantization_error {
     () => {{}};
     ($input:expr) => {{
         let x = &$input;
-        debug_assert!(!x.is_empty(),
-            "Contract quantization_error: precondition violated — !x.is_empty()");
+        debug_assert!(
+            !x.is_empty(),
+            "Contract quantization_error: precondition violated — !x.is_empty()"
+        );
     }};
 }
 
@@ -614,10 +671,14 @@ macro_rules! contract_pre_symmetric_4bit {
     () => {{}};
     ($input:expr) => {{
         let input = &$input;
-        debug_assert!(!input.is_empty(),
-            "Contract symmetric_4bit: precondition violated — !input.is_empty()");
-        debug_assert!(input.iter().all(|v| v.is_finite()),
-            "Contract symmetric_4bit: precondition violated — input.iter().all(|v| v.is_finite())");
+        debug_assert!(
+            !input.is_empty(),
+            "Contract symmetric_4bit: precondition violated — !input.is_empty()"
+        );
+        debug_assert!(
+            input.iter().all(|v| v.is_finite()),
+            "Contract symmetric_4bit: precondition violated — input.iter().all(|v| v.is_finite())"
+        );
     }};
 }
 
@@ -658,7 +719,10 @@ macro_rules! contract_pre_log_sum_exp {
 macro_rules! contract_post_log_sum_exp {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(ret.is_finite(), "Contract log_sum_exp: postcondition violated — ret.is_finite()");
+        debug_assert!(
+            ret.is_finite(),
+            "Contract log_sum_exp: postcondition violated — ret.is_finite()"
+        );
     }};
 }
 
@@ -710,12 +774,15 @@ macro_rules! contract_softmax {
 macro_rules! contract_pre_bpe_merge {
     ($input:expr) => {{
         let _contract_input = &$input;
-        debug_assert!(!corpus.is_empty(),
-            "Contract bpe_merge: precondition violated — !corpus.is_empty()");
-        debug_assert!(k > 0,
-            "Contract bpe_merge: precondition violated — k > 0");
-        debug_assert!(k <= vocab_size - base_vocab_size,
-            "Contract bpe_merge: precondition violated — k <= vocab_size - base_vocab_size");
+        debug_assert!(
+            !corpus.is_empty(),
+            "Contract bpe_merge: precondition violated — !corpus.is_empty()"
+        );
+        debug_assert!(k > 0, "Contract bpe_merge: precondition violated — k > 0");
+        debug_assert!(
+            k <= vocab_size - base_vocab_size,
+            "Contract bpe_merge: precondition violated — k <= vocab_size - base_vocab_size"
+        );
     }};
 }
 
@@ -745,8 +812,10 @@ macro_rules! contract_pre_encode_decode_identity {
     () => {{}};
     ($input:expr) => {{
         let tokenizer = &$input;
-        debug_assert!(tokenizer.is_trained(),
-            "Contract encode_decode_identity: precondition violated — tokenizer.is_trained()");
+        debug_assert!(
+            tokenizer.is_trained(),
+            "Contract encode_decode_identity: precondition violated — tokenizer.is_trained()"
+        );
     }};
 }
 
@@ -779,8 +848,10 @@ macro_rules! contract_pre_gradient_norm {
     () => {{}};
     ($input:expr) => {{
         let gradients = &$input;
-        debug_assert!(!gradients.is_empty(),
-            "Contract gradient_norm: precondition violated — !gradients.is_empty()");
+        debug_assert!(
+            !gradients.is_empty(),
+            "Contract gradient_norm: precondition violated — !gradients.is_empty()"
+        );
     }};
 }
 
@@ -818,8 +889,14 @@ macro_rules! contract_pre_loss_decrease {
 macro_rules! contract_post_loss_decrease {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(loss.is_finite(), "Contract loss_decrease: postcondition violated — loss.is_finite()");
-        debug_assert!(!loss.is_nan(), "Contract loss_decrease: postcondition violated — !loss.is_nan()");
+        debug_assert!(
+            loss.is_finite(),
+            "Contract loss_decrease: postcondition violated — loss.is_finite()"
+        );
+        debug_assert!(
+            !loss.is_nan(),
+            "Contract loss_decrease: postcondition violated — !loss.is_nan()"
+        );
     }};
 }
 

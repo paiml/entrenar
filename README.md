@@ -14,7 +14,7 @@
   <a href="https://github.com/paiml/entrenar/actions/workflows/ci.yml"><img src="https://github.com/paiml/entrenar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://crates.io/crates/entrenar"><img src="https://img.shields.io/crates/v/entrenar.svg" alt="Crates.io"></a>
   <a href="https://docs.rs/entrenar"><img src="https://docs.rs/entrenar/badge.svg" alt="Documentation"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-4900%2B%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-7527%2B%20passing-brightgreen" alt="Tests"></a>
   <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/coverage-96%25-brightgreen" alt="Coverage"></a>
   <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/TDG-A%2B%20(96.8)-brightgreen" alt="TDG Score"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
@@ -43,8 +43,8 @@
 
 - **Autograd Engine** - Tape-based automatic differentiation
 - **Optimizers** - SGD, Adam, AdamW with schedulers and gradient clipping
-- **LoRA/QLoRA** - Parameter-efficient fine-tuning (4-bit quantized)
-- **Quantization** - QAT, PTQ, GGUF-compatible Q4_0/Q8_0
+- **LoRA/QLoRA** - Parameter-efficient fine-tuning (4-bit quantized), PEFT-compatible adapter export, NF4 gradient clipping
+- **Quantization** - QAT, PTQ, GGUF-compatible Q4_0/Q8_0, NF4 training with cuBLAS backward
 - **Model Merging** - TIES, DARE, SLERP algorithms
 - **Knowledge Distillation** - Multi-teacher, progressive layer-wise
 - **Training Loop** - Callbacks, checkpoints, early stopping
@@ -336,7 +336,7 @@ entrenar/
 
 | Metric | Value |
 |--------|-------|
-| Tests | 4900+ passing |
+| Tests | 7,449+ passing (7,527 with CUDA on Blackwell) |
 | Coverage | 96% (entrenar files) |
 | TDG Score | A+ (96.8/100) |
 | Critical Defects | 0 |
@@ -349,8 +349,8 @@ entrenar/
 | Library | Purpose | Version |
 |---------|---------|---------|
 | [trueno](https://crates.io/crates/trueno) | SIMD tensor operations | 0.16.0 |
-| **entrenar** | Training & optimization | 0.7.2 |
-| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.27.0 |
+| **entrenar** | Training & optimization | 0.7.6 |
+| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.27.5 |
 | [realizar](https://crates.io/crates/realizar) | GGUF inference | 0.8.0 |
 
 ## Documentation

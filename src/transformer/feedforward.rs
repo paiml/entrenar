@@ -30,9 +30,18 @@ impl FeedForward {
 
         Self {
             config: config.clone(),
-            w_gate: Tensor::from_vec(rand_normal_seeded(hidden_size * intermediate_size, seed, "w_gate"), true),
-            w_up: Tensor::from_vec(rand_normal_seeded(hidden_size * intermediate_size, seed, "w_up"), true),
-            w_down: Tensor::from_vec(rand_normal_seeded(intermediate_size * hidden_size, seed, "w_down"), true),
+            w_gate: Tensor::from_vec(
+                rand_normal_seeded(hidden_size * intermediate_size, seed, "w_gate"),
+                true,
+            ),
+            w_up: Tensor::from_vec(
+                rand_normal_seeded(hidden_size * intermediate_size, seed, "w_up"),
+                true,
+            ),
+            w_down: Tensor::from_vec(
+                rand_normal_seeded(intermediate_size * hidden_size, seed, "w_down"),
+                true,
+            ),
         }
     }
 

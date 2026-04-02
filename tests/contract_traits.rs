@@ -13,9 +13,9 @@
 //! Run with: `cargo test --test contract_traits`
 
 use provable_contracts::traits::{
-    ActivationKernelV1, AdamwKernelV1, AttentionKernelV1, CrossEntropyKernelV1,
-    FlashAttentionV1, GqaKernelV1, LayernormKernelV1, MatmulKernelV1, RmsnormKernelV1,
-    RopeKernelV1, SiluKernelV1, SoftmaxKernelV1, SwigluKernelV1,
+    ActivationKernelV1, AdamwKernelV1, AttentionKernelV1, CrossEntropyKernelV1, FlashAttentionV1,
+    GqaKernelV1, LayernormKernelV1, MatmulKernelV1, RmsnormKernelV1, RopeKernelV1, SiluKernelV1,
+    SoftmaxKernelV1, SwigluKernelV1,
 };
 
 /// Marker struct: entrenar's CPU kernel implementations satisfy
@@ -87,7 +87,8 @@ impl SwigluKernelV1 for EntrenarKernels {
         let x_part = &x[..half];
         let gate = &x[half..];
         // SwiGLU(x, gate) = SiLU(x) * gate
-        x_part.iter()
+        x_part
+            .iter()
             .zip(gate.iter())
             .map(|(&xi, &gi)| {
                 let silu_xi = xi / (1.0 + (-xi).exp());
@@ -164,8 +165,7 @@ impl RopeKernelV1 for EntrenarKernels {
 impl CrossEntropyKernelV1 for EntrenarKernels {
     fn cross_entropy(&self, targets: &[f32], logits: &[f32]) -> Vec<f32> {
         let log_probs = self.log_softmax(logits);
-        let loss: f32 =
-            targets.iter().zip(log_probs.iter()).map(|(&t, &lp)| -t * lp).sum();
+        let loss: f32 = targets.iter().zip(log_probs.iter()).map(|(&t, &lp)| -t * lp).sum();
         vec![loss]
     }
 
@@ -189,10 +189,7 @@ impl AdamwKernelV1 for EntrenarKernels {
         let grads = &g_t[..half];
         let m_prev = &g_t[half..];
         let beta1: f32 = 0.9;
-        grads.iter()
-            .zip(m_prev.iter())
-            .map(|(&gi, &mi)| beta1 * mi + (1.0 - beta1) * gi)
-            .collect()
+        grads.iter().zip(m_prev.iter()).map(|(&gi, &mi)| beta1 * mi + (1.0 - beta1) * gi).collect()
     }
 
     fn adam_variance(&self, g_t: &[f32]) -> Vec<f32> {
@@ -201,7 +198,8 @@ impl AdamwKernelV1 for EntrenarKernels {
         let grads = &g_t[..half];
         let v_prev = &g_t[half..];
         let beta2: f32 = 0.999;
-        grads.iter()
+        grads
+            .iter()
             .zip(v_prev.iter())
             .map(|(&gi, &vi)| beta2 * vi + (1.0 - beta2) * gi * gi)
             .collect()

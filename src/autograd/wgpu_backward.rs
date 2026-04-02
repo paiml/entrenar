@@ -91,9 +91,14 @@ impl WgslBackwardPass {
         let grad_silu = self.trainer.zeros((seq_len * inter) as usize);
         let grad_down_b = self.trainer.zeros(0); // placeholder
         self.trainer.matmul_backward(
-            &mgr.ffn_silu_buf, &block.w_down, grad_output,
-            &grad_silu, &grad_down_b,
-            seq_len, inter, h,
+            &mgr.ffn_silu_buf,
+            &block.w_down,
+            grad_output,
+            &grad_silu,
+            &grad_down_b,
+            seq_len,
+            inter,
+            h,
         );
 
         // SwiGLU backward: given grad_silu, need grad_gate and grad_up
@@ -109,18 +114,28 @@ impl WgslBackwardPass {
         let grad_norm = self.trainer.zeros((seq_len * h) as usize);
         let grad_gate_b = self.trainer.zeros(0);
         self.trainer.matmul_backward(
-            &mgr.norm_buf, &block.w_gate, &grad_silu,
-            &grad_norm, &grad_gate_b,
-            seq_len, h, inter,
+            &mgr.norm_buf,
+            &block.w_gate,
+            &grad_silu,
+            &grad_norm,
+            &grad_gate_b,
+            seq_len,
+            h,
+            inter,
         );
 
         // Accumulate up projection gradient into same grad_norm
         let grad_up_b = self.trainer.zeros(0);
         let grad_norm2 = self.trainer.zeros((seq_len * h) as usize);
         self.trainer.matmul_backward(
-            &mgr.norm_buf, &block.w_up, &grad_silu,
-            &grad_norm2, &grad_up_b,
-            seq_len, h, inter,
+            &mgr.norm_buf,
+            &block.w_up,
+            &grad_silu,
+            &grad_norm2,
+            &grad_up_b,
+            seq_len,
+            h,
+            inter,
         );
 
         // grad_norm += grad_norm2 (add both contributions)
@@ -141,9 +156,14 @@ impl WgslBackwardPass {
         let grad_attn = self.trainer.zeros((seq_len * q_dim) as usize);
         let grad_o_b = self.trainer.zeros(0);
         self.trainer.matmul_backward(
-            &mgr.attn_out_buf, &block.w_o, grad_output,
-            &grad_attn, &grad_o_b,
-            seq_len, q_dim, h,
+            &mgr.attn_out_buf,
+            &block.w_o,
+            grad_output,
+            &grad_attn,
+            &grad_o_b,
+            seq_len,
+            q_dim,
+            h,
         );
 
         // Q/K/V projection backward (these are where LoRA gradients come from)
@@ -205,16 +225,26 @@ impl WgslBackwardPass {
         let grad_a_q = self.trainer.zeros((h * rank) as usize);
         // grad_B = xa^T @ grad_output
         self.trainer.matmul_backward(
-            &xa_q, &lora.b_q, &grad_output,
-            &xa_q, &grad_b_q,
-            seq_len, rank, h,
+            &xa_q,
+            &lora.b_q,
+            &grad_output,
+            &xa_q,
+            &grad_b_q,
+            seq_len,
+            rank,
+            h,
         );
         // grad_A = input^T @ (grad_output @ B^T)
         let grad_xb = self.trainer.zeros((seq_len * rank) as usize);
         self.trainer.matmul_backward(
-            layer_input, &lora.a_q, &grad_xb,
-            &self.trainer.zeros((seq_len * h) as usize), &grad_a_q,
-            seq_len, h, rank,
+            layer_input,
+            &lora.a_q,
+            &grad_xb,
+            &self.trainer.zeros((seq_len * h) as usize),
+            &grad_a_q,
+            seq_len,
+            h,
+            rank,
         );
 
         // Apply LoRA gradients via AdamW (for Q projection)
