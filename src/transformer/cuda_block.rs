@@ -3038,6 +3038,7 @@ impl CudaNf4TransformerBlock {
 
         // === Final Residual Add ===
         cuda_add(&scratch.residual1, &scratch.ffn_out, output, seq_len * hidden_size, stream)?;
+        if self.layer_idx == 0 || self.layer_idx == 14 || self.layer_idx == 27 { static S: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0); if S.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 3 { stream.synchronize().ok(); let mut v = vec![0.0f32; 4]; output.copy_to_host(&mut v).unwrap(); let nan = v.iter().any(|x| x.is_nan()); let inf = v.iter().any(|x| x.is_infinite()); eprintln!("[LAYER] L{} output={v:?} nan={nan} inf={inf}", self.layer_idx); } }
 
         Ok(())
     }

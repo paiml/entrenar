@@ -43,10 +43,6 @@ confidence-threshold = 0.8
 multiple-versions = "warn"
 wildcards = "deny"
 highlight = "all"
-deny = [
-    { name = "ndarray", wrappers = [] },
-    { name = "ndarray-rand", wrappers = [] },
-]
 
 [sources]
 unknown-registry = "deny"

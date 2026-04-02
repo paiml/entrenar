@@ -1352,8 +1352,8 @@ mod tests {
         assert_eq!(model.num_layers, 36);
         assert_eq!(model.hidden_size, 2560);
         assert_eq!(model.layers.len(), 36);
-        assert_eq!(model.lora_q.len(), 36);
-        assert_eq!(model.lora_v.len(), 36);
+        assert_eq!(model.lora.len(), 36);
+        assert_eq!(model.lora[0].q.a.len(), model.lora[0].q.a.len());
 
         let total_nf4_mb: f64 =
             model.layers.iter().map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
@@ -1401,12 +1401,14 @@ mod tests {
             .collect();
 
         let start = std::time::Instant::now();
+        let lora_set = &mut model.lora[0];
+        let (lq, lv) = (&mut lora_set.q, &mut lora_set.v);
         let (output, grad_norm) = trainer
             .layer_train_step(
                 &hidden,
                 &mut model.layers[0],
-                &mut model.lora_q[0],
-                &mut model.lora_v[0],
+                lq,
+                lv,
                 seq_len,
                 2560,
                 9728,
