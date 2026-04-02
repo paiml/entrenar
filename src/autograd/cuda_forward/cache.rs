@@ -51,10 +51,11 @@ impl ForwardKernelCache {
         // since we already have a valid CudaContext).
         let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
 
-        // Initialize cuBLAS (ALB-075). Forward: TF32 tensor cores. Backward: SIMD (trueno#170).
-        let cublas = match CublasHandle::new(&ctx) {
+        // entrenar#318: Forward uses TF32 tensor cores (~41x faster than SIMD on sm_89).
+        // ALB-076: TF32 is safe for forward (NoTrans/NoTrans). Backward uses SIMD handle.
+        let cublas = match CublasHandle::new_with_tensor_cores(&ctx) {
             Ok(handle) => {
-                eprintln!("[CUDA] cuBLAS initialized — forward tensor core, backward SIMD GEMMs");
+                eprintln!("[CUDA] cuBLAS initialized — forward TF32 tensor cores (41x vs SIMD)");
                 Some(handle)
             }
             Err(e) => {
