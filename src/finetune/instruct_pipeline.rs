@@ -1994,10 +1994,12 @@ impl InstructPipeline {
     ) -> Option<()> {
         let seq_len = token_ids.len();
         let hidden_size = model.config.hidden_size;
-        let max_seq_len = model
-            .config
-            .max_position_embeddings
-            .min(512); // entrenar#318: use 512 as cap, not layer_inputs size (gets shrunk after first sample realloc)
+        // entrenar#318: truncation cap MUST match scratch allocation size.
+        // Scratch allocated at config.max_seq_len in try_init_cuda.
+        // Using a larger cap causes buffer overflow (seq_len > scratch capacity).
+        let max_seq_len = shared_scratch.as_ref()
+            .map(|s| s.max_seq_len(hidden_size))
+            .unwrap_or(model.config.max_position_embeddings.min(512));
 
         // entrenar#318: truncate instead of aborting when seq_len > max_seq_len
         let seq_len = if seq_len > max_seq_len { max_seq_len } else { seq_len };

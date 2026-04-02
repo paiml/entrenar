@@ -168,6 +168,11 @@ pub(crate) struct CudaBlockScratch {
 impl CudaBlockScratch {
     /// Zero all forward scratch buffers to prevent backward gradient contamination.
     /// entrenar#318 Tier 1: GPU-side memset via cuMemsetD32Async (no PCIe transfer).
+    /// Max sequence length this scratch was allocated for.
+    pub(crate) fn max_seq_len(&self, hidden_size: usize) -> usize {
+        self.norm1_out.len() / hidden_size.max(1)
+    }
+
     pub(crate) fn zero_forward_buffers(&mut self, stream: &CudaStream) {
         let z = |buf: &mut GpuBuffer<f32>| { buf.zero_async(stream).ok(); };
         z(&mut self.norm1_out); z(&mut self.q); z(&mut self.k); z(&mut self.v);
