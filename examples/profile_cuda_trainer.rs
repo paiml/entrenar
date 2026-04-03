@@ -77,7 +77,7 @@ fn main() {
 
     // Create synthetic batches
     let sequences: Vec<Vec<u32>> = (0..num_steps)
-        .map(|i| (0..(max_seq + 1)).map(|j| ((i * (max_seq + 1) + j) % vocab) as u32).collect())
+        .map(|i| (0..=max_seq).map(|j| ((i * (max_seq + 1) + j) % vocab) as u32).collect())
         .collect();
 
     for seq in &sequences {

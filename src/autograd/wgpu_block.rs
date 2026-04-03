@@ -123,8 +123,8 @@ impl WgpuBlockManager {
         num_layers: u32,
         vocab_size: u32,
         max_seq_len: u32,
-        lora_rank: Option<u32>,
-        lora_alpha: Option<f32>,
+        _lora_rank: Option<u32>,
+        _lora_alpha: Option<f32>,
     ) -> Self {
         let q_dim = num_heads * head_dim;
         let kv_dim = num_kv_heads * head_dim;
@@ -134,7 +134,7 @@ impl WgpuBlockManager {
         let buf = |size: u32, label: &str| -> wgpu::Buffer {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
-                size: (size as u64) * 4,
+                size: u64::from(size) * 4,
                 usage: wgpu::BufferUsages::STORAGE
                     | wgpu::BufferUsages::COPY_SRC
                     | wgpu::BufferUsages::COPY_DST,
@@ -300,13 +300,13 @@ impl WgpuBlockManager {
 
     /// Total GPU memory used (approximate, in bytes).
     pub fn gpu_memory_bytes(&self) -> u64 {
-        let h = self.hidden_size as u64;
-        let inter = self.intermediate_size as u64;
-        let q = (self.num_heads * self.head_dim) as u64;
-        let kv = (self.num_kv_heads * self.head_dim) as u64;
-        let v = self.vocab_size as u64;
-        let s = self.max_seq_len as u64;
-        let l = self.num_layers as u64;
+        let h = u64::from(self.hidden_size);
+        let inter = u64::from(self.intermediate_size);
+        let q = u64::from(self.num_heads * self.head_dim);
+        let kv = u64::from(self.num_kv_heads * self.head_dim);
+        let v = u64::from(self.vocab_size);
+        let s = u64::from(self.max_seq_len);
+        let l = u64::from(self.num_layers);
 
         // Per layer: norms + 7 projections + optional LoRA
         let per_layer_weights =

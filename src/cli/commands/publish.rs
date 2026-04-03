@@ -40,7 +40,7 @@ fn do_publish(
     level: LogLevel,
 ) -> Result<(), String> {
     use crate::hf_pipeline::publish::config::PublishConfig;
-    use crate::hf_pipeline::publish::model_card::ModelCard;
+
     use crate::hf_pipeline::publish::publisher::HfPublisher;
 
     let config =

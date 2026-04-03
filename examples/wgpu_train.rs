@@ -54,7 +54,7 @@ fn run() -> Result<(), String> {
         accumulation_steps: 4,
     };
 
-    eprintln!("WGPU Training: {} steps, lr={lr}, seq_len={seq_len}", steps);
+    eprintln!("WGPU Training: {steps} steps, lr={lr}, seq_len={seq_len}");
     run_wgpu_training(&config)
 }
 

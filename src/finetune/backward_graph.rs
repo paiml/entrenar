@@ -14,7 +14,7 @@
 //! - F-GRAPH-BWD-003: Throughput >= 1.10x ungraphed at batch=4
 
 #[cfg(feature = "cuda")]
-use trueno_gpu::driver::{CaptureMode, CudaGraphExec, CudaStream, GpuBuffer};
+use trueno_gpu::driver::{CaptureMode, CudaGraphExec, CudaStream};
 
 /// Cached backward graph state.
 #[cfg(feature = "cuda")]

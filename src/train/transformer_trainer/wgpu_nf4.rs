@@ -132,20 +132,20 @@ impl Nf4LayerWeights {
 #[cfg(feature = "gpu")]
 const NF4_LUT: [f32; 16] = [
     -1.0,
-    -0.6961928009986877,
-    -0.5250730514526367,
-    -0.39491748809814453,
-    -0.28444138169288635,
-    -0.18477343022823334,
-    -0.09105003625154495,
+    -0.696_192_8,
+    -0.525_073_05,
+    -0.394_917_5,
+    -0.284_441_38,
+    -0.184_773_43,
+    -0.091_050_036,
     0.0,
-    0.07958029955625534,
-    0.16093020141124725,
-    0.24611230194568634,
-    0.33791524171829224,
-    0.44070982933044434,
-    0.5626170039176941,
-    0.7229568362236023,
+    0.079_580_3,
+    0.160_930_2,
+    0.246_112_3,
+    0.337_915_24,
+    0.440_709_83,
+    0.562_617,
+    0.722_956_84,
     1.0,
 ];
 
@@ -157,7 +157,7 @@ const NF4_BLOCK_SIZE: usize = 64;
 #[cfg(feature = "gpu")]
 fn quantize_to_nf4(values: &[f32]) -> (Vec<u32>, Vec<f32>) {
     let n = values.len();
-    assert!(n % NF4_BLOCK_SIZE == 0, "Length must be divisible by {NF4_BLOCK_SIZE}");
+    assert!(n.is_multiple_of(NF4_BLOCK_SIZE), "Length must be divisible by {NF4_BLOCK_SIZE}");
 
     let num_blocks = n / NF4_BLOCK_SIZE;
     let mut scales = Vec::with_capacity(num_blocks);
@@ -186,7 +186,7 @@ fn quantize_to_nf4(values: &[f32]) -> (Vec<u32>, Vec<f32>) {
             }
             let elem_idx = start + i;
             let byte_idx = elem_idx / 2;
-            if elem_idx % 2 == 0 {
+            if elem_idx.is_multiple_of(2) {
                 packed_bytes[byte_idx] |= best_idx; // low nibble
             } else {
                 packed_bytes[byte_idx] |= best_idx << 4; // high nibble
@@ -195,9 +195,9 @@ fn quantize_to_nf4(values: &[f32]) -> (Vec<u32>, Vec<f32>) {
     }
 
     // Pack bytes into u32
-    let mut packed = vec![0u32; (packed_bytes.len() + 3) / 4];
+    let mut packed = vec![0u32; packed_bytes.len().div_ceil(4)];
     for (i, &byte) in packed_bytes.iter().enumerate() {
-        packed[i / 4] |= (byte as u32) << ((i % 4) * 8);
+        packed[i / 4] |= u32::from(byte) << ((i % 4) * 8);
     }
 
     (packed, scales)
@@ -369,7 +369,7 @@ impl LoraAdapter {
         let b_len = (out_dim * rank) as usize;
 
         // Kaiming-uniform initialization for A
-        let scale = (2.0 / in_dim as f64).sqrt() as f32;
+        let scale = (2.0 / f64::from(in_dim)).sqrt() as f32;
         let mut a = vec![0.0f32; a_len];
         // Simple deterministic pseudo-random init
         for (i, val) in a.iter_mut().enumerate() {

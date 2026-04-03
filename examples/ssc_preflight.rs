@@ -25,8 +25,11 @@ fn main() {
     println!("Model: {}", _model_dir.display());
     println!();
 
+    #[allow(unused_mut)]
     let mut passed = 0u32;
-    let failed = 0u32;
+    #[allow(unused_mut)]
+    let mut failed = 0u32;
+    #[allow(unused_mut)]
     let mut deferred = 0u32;
     let total = 6u32;
 
@@ -156,7 +159,7 @@ fn check_rmsnorm_parity() -> Result<f64, String> {
     let max_diff = cpu_output
         .iter()
         .zip(gpu_output.iter())
-        .map(|(c, g)| (c - g).abs() as f64)
+        .map(|(c, g)| f64::from((c - g).abs()))
         .fold(0.0f64, f64::max);
 
     Ok(max_diff)

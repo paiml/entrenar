@@ -79,7 +79,7 @@ impl WgslBackwardPass {
         let h = mgr.hidden_size;
         let inter = mgr.intermediate_size;
         let q_dim = mgr.num_heads * mgr.head_dim;
-        let kv_dim = mgr.num_kv_heads * mgr.head_dim;
+        let _kv_dim = mgr.num_kv_heads * mgr.head_dim;
 
         // === Residual backward: grad splits to both FFN and residual paths ===
         // In the forward: output = ffn_output + residual
@@ -143,7 +143,7 @@ impl WgslBackwardPass {
         let gn1 = self.trainer.download(&grad_norm);
         let gn2 = self.trainer.download(&grad_norm2);
         let combined: Vec<f32> = gn1.iter().zip(gn2.iter()).map(|(a, b)| a + b).collect();
-        let grad_ffn_norm = self.trainer.upload(&combined);
+        let _grad_ffn_norm = self.trainer.upload(&combined);
 
         // RMSNorm backward: skip for now (pass through)
         // TODO: RMSNORM_BACKWARD_SHADER
@@ -197,7 +197,7 @@ impl WgslBackwardPass {
     ///   grad_A = x^T @ (grad_h @ B^T) * scale    [in_dim, rank]
     fn compute_lora_gradients(
         &self,
-        block: &WgpuBlock,
+        _block: &WgpuBlock,
         mgr: &WgpuBlockManager,
         grad_output: &wgpu::Buffer,
         layer_input: &wgpu::Buffer,
@@ -216,7 +216,7 @@ impl WgslBackwardPass {
         let xa_q = self.trainer.zeros((seq_len * rank) as usize);
         self.trainer.matmul_forward(layer_input, &lora.a_q, &xa_q, seq_len, h, rank);
 
-        let grad_lora_q = self.trainer.zeros((seq_len * h) as usize);
+        let _grad_lora_q = self.trainer.zeros((seq_len * h) as usize);
         // Simplified: grad through Q projection ≈ portion of grad_output
         // For proper implementation, need attention backward → Q gradient
         // For now, use grad_output as proxy (conservative gradient estimate)
@@ -227,7 +227,7 @@ impl WgslBackwardPass {
         self.trainer.matmul_backward(
             &xa_q,
             &lora.b_q,
-            &grad_output,
+            grad_output,
             &xa_q,
             &grad_b_q,
             seq_len,

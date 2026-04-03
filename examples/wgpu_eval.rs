@@ -293,7 +293,7 @@ fn compute_ce_loss(
     let mut loss = 0.0f32;
     for si in 0..s {
         let row = &logits[si * v..(si + 1) * v];
-        let mx = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let mx = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let lse = mx + row.iter().map(|&x| (x - mx).exp()).sum::<f32>().ln();
         let t = targets[si] as usize;
         if t < v {
@@ -313,7 +313,7 @@ fn compute_best_mcc(scores: &[(f32, i32)]) -> (f32, f32, usize, usize, usize, us
     for &thresh in &thresholds {
         let (mut tp, mut fp, mut tn, mut fn_) = (0usize, 0, 0, 0);
         for &(score, label) in scores {
-            let pred = if score > thresh { 1 } else { 0 };
+            let pred = i32::from(score > thresh);
             match (pred, label) {
                 (1, 1) => tp += 1,
                 (1, 0) => fp += 1,

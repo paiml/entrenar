@@ -77,7 +77,10 @@ mod parity_tests {
         total: usize,
     ) -> (GpuBuffer<u8>, GpuBuffer<f32>, Nf4Quantized) {
         assert_eq!(weights.len(), total);
-        assert!(total % NF4_BLOCK_SIZE == 0, "total {total} not divisible by NF4 block size");
+        assert!(
+            total.is_multiple_of(NF4_BLOCK_SIZE),
+            "total {total} not divisible by NF4 block size"
+        );
 
         let q = quantize_nf4(weights, total / NF4_BLOCK_SIZE, NF4_BLOCK_SIZE);
         let nf4_buf = GpuBuffer::from_host(ctx, &q.data).unwrap();

@@ -12,7 +12,7 @@ use std::sync::{Mutex, OnceLock};
 use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    Batched4DGemmKernel, BatchedRopeBackwardKernel, BatchedRopeKernel, BatchedSoftmaxKernel,
+    Batched4DGemmKernel, BatchedRopeBackwardKernel, BatchedSoftmaxKernel,
     BatchedToInterleavedKernel, BatchedTransposeKernel, BatchedVectorizedRmsNormKernel,
     ElementwiseMulKernel, FusedSwigluKernel, GemmKernel, InterleavedToBatchedKernel, Kernel,
     Nf4GemmKernel, Nf4GemmTransposeKernel, ResidualAddKernel, ScaleKernel, SiluKernel,
@@ -167,7 +167,7 @@ impl ForwardKernelCache {
         let kv_h = (num_kv_heads * head_dim) as u32;
         let i = intermediate_size as u32;
         let nh = num_heads as u32;
-        let nkv = num_kv_heads as u32;
+        let _nkv = num_kv_heads as u32;
         let hd = head_dim as u32;
         let sh = s * h; // seq_len * hidden_size
         let si = s * i; // seq_len * intermediate_size
@@ -179,7 +179,7 @@ impl ForwardKernelCache {
         macro_rules! warm {
             ($key:expr, $kernel:expr) => {{
                 let ptx = $kernel.emit_ptx_for_target(&target);
-                self.get_or_compile(&$key, &ptx)?;
+                self.get_or_compile("silu_forward", &ptx)?;
                 count += 1;
             }};
         }
@@ -278,17 +278,14 @@ impl ForwardKernelCache {
         // PMAT-475: Fused NF4 Gate+Up GEMM for FFN (shared input load).
         if h.is_multiple_of(64) && i.is_multiple_of(64) {
             use trueno_gpu::kernels::FusedNf4GateUpGemmKernel;
-            warm!(
-                format!("fused_nf4_gate_up_{h}_{i}"),
-                FusedNf4GateUpGemmKernel::new(s as u32, i as u32, h as u32)
-            );
+            warm!(format!("fused_nf4_gate_up_{h}_{i}"), FusedNf4GateUpGemmKernel::new(s, i, h));
         }
         // PMAT-478: Fused K+V GEMM for GQA attention (reuses Gate+Up kernel).
         if h.is_multiple_of(64) && kv_h.is_multiple_of(64) && kv_h != i {
             use trueno_gpu::kernels::FusedNf4GateUpGemmKernel;
             warm!(
                 format!("fused_nf4_gate_up_{h}_{kv_h}"),
-                FusedNf4GateUpGemmKernel::new(s as u32, kv_h as u32, h as u32)
+                FusedNf4GateUpGemmKernel::new(s, kv_h, h)
             );
         }
 
@@ -469,9 +466,9 @@ fn pre_warm_backward_kernels_in_forward_cache(
     })?;
 
     let target = cache.sm_target.clone();
-    let nh = num_heads as u32;
-    let hd = head_dim as u32;
-    let s = max_seq_len as u32;
+    let _nh = num_heads as u32;
+    let _hd = head_dim as u32;
+    let _s = max_seq_len as u32;
 
     macro_rules! warm {
         ($key:expr, $kernel:expr) => {{

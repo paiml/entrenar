@@ -133,11 +133,9 @@ impl InstructPipeline {
 
         // PMAT-420: If GPU embeddings are minimal (VRAM-constrained), skip the GPU-resident
         // logits path entirely — go straight to CPU-loss path which uses GPU transformer + CPU lm_head.
-        let has_gpu_embed = self
-            .gpu_training
-            .as_ref()
-            .map(|t| t.embed_original.len() >= self.model.config().hidden_size * vocab_size)
-            .unwrap_or(false);
+        let has_gpu_embed = self.gpu_training.as_ref().is_some_and(|t| {
+            t.embed_original.len() >= self.model.config().hidden_size * vocab_size
+        });
 
         if !has_gpu_embed {
             return self.cuda_train_step_cpu_loss(
@@ -307,11 +305,9 @@ impl InstructPipeline {
     ) -> InstructStepResult {
         // PMAT-420: Check if GPU embeddings are available. If not (VRAM-constrained),
         // skip forward_logits_gpu entirely to avoid CUDA context poisoning.
-        let has_gpu_embed = self
-            .gpu_training
-            .as_ref()
-            .map(|t| t.embed_original.len() >= vocab_size * self.model.config().hidden_size)
-            .unwrap_or(false);
+        let has_gpu_embed = self.gpu_training.as_ref().is_some_and(|t| {
+            t.embed_original.len() >= vocab_size * self.model.config().hidden_size
+        });
 
         let logits_data = if has_gpu_embed {
             match self.forward_logits_gpu(full_ids) {

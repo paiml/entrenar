@@ -147,7 +147,7 @@ pub fn gemm_forward_bt(
     m: u32,
     k: u32,
     n: u32,
-    stream: &CudaStream,
+    _stream: &CudaStream,
 ) -> Result<()> {
     let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let cache = cache.lock().map_err(|_| CudaTensorError::KernelError("cache lock".to_string()))?;

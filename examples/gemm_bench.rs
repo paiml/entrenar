@@ -23,7 +23,7 @@ fn main() {
             (128, 18944, 3584, "FFN down (M=128)"),
         ];
 
-        println!("GEMM Benchmark — wgpu/Vulkan on {}", "GB10");
+        println!("GEMM Benchmark — wgpu/Vulkan on GB10");
         println!("{:<30} {:>10} {:>10} {:>12}", "Shape", "Time (ms)", "GFLOPS", "Throughput");
         println!("{}", "-".repeat(65));
 
@@ -51,8 +51,8 @@ fn main() {
             let _ = trainer.download(&c);
             let elapsed = start.elapsed();
 
-            let ms_per_iter = elapsed.as_secs_f64() * 1000.0 / iters as f64;
-            let flops = 2.0 * m as f64 * k as f64 * n as f64; // 2*M*K*N FLOPs per GEMM
+            let ms_per_iter = elapsed.as_secs_f64() * 1000.0 / f64::from(iters);
+            let flops = 2.0 * f64::from(m) * f64::from(k) * f64::from(n); // 2*M*K*N FLOPs per GEMM
             let gflops = flops / (ms_per_iter / 1000.0) / 1e9;
 
             println!(
@@ -60,7 +60,7 @@ fn main() {
                 format!("{} [{}×{}×{}]", label, m, k, n),
                 ms_per_iter,
                 gflops,
-                if ms_per_iter > 0.0 { (m as f64) / (ms_per_iter / 1000.0) } else { 0.0 }
+                if ms_per_iter > 0.0 { f64::from(m) / (ms_per_iter / 1000.0) } else { 0.0 }
             );
         }
     }

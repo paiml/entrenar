@@ -99,7 +99,7 @@ fn test_custom_architecture_serde() {
 #[test]
 fn test_architecture_debug() {
     let bert = Architecture::BERT { num_layers: 6, hidden_size: 384, num_attention_heads: 6 };
-    let debug = format!("{:?}", bert);
+    let debug = format!("{bert:?}");
     assert!(debug.contains("BERT"));
     assert!(debug.contains("384"));
 }

@@ -319,7 +319,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp file creation should succeed");
 
         // Set Q8_0 then override to Q4_0
-        let result = Exporter::new()
+        let _result = Exporter::new()
             .output_dir(dir.path())
             .gguf_quantization(GgufQuantization::Q8_0)
             .gguf_quantization(GgufQuantization::Q4_0)

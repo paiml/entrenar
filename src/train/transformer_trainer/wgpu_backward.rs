@@ -330,7 +330,6 @@ pub fn backward_through_layers(
 #[cfg(all(test, feature = "gpu"))]
 mod tests {
     use super::*;
-    use crate::train::transformer_trainer::wgpu_nf4::LoraAdapter;
 
     /// FALSIFY: Backward through layers produces non-zero LoRA gradient norm
     #[test]

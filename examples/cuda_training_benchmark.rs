@@ -128,7 +128,7 @@ mod cuda_benchmark {
         let device_name = ctx.device_name().unwrap_or_else(|_| "Unknown GPU".to_string());
         let total_memory = ctx.total_memory().unwrap_or(0);
 
-        println!("   Device: {}", device_name);
+        println!("   Device: {device_name}");
         println!("   Memory: {:.1} GB", total_memory as f64 / 1e9);
 
         // 3. Initialize kernel caches
@@ -184,7 +184,7 @@ mod cuda_benchmark {
         println!("   Hidden states: {} elements", m * k);
         println!("   LM head weights: {} elements", k * n);
         println!("   Logits: {} elements", m * n);
-        println!("   Total parameters: {}", total_params);
+        println!("   Total parameters: {total_params}");
         println!("   GPU memory used: {:.1} MB", memory_used as f64 / 1e6);
 
         Ok(Buffers {
@@ -364,8 +364,10 @@ mod cuda_benchmark {
             config.batch_size * config.seq_len * config.num_epochs * config.num_steps_per_epoch;
 
         // FLOPs per matmul: 2 * M * N * K (multiply-add)
-        let forward_flops = 2 * m as u64 * n as u64 * k as u64;
-        let backward_flops = 2 * (m as u64 * k as u64 * n as u64 + k as u64 * m as u64 * n as u64);
+        let forward_flops = 2 * u64::from(m) * u64::from(n) * u64::from(k);
+        let backward_flops = 2
+            * (u64::from(m) * u64::from(k) * u64::from(n)
+                + u64::from(k) * u64::from(m) * u64::from(n));
         let total_flops = (forward_flops + backward_flops)
             * (config.num_epochs * config.num_steps_per_epoch) as u64;
 
@@ -400,11 +402,11 @@ mod cuda_benchmark {
         let tokens_per_sec = metrics.tokens_per_second(total_tokens);
         let gflops = metrics.throughput_gflops(total_flops);
 
-        println!("   GPU Utilization:   {:.1}%", gpu_util);
-        println!("   Tokens/second:     {:.0}", tokens_per_sec);
-        println!("   Throughput:        {:.1} GFLOP/s", gflops);
-        println!("   Total tokens:      {}", total_tokens);
-        println!("   Total parameters:  {}", total_params);
+        println!("   GPU Utilization:   {gpu_util:.1}%");
+        println!("   Tokens/second:     {tokens_per_sec:.0}");
+        println!("   Throughput:        {gflops:.1} GFLOP/s");
+        println!("   Total tokens:      {total_tokens}");
+        println!("   Total parameters:  {total_params}");
 
         // Verification against targets
         println!("\n═══════════════════════════════════════════════════════════════");
@@ -484,7 +486,7 @@ fn main() {
 #[cfg(feature = "cuda")]
 fn main() {
     if let Err(e) = cuda_benchmark::run_benchmark() {
-        eprintln!("Benchmark failed: {}", e);
+        eprintln!("Benchmark failed: {e}");
         std::process::exit(1);
     }
 }

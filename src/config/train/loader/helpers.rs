@@ -378,7 +378,7 @@ fn save_best_model(
     let best_path = spec.training.output_dir.join("model-best.apr");
     let lr = trainer.current_lr();
     let save_fn =
-        trainer.prepare_async_apr_save(model_name, "LlamaForCausalLM", step, 0.0, lr as f64);
+        trainer.prepare_async_apr_save(model_name, "LlamaForCausalLM", step, 0.0, f64::from(lr));
     std::thread::spawn(move || {
         if let Err(e) = save_fn(&best_path) {
             println!("  [WARN] Failed to save model-best: {e}");
@@ -409,7 +409,7 @@ fn save_and_validate_checkpoint(
     let lr = trainer.current_lr();
     // ALB-096: Async APR checkpointing — model weights + optimizer state in single atomic file
     let save_fn =
-        trainer.prepare_async_apr_save(model_name, "LlamaForCausalLM", step, loss_ema, lr as f64);
+        trainer.prepare_async_apr_save(model_name, "LlamaForCausalLM", step, loss_ema, f64::from(lr));
     let async_path = ckpt_path.clone();
     let async_output_dir = spec.training.output_dir.clone();
     // ENT-269: Save LoRA adapter to checkpoint directory (PEFT format)
@@ -823,7 +823,7 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
     let weights_path = spec.training.output_dir.join("model.apr");
     let model_name =
         spec.model.path.file_name().and_then(|n| n.to_str()).unwrap_or("entrenar-model");
-    let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0) as f64;
+    let final_loss = f64::from(trainer.metrics.losses.last().copied().unwrap_or(0.0));
     let lr = trainer.current_lr();
     println!("Saving model weights to {}...", weights_path.display());
     let save_fn = trainer.prepare_async_apr_save(
@@ -831,7 +831,7 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
         "LlamaForCausalLM",
         trainer.step(),
         final_loss,
-        lr as f64,
+        f64::from(lr),
     );
     save_fn(&weights_path)?;
     println!(

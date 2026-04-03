@@ -1,7 +1,6 @@
 //! Coverage (cov3) tests for the instruct pipeline, continued.
 
 use super::*;
-use std::path::Path;
 
 #[test]
 fn test_cov3_train_step_multiple_steps_loss_changes() {

@@ -1,5 +1,5 @@
 #[cfg(feature = "cuda")]
-use super::*;
+use super::{CudaBlockScratch, InstructGpuTrainingState, InstructPipeline, Transformer};
 
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::CudaTrainer;
@@ -24,8 +24,7 @@ impl InstructPipeline {
         let hidden_size = model.config.hidden_size;
         let max_seq_len = shared_scratch
             .as_ref()
-            .map(|s| s.max_seq_len(hidden_size))
-            .unwrap_or(model.config.max_position_embeddings.min(512));
+            .map_or(model.config.max_position_embeddings.min(512), |s| s.max_seq_len(hidden_size));
         let seq_len = if seq_len > max_seq_len { max_seq_len } else { seq_len };
         if seq_len == 0 {
             return None;
@@ -160,11 +159,13 @@ impl InstructPipeline {
                             training_state.graph_cached_seq_len = seq_len;
                         }
                         Err(e) => {
-                            eprintln!("[CUDA] Graph instantiate failed: {e} — using non-graph path")
+                            eprintln!(
+                                "[CUDA] Graph instantiate failed: {e} — using non-graph path"
+                            );
                         }
                     },
                     Err(e) => {
-                        eprintln!("[CUDA] Graph end_capture failed: {e} — using non-graph path")
+                        eprintln!("[CUDA] Graph end_capture failed: {e} — using non-graph path");
                     }
                 }
             }

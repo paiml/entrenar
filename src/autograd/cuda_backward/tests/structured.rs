@@ -453,7 +453,7 @@ fn test_batched_softmax_backward_finite_difference() {
     let mut softmax_data = vec![0.0f32; n];
     for r in 0..total_rows as usize {
         let row = &logits[r * row_size as usize..(r + 1) * row_size as usize];
-        let max = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp: Vec<f32> = row.iter().map(|x| (x - max).exp()).collect();
         let sum: f32 = exp.iter().sum();
         for i in 0..row_size as usize {

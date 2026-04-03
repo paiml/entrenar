@@ -385,7 +385,7 @@ impl WgpuInstructPipeline {
             if lora_targets.is_empty() || lora_targets.contains(&"all") {
                 all_proj_dims.iter().map(|(n, _, _)| n.to_string()).collect()
             } else {
-                lora_targets.iter().map(|s| s.to_string()).collect()
+                lora_targets.iter().map(std::string::ToString::to_string).collect()
             };
 
         let mut lora = Vec::with_capacity(num_layers);
@@ -418,16 +418,15 @@ impl WgpuInstructPipeline {
         }
 
         eprintln!(
-            "[wgpu] LoRA initialized: {} layers × {} projections, rank={}, scale={:.2}",
-            num_layers, num_targets, r, scale,
+            "[wgpu] LoRA initialized: {num_layers} layers × {num_targets} projections, rank={r}, scale={scale:.2}",
         );
 
         // Pre-allocate buffers before moving trainer into Self
-        let logits_buf = make_buf(seq as u64 * vocab as u64, "logits");
-        let labels_buf = make_buf(seq as u64, "labels");
-        let losses_buf = make_buf(seq as u64, "losses");
-        let logsumexp_buf = make_buf(seq as u64, "logsumexp");
-        let normed_buf_alloc = make_buf(seq as u64 * hidden_dim as u64, "normed");
+        let logits_buf = make_buf(u64::from(seq) * u64::from(vocab), "logits");
+        let labels_buf = make_buf(u64::from(seq), "labels");
+        let losses_buf = make_buf(u64::from(seq), "losses");
+        let logsumexp_buf = make_buf(u64::from(seq), "logsumexp");
+        let normed_buf_alloc = make_buf(u64::from(seq) * hidden_dim as u64, "normed");
         let output_norm_gpu_buf = trainer.upload(&output_norm);
 
         Self {
@@ -775,7 +774,7 @@ impl WgpuInstructPipeline {
             if end <= self.embed_weights.len() {
                 hidden.extend_from_slice(&self.embed_weights[offset..end]);
             } else {
-                hidden.extend(std::iter::repeat(0.0f32).take(self.hidden_dim));
+                hidden.extend(std::iter::repeat_n(0.0f32, self.hidden_dim));
             }
         }
 
@@ -862,10 +861,10 @@ impl WgpuInstructPipeline {
         let t2 = std::time::Instant::now();
 
         // 3. GPU RMSNorm + lm_head — hidden stays on GPU (contract: gpu-output-norm-v1)
-        let t2a = std::time::Instant::now();
+        let _t2a = std::time::Instant::now();
         self.fwd.gpu_rmsnorm(&self.output_norm_gpu, &self.normed_buf, seq_len as u32);
         let t2b = std::time::Instant::now();
-        let t2c = t2b;
+        let _t2c = t2b;
         // lm_head: chunked GEMM + GPU scatter
         let labels: Vec<u32> = (0..seq_len)
             .map(|i| if i + 1 < full_ids.len() { full_ids[i + 1] } else { 0 })
@@ -873,7 +872,7 @@ impl WgpuInstructPipeline {
 
         let mut col_offset = 0u64;
         for (chunk_buf, chunk_n) in &self.lm_head_t_chunks {
-            let cn = *chunk_n as u64;
+            let cn = u64::from(*chunk_n);
             let c_chunk = self.trainer.zeros((seq_len as u64 * cn) as usize);
             self.trainer.matmul_forward(
                 &self.normed_buf,
@@ -934,8 +933,8 @@ impl WgpuInstructPipeline {
         // KAIZEN: old code downloaded each chunk to CPU (11.6s sync). Now accumulates on GPU.
         let grad_hidden_buf = self.trainer.zeros(seq_len * self.hidden_dim);
         let mut row_offset = 0u64;
-        for (_i, (chunk_buf, chunk_k)) in self.lm_head_chunks.iter().enumerate() {
-            let ck = *chunk_k as u64;
+        for (chunk_buf, chunk_k) in &self.lm_head_chunks {
+            let ck = u64::from(*chunk_k);
             let gl_chunk = self.trainer.zeros((seq_len as u64 * ck) as usize);
             self.dispatch_gather(
                 &self.logits_buf,
@@ -982,7 +981,7 @@ impl WgpuInstructPipeline {
         if self.lora_step == 1 {
             let b0 = self.trainer.download(&self.lora[0].projections[0].b);
             let b_norm: f32 = b0.iter().map(|x| x * x).sum::<f32>().sqrt();
-            eprintln!("[FALSIFY] step=1 B[0].q_proj norm={:.6}", b_norm);
+            eprintln!("[FALSIFY] step=1 B[0].q_proj norm={b_norm:.6}");
         }
 
         // 7. LoRA gradient computation + AdamW step
@@ -1030,7 +1029,7 @@ impl WgpuInstructPipeline {
                 let xa_t = self.trainer.zeros((s * rank) as usize);
                 self.dispatch_transpose(&xa, &xa_t, s, rank, scale);
                 let db = self.trainer.zeros((rank * proj.out_dim) as usize);
-                self.trainer.matmul_forward(&xa_t, &grad_buf, &db, rank, s, proj.out_dim);
+                self.trainer.matmul_forward(&xa_t, grad_buf, &db, rank, s, proj.out_dim);
 
                 // Step 3: dA (skip if B=0 — first step optimization)
                 let da = if self.lora_step <= 1 {
@@ -1039,7 +1038,7 @@ impl WgpuInstructPipeline {
                     let bt = self.trainer.zeros((rank * proj.out_dim) as usize);
                     self.dispatch_transpose(&proj.b, &bt, rank, proj.out_dim, 1.0);
                     let d_xa = self.trainer.zeros((s * rank) as usize);
-                    self.trainer.matmul_forward(&grad_buf, &bt, &d_xa, s, proj.out_dim, rank);
+                    self.trainer.matmul_forward(grad_buf, &bt, &d_xa, s, proj.out_dim, rank);
                     let xt = self.trainer.zeros((s * proj.in_dim) as usize);
                     self.dispatch_transpose(input_buf, &xt, s, proj.in_dim, scale);
                     let da_buf = self.trainer.zeros((proj.in_dim * rank) as usize);

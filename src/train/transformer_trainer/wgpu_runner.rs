@@ -77,7 +77,7 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
         .filter_map(|line| {
             serde_json::from_str::<serde_json::Value>(line)
                 .ok()
-                .and_then(|v| v["text"].as_str().map(|s| s.to_string()))
+                .and_then(|v| v["text"].as_str().map(std::string::ToString::to_string))
         })
         .collect();
     eprintln!("Data: {} examples from {}\n", examples.len(), config.data_path.display());
@@ -146,7 +146,7 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
             total_loss += loss;
             step += 1;
 
-            if step % config.log_every == 0 {
+            if step.is_multiple_of(config.log_every) {
                 let avg_loss = total_loss / step as f32;
                 eprintln!(
                     "  step={step} loss={loss:.3} avg_loss={avg_loss:.3} gnorm={gnorm:.2e} [{}/{}]",
@@ -155,7 +155,7 @@ pub fn run_wgpu_training(config: &WgpuTrainConfig) -> Result<(), String> {
                 );
             }
 
-            if config.save_every > 0 && step % config.save_every == 0 {
+            if config.save_every > 0 && step.is_multiple_of(config.save_every) {
                 model.save_checkpoint(
                     &config.output_dir,
                     step as u32,

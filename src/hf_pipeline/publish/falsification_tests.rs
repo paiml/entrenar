@@ -121,7 +121,7 @@ fn falsify_jsonl_each_line_valid_json() {
         assert!(
             parsed.is_ok(),
             "Line {i} is not valid JSON: {line}\nError: {}",
-            parsed.err().expect("parsing should succeed")
+            parsed.expect_err("parsing should succeed")
         );
     }
 }

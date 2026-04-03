@@ -441,7 +441,7 @@ mod tests {
         }
 
         let trainer = CudaTrainer::new().expect("operation should succeed");
-        let debug_str = format!("{:?}", trainer);
+        let debug_str = format!("{trainer:?}");
         assert!(debug_str.contains("CudaTrainer"));
         assert!(debug_str.contains("device"));
         assert!(debug_str.contains("step"));

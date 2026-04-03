@@ -1,7 +1,6 @@
 //! Tests for the instruct pipeline.
 
 use super::*;
-use std::path::Path;
 
 #[test]
 fn test_instruct_pipeline_new() {

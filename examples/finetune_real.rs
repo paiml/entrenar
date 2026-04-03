@@ -431,8 +431,7 @@ fn generate_tests(
 ) -> String {
     // Create prompt: function + test generation instruction
     let prompt = format!(
-        "{}\n\n// Generate comprehensive tests for the above function:\n#[cfg(test)]\nmod tests {{\n    use super::*;\n\n    #[test]\n    fn ",
-        function_code
+        "{function_code}\n\n// Generate comprehensive tests for the above function:\n#[cfg(test)]\nmod tests {{\n    use super::*;\n\n    #[test]\n    fn "
     );
 
     // Tokenize prompt
@@ -460,8 +459,7 @@ fn generate_tests(
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed"))
-            .map(|(idx, _)| idx as u32)
-            .unwrap_or(eos_token);
+            .map_or(eos_token, |(idx, _)| idx as u32);
 
         // Stop if EOS
         if next_token == eos_token {
@@ -487,7 +485,7 @@ fn generate_tests(
     tokenizer.decode(&token_ids)
 }
 
-const IS_PRIME_FN: &str = r#"/// Checks if a number is prime
+const IS_PRIME_FN: &str = r"/// Checks if a number is prime
 pub fn is_prime(n: u64) -> bool {
     if n < 2 { return false; }
     if n == 2 { return true; }
@@ -497,9 +495,9 @@ pub fn is_prime(n: u64) -> bool {
         if n % i == 0 { return false; }
     }
     true
-}"#;
+}";
 
-const IS_PRIME_TESTS: &str = r#"#[test]
+const IS_PRIME_TESTS: &str = r"#[test]
 fn test_is_prime_small_primes() {
     assert!(is_prime(2));
     assert!(is_prime(3));
@@ -518,16 +516,16 @@ fn test_is_prime_composites() {
 fn test_is_prime_edge_cases() {
     assert!(!is_prime(0));
     assert!(!is_prime(1));
-}"#;
+}";
 
-const IS_PRIME_PROPS: &str = r#"proptest! {
+const IS_PRIME_PROPS: &str = r"proptest! {
     #[test]
     fn prop_prime_greater_than_one(n in 2u64..1000) {
         if is_prime(n) {
             prop_assert!(n >= 2);
         }
     }
-}"#;
+}";
 
 fn sample_is_prime() -> TestGenSample {
     TestGenSample {
@@ -538,7 +536,7 @@ fn sample_is_prime() -> TestGenSample {
     }
 }
 
-const BINARY_SEARCH_FN: &str = r#"/// Binary search in a sorted slice
+const BINARY_SEARCH_FN: &str = r"/// Binary search in a sorted slice
 pub fn binary_search<T: Ord>(arr: &[T], target: &T) -> Option<usize> {
     let mut left = 0;
     let mut right = arr.len();
@@ -551,9 +549,9 @@ pub fn binary_search<T: Ord>(arr: &[T], target: &T) -> Option<usize> {
         }
     }
     None
-}"#;
+}";
 
-const BINARY_SEARCH_TESTS: &str = r#"#[test]
+const BINARY_SEARCH_TESTS: &str = r"#[test]
 fn test_binary_search_found() {
     let arr = vec![1, 2, 3, 4, 5];
     assert_eq!(binary_search(&arr, &3), Some(2));
@@ -569,9 +567,9 @@ fn test_binary_search_not_found() {
 fn test_binary_search_empty() {
     let arr: Vec<i32> = vec![];
     assert_eq!(binary_search(&arr, &1), None);
-}"#;
+}";
 
-const BINARY_SEARCH_PROPS: &str = r#"proptest! {
+const BINARY_SEARCH_PROPS: &str = r"proptest! {
     #[test]
     fn prop_binary_search_finds_existing(arr in prop::collection::vec(0i32..100, 1..50)) {
         let mut sorted = arr.clone();
@@ -580,7 +578,7 @@ const BINARY_SEARCH_PROPS: &str = r#"proptest! {
             prop_assert!(binary_search(&sorted, &elem).is_some());
         }
     }
-}"#;
+}";
 
 fn sample_binary_search() -> TestGenSample {
     TestGenSample {
@@ -591,10 +589,10 @@ fn sample_binary_search() -> TestGenSample {
     }
 }
 
-const REVERSE_STRING_FN: &str = r#"/// Reverses a string
+const REVERSE_STRING_FN: &str = r"/// Reverses a string
 pub fn reverse_string(s: &str) -> String {
     s.chars().rev().collect()
-}"#;
+}";
 
 const REVERSE_STRING_TESTS: &str = r#"#[test]
 fn test_reverse_string() {
@@ -624,15 +622,15 @@ fn sample_reverse_string() -> TestGenSample {
     }
 }
 
-const FACTORIAL_FN: &str = r#"/// Calculates factorial
+const FACTORIAL_FN: &str = r"/// Calculates factorial
 pub fn factorial(n: u64) -> u64 {
     match n {
         0 | 1 => 1,
         _ => n * factorial(n - 1),
     }
-}"#;
+}";
 
-const FACTORIAL_TESTS: &str = r#"#[test]
+const FACTORIAL_TESTS: &str = r"#[test]
 fn test_factorial_base_cases() {
     assert_eq!(factorial(0), 1);
     assert_eq!(factorial(1), 1);
@@ -642,7 +640,7 @@ fn test_factorial_base_cases() {
 fn test_factorial_small() {
     assert_eq!(factorial(5), 120);
     assert_eq!(factorial(10), 3628800);
-}"#;
+}";
 
 fn sample_factorial() -> TestGenSample {
     TestGenSample {
@@ -653,12 +651,12 @@ fn sample_factorial() -> TestGenSample {
     }
 }
 
-const FLATTEN_FN: &str = r#"/// Flattens a nested vector
+const FLATTEN_FN: &str = r"/// Flattens a nested vector
 pub fn flatten<T: Clone>(nested: Vec<Vec<T>>) -> Vec<T> {
     nested.into_iter().flatten().collect()
-}"#;
+}";
 
-const FLATTEN_TESTS: &str = r#"#[test]
+const FLATTEN_TESTS: &str = r"#[test]
 fn test_flatten() {
     let nested = vec![vec![1, 2], vec![3, 4]];
     assert_eq!(flatten(nested), vec![1, 2, 3, 4]);
@@ -668,7 +666,7 @@ fn test_flatten() {
 fn test_flatten_empty() {
     let nested: Vec<Vec<i32>> = vec![];
     assert_eq!(flatten(nested), Vec::<i32>::new());
-}"#;
+}";
 
 fn sample_flatten() -> TestGenSample {
     TestGenSample {
@@ -792,8 +790,8 @@ fn generate_additional_samples(count: usize) -> Vec<TestGenSample> {
     for i in 0..count {
         let (func, test) = &templates[i % templates.len()];
         // Add variation by appending index to function name
-        let varied_func = func.replace("pub fn ", &format!("pub fn v{}__", i));
-        let varied_test = test.replace("fn test_", &format!("fn test_v{}_", i));
+        let varied_func = func.replace("pub fn ", &format!("pub fn v{i}__"));
+        let varied_test = test.replace("fn test_", &format!("fn test_v{i}_"));
 
         samples.push(TestGenSample {
             function: varied_func,
@@ -807,7 +805,7 @@ fn generate_additional_samples(count: usize) -> Vec<TestGenSample> {
 
 /// Get model from pacha cache (downloaded via `apr pull`)
 fn get_model_path(model_id: &str) -> Result<std::path::PathBuf, String> {
-    println!("📥 Loading model: {}", model_id);
+    println!("📥 Loading model: {model_id}");
 
     // Check pacha cache directory (models downloaded via `apr pull`)
     let cache_dir = dirs::cache_dir()
@@ -821,7 +819,7 @@ fn get_model_path(model_id: &str) -> Result<std::path::PathBuf, String> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "safetensors") {
-                    println!("   ✓ Found model at: {:?}", path);
+                    println!("   ✓ Found model at: {path:?}");
                     return Ok(path);
                 }
             }
@@ -843,8 +841,8 @@ fn get_model_path(model_id: &str) -> Result<std::path::PathBuf, String> {
             Ok(artifact.path)
         }
         Err(e) => {
-            println!("   ⚠ Download failed: {:?}", e);
-            println!("   → Run: apr pull {}", model_id);
+            println!("   ⚠ Download failed: {e:?}");
+            println!("   → Run: apr pull {model_id}");
             Err(format!("Model not found. Run: apr pull {model_id}"))
         }
     }
@@ -852,7 +850,7 @@ fn get_model_path(model_id: &str) -> Result<std::path::PathBuf, String> {
 
 /// Load transformer model from safetensors weights
 fn load_transformer(model_path: &Path) -> Option<(Transformer, TransformerConfig)> {
-    println!("   Loading weights from {:?}...", model_path);
+    println!("   Loading weights from {model_path:?}...");
 
     // Qwen2.5-Coder-0.5B configuration
     let config = TransformerConfig::qwen2_0_5b();
@@ -885,7 +883,7 @@ fn try_load_tokenizer_from_dir(model_dir: &std::path::Path) -> Option<HfTokenize
         if !entry.ends_with("tokenizer.json") {
             continue;
         }
-        println!("   ✓ Found tokenizer at: {:?}", entry);
+        println!("   ✓ Found tokenizer at: {entry:?}");
         match HfTokenizer::from_file(&entry) {
             Ok(tok) => {
                 println!("   ✓ Vocab size: {}", tok.vocab_size());
@@ -985,9 +983,9 @@ fn run_headless_monitor(args: &Args) {
     eprintln!("Headless Monitor Mode (SPEC-FT-001 Section 10.8)");
     eprintln!("================================================");
     eprintln!("Experiment: {experiment_dir}");
-    eprintln!("Format:     {:?}", format);
+    eprintln!("Format:     {format:?}");
     if let Some(ref output_file) = args.output_file {
-        eprintln!("Output:     {}", output_file);
+        eprintln!("Output:     {output_file}");
     } else {
         eprintln!("Output:     stdout");
     }
@@ -1013,6 +1011,7 @@ fn detect_compute_device() -> (ComputeDevice, DeviceInfo, bool) {
         ComputeDevice::Cuda { device_id } => {
             DeviceInfo::cuda_info(*device_id).unwrap_or_else(DeviceInfo::cpu_info)
         }
+        ComputeDevice::Wgpu { .. } => DeviceInfo::cpu_info(),
     };
     println!("   Device: {}", device_info.name);
     println!("   Memory: {:.1} GB", device_info.memory_gb);
@@ -1093,7 +1092,7 @@ fn extract_pretrained_weights(
     let weight_std = (pretrained_subset.iter().map(|x| (x - weight_mean).powi(2)).sum::<f32>()
         / pretrained_subset.len() as f32)
         .sqrt();
-    println!("   Weight stats: mean={:.6}, std={:.6}", weight_mean, weight_std);
+    println!("   Weight stats: mean={weight_mean:.6}, std={weight_std:.6}");
 
     pretrained_subset
 }
@@ -1167,10 +1166,8 @@ fn cpu_training_step(
     backward(&mut loss, None);
     optimizer.step(trainable_params);
 
-    let grad_norm = trainable_params[0]
-        .grad()
-        .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
-        .unwrap_or(0.0);
+    let grad_norm =
+        trainable_params[0].grad().map_or(0.0, |g| g.iter().map(|x| x * x).sum::<f32>().sqrt());
 
     (logits, loss_val, grad_norm)
 }
@@ -1230,9 +1227,9 @@ fn run_hypothesis_test_h9(
     };
 
     println!("\n   FULL FINE-TUNING (Baseline):");
-    println!("     • Trainable params: {}", full_ft_params);
-    println!("     • Memory: {:.2} MB", full_ft_memory_mb);
-    println!("     • Epochs: {}, LR: {}", epochs_full_ft, lr_full_ft);
+    println!("     • Trainable params: {full_ft_params}");
+    println!("     • Memory: {full_ft_memory_mb:.2} MB");
+    println!("     • Epochs: {epochs_full_ft}, LR: {lr_full_ft}");
     println!("     • CE Reduction: {:.2}%", exp1.reduction_percent);
     println!("     • Duration: {:.2}s", exp1.duration.as_secs_f32());
 
@@ -1242,20 +1239,19 @@ fn run_hypothesis_test_h9(
         lora_params,
         (lora_params as f32 / full_ft_params as f32) * 100.0
     );
-    println!("     • Memory: {:.4} MB ({:.1}% savings)", lora_memory_mb, memory_savings);
-    println!("     • Epochs: {}, LR: {} (3x)", epochs_lora, lr_lora);
+    println!("     • Memory: {lora_memory_mb:.4} MB ({memory_savings:.1}% savings)");
+    println!("     • Epochs: {epochs_lora}, LR: {lr_lora} (3x)");
     println!("     • CE Reduction: {:.2}%", exp2.reduction_percent);
     println!("     • Duration: {:.2}s", exp2.duration.as_secs_f32());
 
     println!("\n   HYPOTHESIS TEST (H9):");
     println!("     Prediction: Under 15 epochs + 3x LR, LoRA CE reduction within 10% of Full FT");
     println!(
-        "     Observed gap: {:.2}% (LoRA achieves {:.1}% of Full FT)",
-        reduction_gap, reduction_ratio
+        "     Observed gap: {reduction_gap:.2}% (LoRA achieves {reduction_ratio:.1}% of Full FT)"
     );
     let h9_quality = reduction_gap <= 10.0 || reduction_ratio >= 90.0;
 
-    println!("     Memory savings (unchanged): {:.1}%", memory_savings);
+    println!("     Memory savings (unchanged): {memory_savings:.1}%");
     let h9_memory = memory_savings >= 90.0;
 
     let h9_passed = h9_quality && h9_memory;
@@ -1455,8 +1451,8 @@ fn run_popperian_qa(
     let score = qa.score();
     let grade = qa.grade();
 
-    println!("   Score: {}/100", score);
-    println!("   Grade: {:?}", grade);
+    println!("   Score: {score}/100");
+    println!("   Grade: {grade:?}");
 
     // Save QA report
     let output_dir = Path::new("./experiments/finetune-real");
@@ -1584,7 +1580,7 @@ fn compute_softmax_ce_grads(
         let offset = pos * demo_vocab;
         let pos_logits = &logits_data[offset..offset + demo_vocab];
 
-        let max_logit = pos_logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_logit = pos_logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_logits: Vec<f32> = pos_logits.iter().map(|&x| (x - max_logit).exp()).collect();
         let sum_exp: f32 = exp_logits.iter().sum();
         let softmax: Vec<f32> = exp_logits.iter().map(|&x| x / sum_exp).collect();

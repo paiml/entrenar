@@ -159,7 +159,7 @@ fn test_wgpu_matmul_lora_dims() {
     }
     result_norm = result_norm.sqrt();
 
-    eprintln!("LoRA GEMM: result_norm={:.4}, max_err={:.6}", result_norm, max_err);
+    eprintln!("LoRA GEMM: result_norm={result_norm:.4}, max_err={max_err:.6}");
     assert!(result_norm > 0.0, "GEMM result is all zeros!");
     assert!(max_err < 1.0, "GEMM error too large: {max_err}");
 }
@@ -203,6 +203,6 @@ fn test_wgpu_matmul_backward_shared_device() {
     let gb_result = trainer.download(&gb);
 
     let gb_norm: f32 = gb_result.iter().map(|x| x * x).sum::<f32>().sqrt();
-    eprintln!("Shared device backward: gb_norm={:.6}", gb_norm);
+    eprintln!("Shared device backward: gb_norm={gb_norm:.6}");
     assert!(gb_norm > 0.0, "grad_b should be non-zero");
 }

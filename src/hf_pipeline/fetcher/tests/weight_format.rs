@@ -78,11 +78,11 @@ fn test_weight_format_equality() {
 #[test]
 fn test_weight_format_debug() {
     let safetensors = WeightFormat::SafeTensors;
-    let debug = format!("{:?}", safetensors);
+    let debug = format!("{safetensors:?}");
     assert!(debug.contains("SafeTensors"));
 
     let gguf = WeightFormat::GGUF { quant_type: "Q4_K_S".into() };
-    let debug_gguf = format!("{:?}", gguf);
+    let debug_gguf = format!("{gguf:?}");
     assert!(debug_gguf.contains("Q4_K_S"));
 }
 

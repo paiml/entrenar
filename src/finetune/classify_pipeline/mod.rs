@@ -36,8 +36,6 @@ use crate::autograd::cuda_forward::{pre_warm_forward_kernels, pre_warm_lora_back
 use crate::autograd::cuda_optim::pre_warm_lora_adamw_kernels;
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
-#[cfg(feature = "realizar")]
-use crate::autograd::ops::pre_warm_realizador_gemm;
 #[cfg(feature = "cuda")]
 use crate::gpu::guard::VramGuard;
 #[cfg(feature = "cuda")]
@@ -568,7 +566,9 @@ impl ClassifyPipeline {
             #[cfg(not(feature = "cuda"))]
             let has_cuda = false;
 
-            if !has_cuda {
+            if has_cuda {
+                None // CUDA takes priority
+            } else {
                 // KAIZEN-015: Pre-upload FFN weights to GPU (zero H2D per forward pass)
                 match crate::transformer::WgpuForwardPass::with_resident_weights(&model) {
                     Ok(pass) => {
@@ -589,8 +589,6 @@ impl ClassifyPipeline {
                         }
                     }
                 }
-            } else {
-                None // CUDA takes priority
             }
         };
 
@@ -724,7 +722,9 @@ impl ClassifyPipeline {
             #[cfg(not(feature = "cuda"))]
             let has_cuda = false;
 
-            if !has_cuda {
+            if has_cuda {
+                None
+            } else {
                 // KAIZEN-015: Pre-upload FFN weights to GPU
                 match crate::transformer::WgpuForwardPass::with_resident_weights(&model) {
                     Ok(pass) => {
@@ -748,8 +748,6 @@ impl ClassifyPipeline {
                         }
                     }
                 }
-            } else {
-                None
             }
         };
 
@@ -890,7 +888,9 @@ impl ClassifyPipeline {
             #[cfg(not(feature = "cuda"))]
             let has_cuda = false;
 
-            if !has_cuda {
+            if has_cuda {
+                None
+            } else {
                 // KAIZEN-015: Pre-upload FFN weights to GPU
                 crate::transformer::WgpuForwardPass::with_resident_weights(&model)
                     .or_else(|e| {
@@ -899,8 +899,6 @@ impl ClassifyPipeline {
                     })
                     .map_err(|e| eprintln!("[wgpu] GPU init failed: {e}"))
                     .ok()
-            } else {
-                None
             }
         };
 
@@ -1079,9 +1077,7 @@ impl ClassifyPipeline {
         &mut self,
         samples: &[TokenizedSample],
     ) -> Option<(f32, usize)> {
-        if self.wgpu_forward_pass.is_none() {
-            return None;
-        }
+        self.wgpu_forward_pass.as_ref()?;
 
         let batch_token_ids: Vec<Vec<u32>> = samples.iter().map(|s| s.token_ids.clone()).collect();
 
@@ -1094,7 +1090,7 @@ impl ClassifyPipeline {
             .expect("checked is_none above")
             .forward_hidden_batch(&self.model, &batch_token_ids, lora_ref)
             .map_err(|e| {
-                eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}")
+                eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}");
             })
             .ok()?;
 

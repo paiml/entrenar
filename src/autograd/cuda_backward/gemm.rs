@@ -190,7 +190,7 @@ pub fn gemm_backward_a_accumulate(
     m: u32,
     k: u32,
     n: u32,
-    stream: &CudaStream,
+    _stream: &CudaStream,
 ) -> Result<()> {
     let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let cache = cache.lock().map_err(|_err| {

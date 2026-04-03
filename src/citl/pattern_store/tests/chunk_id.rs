@@ -55,7 +55,7 @@ fn test_chunk_id_hash_in_set() {
 #[test]
 fn test_chunk_id_clone() {
     let id = ChunkId::new();
-    let cloned = id.clone();
+    let cloned = id;
     assert_eq!(id, cloned);
 }
 

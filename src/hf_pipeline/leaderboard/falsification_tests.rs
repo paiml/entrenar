@@ -81,7 +81,7 @@ fn falsify_compare_preserves_all_entries() {
     let mut hf = HfLeaderboard::new(LeaderboardKind::OpenASR);
     for i in 0..5 {
         let mut entry = LeaderboardEntry::new(format!("model-{i}"));
-        entry.scores.insert("wer".into(), 0.1 * (i + 1) as f64);
+        entry.scores.insert("wer".into(), 0.1 * f64::from(i + 1));
         hf.entries.push(entry);
     }
 

@@ -57,14 +57,13 @@ fn main() {
         let h_base = trainer.zeros((seq_len * hidden) as usize);
         let xa = trainer.zeros((seq_len * rank) as usize);
         let h_lora = trainer.zeros((seq_len * hidden) as usize);
-        let grad_output = trainer.zeros((seq_len * hidden) as usize);
+        let _grad_output = trainer.zeros((seq_len * hidden) as usize);
         let grad_a = trainer.zeros((hidden * rank) as usize);
         let grad_b = trainer.zeros((rank * hidden) as usize);
 
         println!("[wgpu] Buffers allocated");
         println!(
-            "[wgpu] Training {} steps (hidden={}, seq={}, rank={})...\n",
-            num_steps, hidden, seq_len, rank
+            "[wgpu] Training {num_steps} steps (hidden={hidden}, seq={seq_len}, rank={rank})...\n"
         );
 
         let total_start = Instant::now();
@@ -130,7 +129,7 @@ fn main() {
             trainer.adamw_step(&lora_b, &grad_b, &m_b, &v_b, lr, 0.9, 0.999, 1e-8, 0.01);
 
             let step_ms = step_start.elapsed().as_millis();
-            println!("  Step {}: loss={:.6}, time={}ms", step, loss, step_ms);
+            println!("  Step {step}: loss={loss:.6}, time={step_ms}ms");
         }
 
         let total_s = total_start.elapsed().as_secs_f64();
@@ -138,13 +137,13 @@ fn main() {
             "\n[wgpu] Training complete: {} steps in {:.1}s ({:.0}ms/step)",
             num_steps,
             total_s,
-            total_s * 1000.0 / num_steps as f64
+            total_s * 1000.0 / f64::from(num_steps)
         );
 
         // Verify LoRA B is no longer zero
         let final_b = trainer.download(&lora_b);
         let b_norm: f32 = final_b.iter().map(|x| x * x).sum::<f32>().sqrt();
-        println!("[wgpu] LoRA B norm: {:.6} (should be > 0)", b_norm);
+        println!("[wgpu] LoRA B norm: {b_norm:.6} (should be > 0)");
         assert!(b_norm > 0.0, "LoRA B should have been updated");
         println!("[wgpu] Loss should be decreasing — verified manually from output above");
     }

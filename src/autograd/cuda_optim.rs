@@ -1022,7 +1022,7 @@ mod tests {
             let v_hat = v[i] * bias_adjust2;
 
             // Adam update (no weight decay)
-            params[i] = params[i] - lr * m_hat / (v_hat.sqrt() + eps);
+            params[i] -= lr * m_hat / (v_hat.sqrt() + eps);
         }
     }
 

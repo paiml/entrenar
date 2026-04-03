@@ -175,7 +175,7 @@ impl StreamingParquetLoader {
         // Create LMBatches from sequences (sequences dropped after this)
         let pad_id = 0u32;
         let eos_id = 2u32;
-        let num_batches = (sequences.len() + self.batch_size - 1) / self.batch_size;
+        let num_batches = sequences.len().div_ceil(self.batch_size);
         let mut batches = Vec::with_capacity(num_batches);
         for chunk in sequences.chunks(self.batch_size) {
             batches.push(LMBatch::from_sequences(chunk, pad_id, eos_id));

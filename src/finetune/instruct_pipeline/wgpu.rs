@@ -1,7 +1,10 @@
 //! WGPU GPU acceleration: `try_init_wgpu`, `wgpu_train_step`.
 
 #[cfg(feature = "gpu")]
-use super::*;
+use super::{
+    clip_grad_norm_refs, InstructPipeline, InstructStepResult, Optimizer, Tensor,
+    TransformerConfig, WgpuTrainingState,
+};
 
 #[cfg(feature = "gpu")]
 impl InstructPipeline {
@@ -158,7 +161,7 @@ impl InstructPipeline {
         let num_layers = _model_config.num_hidden_layers;
         let num_heads = _model_config.num_attention_heads as u32;
         let num_kv_heads = _model_config.num_kv_heads as u32;
-        let head_dim = (hidden / num_heads) as u32;
+        let head_dim = (hidden / num_heads);
         let inter = _model_config.intermediate_size as u32;
 
         // Create WgslForwardPass with persistent weight buffers + tiled GEMM
@@ -197,8 +200,7 @@ impl InstructPipeline {
         fwd.init_kv_cache(num_layers);
 
         eprintln!(
-            "[wgpu] Uploaded {} norm weights ({} layers, projections on-demand)",
-            uploaded, num_layers
+            "[wgpu] Uploaded {uploaded} norm weights ({num_layers} layers, projections on-demand)"
         );
 
         let make_buf = |size: u64, label: &str| -> trueno::backends::gpu::wgpu::Buffer {
@@ -228,16 +230,15 @@ impl InstructPipeline {
         let lm_head_t_gpu = trainer.upload(&lm_head_transposed);
         drop(lm_head_transposed);
         eprintln!(
-            "[wgpu] Training initialized (seq={}, vocab={}, layers={}, lm_head on GPU)",
-            seq, vocab, num_layers
+            "[wgpu] Training initialized (seq={seq}, vocab={vocab}, layers={num_layers}, lm_head on GPU)"
         );
 
         self.wgpu_training = Some(WgpuTrainingState {
             fwd,
-            logits_buf: make_buf(seq as u64 * vocab as u64, "logits"),
-            labels_buf: make_buf(seq as u64, "labels"),
-            losses_buf: make_buf(seq as u64, "losses"),
-            logsumexp_buf: make_buf(seq as u64, "logsumexp"),
+            logits_buf: make_buf(u64::from(seq) * u64::from(vocab), "logits"),
+            labels_buf: make_buf(u64::from(seq), "labels"),
+            losses_buf: make_buf(u64::from(seq), "losses"),
+            logsumexp_buf: make_buf(u64::from(seq), "logsumexp"),
             cross_entropy: ce,
             trainer,
             lm_head_gpu,

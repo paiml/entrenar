@@ -191,7 +191,7 @@ fn test_model_artifact_debug() {
         }),
         sha256: Some("abc123".into()),
     };
-    let debug = format!("{:?}", artifact);
+    let debug = format!("{artifact:?}");
     assert!(debug.contains("SafeTensors"));
     assert!(debug.contains("abc123"));
 }

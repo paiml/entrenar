@@ -1516,7 +1516,7 @@ impl CudaTransformerTrainer {
                 // ENT-263: NF4 backward — LoRA gradient computation
                 // Uses backward_nf4() which computes gradients for LoRA weights and norms only.
                 // output_scratch reuses grad_buf_a/b as temporary storage for recomputed forward.
-                let output_scratch_ptr: *mut GpuBuffer<f32> = if grad_output_is_a {
+                let _output_scratch_ptr: *mut GpuBuffer<f32> = if grad_output_is_a {
                     grad_b_ptr // grad_input is in b, use as output_scratch too (will be overwritten)
                 } else {
                     grad_a_ptr
@@ -3360,7 +3360,7 @@ impl CudaTransformerTrainer {
 fn infer_tensor_shape(name: &str, numel: usize, hidden_size: usize) -> Vec<usize> {
     if name.ends_with("layernorm.weight") || name == "model.norm.weight" {
         vec![numel]
-    } else if hidden_size > 0 && numel % hidden_size == 0 {
+    } else if hidden_size > 0 && numel.is_multiple_of(hidden_size) {
         let other_dim = numel / hidden_size;
         if name.ends_with("down_proj.weight") {
             vec![hidden_size, other_dim]

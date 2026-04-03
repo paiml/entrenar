@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn test_attention_transfer_config_serde_default_weight() {
         // Test that weight defaults to 0.1 when not specified
-        let json = r#"{}"#;
+        let json = r"{}";
         let config: AttentionTransferConfig =
             serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert!((config.weight - 0.1).abs() < 1e-6);
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn test_distillation_config_debug() {
         let config = DistillationConfig::default();
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
         assert!(debug_str.contains("DistillationConfig"));
         assert!(debug_str.contains("temperature"));
     }

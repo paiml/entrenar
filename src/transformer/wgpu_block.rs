@@ -18,7 +18,7 @@
 
 use crate::autograd::Tensor;
 use crate::lora::LoRALayer;
-use crate::transformer::config::{ModelArchitecture, TransformerConfig};
+use crate::transformer::config::TransformerConfig;
 use crate::transformer::model::Transformer;
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -385,7 +385,7 @@ impl WgpuForwardPass {
         // Attention on CPU SIMD (per-sample), FFN on GPU (all samples concatenated)
         //
         // KAIZEN-017: Pre-compute total_tokens once (constant across layers).
-        let total_tokens: usize = batch_token_ids.iter().map(|ids| ids.len()).sum();
+        let total_tokens: usize = batch_token_ids.iter().map(std::vec::Vec::len).sum();
 
         crate::autograd::suppress_per_op_wgpu();
         for (layer_idx, layer) in model.layers.iter().enumerate() {
@@ -549,7 +549,7 @@ mod tests {
 
         // Verify no NaN/Inf
         for (i, &val) in gpu_data.data().iter().enumerate() {
-            assert!(val.is_finite(), "NaN/Inf at index {}: {}", i, val);
+            assert!(val.is_finite(), "NaN/Inf at index {i}: {val}");
         }
     }
 }

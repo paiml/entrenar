@@ -228,7 +228,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "trueno 0.15.0",
- "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "trueno-quant",
 ]
 
 [[package]]
@@ -255,7 +255,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "trueno 0.16.5",
- "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "trueno-quant",
  "ureq",
 ]
 
@@ -1229,7 +1229,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.2.2",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -2041,7 +2041,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3068,7 +3068,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4519,6 +4519,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "provable-contracts-macros"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a79b3496cd98fb9767f6ee845a4fda80f3b4a18de4a1477d8a59d527f2e98ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "pxfm"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4703,8 +4714,10 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tower 0.4.13",
+ "tracing",
  "trueno 0.16.5",
- "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "trueno-gpu",
+ "trueno-quant",
  "uuid",
 ]
 
@@ -5015,7 +5028,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5616,7 +5629,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6079,12 +6092,14 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "toml",
- "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "trueno-quant",
 ]
 
 [[package]]
 name = "trueno"
 version = "0.16.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aef9a7f78a2c56f69a831812f4b82fae90ed5c1451301501a7f1b7af90a789f7"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6093,14 +6108,14 @@ dependencies = [
  "hostname",
  "num_cpus",
  "pollster",
- "provable-contracts-macros 0.2.1",
+ "provable-contracts-macros 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rayon",
  "serde",
  "serde_json",
  "serde_yaml_ng",
  "thiserror 2.0.18",
  "toml",
- "trueno-quant 0.1.0",
+ "trueno-quant",
  "wgpu",
 ]
 
@@ -6160,13 +6175,6 @@ dependencies = [
  "tokio",
  "trueno 0.15.0",
  "trueno-db",
-]
-
-[[package]]
-name = "trueno-quant"
-version = "0.1.0"
-dependencies = [
- "half",
 ]
 
 [[package]]
@@ -6811,7 +6819,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -7531,3 +7539,7 @@ checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
 dependencies = [
  "zune-core",
 ]
+
+[[patch.unused]]
+name = "trueno"
+version = "0.17.0"

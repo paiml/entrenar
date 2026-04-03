@@ -6,7 +6,7 @@
 #[cfg(feature = "hub-publish")]
 fn resolve_model_path(model_path: &Path) -> Result<PathBuf> {
     use crate::config::schema::is_hf_repo_id;
-    use crate::hf_pipeline::fetcher::{FetchOptions, HfModelFetcher};
+    use crate::hf_pipeline::{FetchOptions, HfModelFetcher};
 
     let path_str = model_path.to_string_lossy();
     if !is_hf_repo_id(&path_str) {

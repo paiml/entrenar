@@ -1,5 +1,8 @@
 #[cfg(feature = "cuda")]
-use super::*;
+use super::{
+    CudaTrainer, InstructConfig, InstructGpuTrainingState, InstructPipeline, LoRALayer,
+    Transformer, TransformerConfig, VramGuard,
+};
 
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_backward::pre_warm_lora_backward_kernels as pre_warm_backward_cache_kernels;

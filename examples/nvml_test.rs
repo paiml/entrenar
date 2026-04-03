@@ -12,7 +12,7 @@ fn main() {
     let monitor = GpuMonitor::new().expect("Failed to create GPU monitor");
     let num_devices = monitor.num_devices();
 
-    println!("Detected {} GPU device(s)", num_devices);
+    println!("Detected {num_devices} GPU device(s)");
     println!("Mock mode: {}\n", monitor.is_mock());
 
     if num_devices == 0 {

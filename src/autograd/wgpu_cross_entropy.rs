@@ -185,12 +185,12 @@ impl WgslCrossEntropy {
     ) -> f32 {
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: (seq_len as u64) * 4,
+            size: u64::from(seq_len) * 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        encoder.copy_buffer_to_buffer(losses, 0, &staging, 0, (seq_len as u64) * 4);
+        encoder.copy_buffer_to_buffer(losses, 0, &staging, 0, u64::from(seq_len) * 4);
         self.queue.submit(Some(encoder.finish()));
 
         let slice = staging.slice(..);

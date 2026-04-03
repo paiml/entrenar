@@ -78,7 +78,7 @@ impl WgpuModelState {
     pub fn load_qwen3_4b(
         model_dir: &std::path::Path,
         lora_rank: u32,
-        lora_alpha: f32,
+        _lora_alpha: f32,
     ) -> Result<Self, String> {
         use std::fs;
 
@@ -101,7 +101,7 @@ impl WgpuModelState {
         // Find safetensors shards
         let mut shards: Vec<String> = fs::read_dir(model_dir)
             .map_err(|e| format!("Cannot read model dir: {e}"))?
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .map(|e| e.file_name().to_string_lossy().to_string())
             .filter(|n| n.ends_with(".safetensors"))
             .collect();
@@ -233,7 +233,7 @@ impl WgpuModelState {
 
         // LM head: load from last shard
         let last_data = all_data.last().ok_or("No shards")?;
-        let tensors = safetensors::SafeTensors::deserialize(last_data)
+        let _tensors = safetensors::SafeTensors::deserialize(last_data)
             .map_err(|e| format!("Deserialize: {e}"))?;
 
         // Qwen3 uses tied embeddings: lm_head = embed_tokens
@@ -268,7 +268,8 @@ impl WgpuModelState {
         }
         let lm_head = lm_head_view.ok_or("lm_head/embed_tokens not found in any shard")?;
         let lm_head_len = lm_head.len();
-        let lora_params: usize = lora.iter().map(|l| l.num_params()).sum();
+        let lora_params: usize =
+            lora.iter().map(super::wgpu_checkpoint::LoraLayerSet::num_params).sum();
         eprintln!("  LoRA params: {lora_params} (rank={lora_rank}, 7 modules/layer)");
         eprintln!(
             "  LM head: {} elements ({:.1} MB)",
@@ -326,7 +327,8 @@ impl WgpuModelState {
 
     /// Total trainable parameters
     pub fn trainable_params(&self) -> usize {
-        self.lora.iter().map(|l| l.num_params()).sum::<usize>() + self.lm_head.len()
+        self.lora.iter().map(super::wgpu_checkpoint::LoraLayerSet::num_params).sum::<usize>()
+            + self.lm_head.len()
     }
     pub fn save_checkpoint(
         &self,
@@ -500,8 +502,8 @@ impl WgpuTransformerTrainer {
         // --- AdamW on LoRA Q adapter ---
         self.step += 1;
         // Compute a simple gradient for LoRA Q: use hidden as input, pseudo_grad as output grad
-        let q_dim = lora_q.out_dim;
-        let q_fp32 = model.dequant_gate(&self.device)?; // reuse gate as proxy for Q
+        let _q_dim = lora_q.out_dim;
+        let _q_fp32 = model.dequant_gate(&self.device)?; // reuse gate as proxy for Q
         let mut h_cached = vec![0.0f32; (s * lora_q.rank) as usize];
         for si in 0..s as usize {
             for ri in 0..lora_q.rank as usize {
@@ -514,7 +516,7 @@ impl WgpuTransformerTrainer {
 
         // AdamW step on LoRA A — use simplified gradient
         let grad_a = vec![0.001f32; lora_q.a.len()];
-        let a_len = lora_q.a.len();
+        let _a_len = lora_q.a.len();
         let mut a_buf = std::mem::take(&mut lora_q.a);
         let mut ma_buf = std::mem::take(&mut lora_q.m_a);
         let mut va_buf = std::mem::take(&mut lora_q.v_a);
@@ -558,7 +560,7 @@ impl WgpuTransformerTrainer {
         // NEFTune (C-WGPU-NEFTUNE-001)
         let ns = 5.0f32 / ((s as f32) * (h as f32)).sqrt();
         for (i, v) in hidden.iter_mut().enumerate() {
-            *v += ((i as u64).wrapping_mul(6364136223846793005).wrapping_add(self.step as u64)
+            *v += ((i as u64).wrapping_mul(6364136223846793005).wrapping_add(u64::from(self.step))
                 as f32
                 / u64::MAX as f32
                 * 2.0
@@ -679,7 +681,7 @@ impl WgpuTransformerTrainer {
         let mut grad_logits = vec![0.0f32; (s * v) as usize];
         for si in 0..s as usize {
             let row = &logits[si * v as usize..(si + 1) * v as usize];
-            let max_val = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let max_val = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
             let sum_exp: f32 = row.iter().map(|&x| (x - max_val).exp()).sum();
             let lse = max_val + sum_exp.ln();
             let t = target_ids[si] as usize;
@@ -962,7 +964,7 @@ impl WgpuTransformerTrainer {
         let mut grad_logits = vec![0.0f32; (m * n) as usize];
         for i in 0..m as usize {
             let row = &logits[i * n as usize..(i + 1) * n as usize];
-            let max_val = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let max_val = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
             let sum_exp: f32 = row.iter().map(|&x| (x - max_val).exp()).sum();
             let log_sum_exp = max_val + sum_exp.ln();
 
@@ -1037,7 +1039,7 @@ impl WgpuTransformerTrainer {
     pub fn ffn_backward(
         &self,
         grad_output: &[f32],      // [seq_len, hidden_size]
-        hidden_input: &[f32],     // [seq_len, hidden_size] — input to FFN (after RMSNorm)
+        _hidden_input: &[f32],    // [seq_len, hidden_size] — input to FFN (after RMSNorm)
         gate_weight: &[f32],      // [intermediate, hidden]
         up_weight: &[f32],        // [intermediate, hidden]
         down_weight: &[f32],      // [hidden, intermediate]
@@ -1169,7 +1171,7 @@ mod tests {
         }
 
         let first_loss = losses[0];
-        let best_loss = losses.iter().cloned().fold(f32::INFINITY, f32::min);
+        let best_loss = losses.iter().copied().fold(f32::INFINITY, f32::min);
         let last_loss = *losses.last().expect("losses");
 
         eprintln!(
@@ -1352,8 +1354,7 @@ mod tests {
         assert_eq!(model.num_layers, 36);
         assert_eq!(model.hidden_size, 2560);
         assert_eq!(model.layers.len(), 36);
-        assert_eq!(model.lora_q.len(), 36);
-        assert_eq!(model.lora_v.len(), 36);
+        assert_eq!(model.lora.len(), 36);
 
         let total_nf4_mb: f64 =
             model.layers.iter().map(|l| l.memory_bytes() as f64).sum::<f64>() / 1024.0 / 1024.0;
@@ -1401,16 +1402,10 @@ mod tests {
             .collect();
 
         let start = std::time::Instant::now();
+        let lora_set = &mut model.lora[0];
+        let (lora_q, lora_v) = (&mut lora_set.q, &mut lora_set.v);
         let (output, grad_norm) = trainer
-            .layer_train_step(
-                &hidden,
-                &mut model.layers[0],
-                &mut model.lora_q[0],
-                &mut model.lora_v[0],
-                seq_len,
-                2560,
-                9728,
-            )
+            .layer_train_step(&hidden, &mut model.layers[0], lora_q, lora_v, seq_len, 2560, 9728)
             .expect("layer_train_step");
         let elapsed = start.elapsed();
 

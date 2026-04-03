@@ -44,7 +44,7 @@ const GEMM_SHADER: &str = trueno::backends::gpu::shaders::TILED_GEMM_SHADER;
 
 /// WGSL AdamW optimizer kernel
 #[cfg(feature = "gpu")]
-const ADAMW_SHADER: &str = r#"
+const ADAMW_SHADER: &str = r"
 @group(0) @binding(0) var<storage, read_write> params: array<f32>;
 @group(0) @binding(1) var<storage, read> grads: array<f32>;
 @group(0) @binding(2) var<storage, read_write> m_state: array<f32>;
@@ -80,10 +80,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Decoupled weight decay (AdamW, not Adam with L2)
     params[i] = params[i] - cfg.lr * (m_hat / (sqrt(v_hat) + cfg.eps) + cfg.weight_decay * params[i]);
 }
-"#;
+";
 
 /// WGSL gradient clipping kernel
-const GRAD_CLIP_SHADER: &str = r#"
+const GRAD_CLIP_SHADER: &str = r"
 @group(0) @binding(0) var<storage, read_write> grads: array<f32>;
 
 struct ClipParams {
@@ -101,7 +101,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (i >= cfg.n) { return; }
     grads[i] = grads[i] * cfg.scale;
 }
-"#;
+";
 
 /// wgpu-accelerated training context (zero unsafe, safe Rust API)
 pub struct WgpuTrainer {
@@ -625,10 +625,10 @@ impl WgpuTrainer {
     ) {
         // KAIZEN: chunk B along N when it exceeds max_storage_buffer_binding_size.
         // GPU-side extraction via copy_buffer_to_buffer — no CPU roundtrip.
-        let max_binding = self.device.limits().max_storage_buffer_binding_size as u64;
-        let b_bytes = (k as u64) * (n as u64) * 4;
+        let max_binding = u64::from(self.device.limits().max_storage_buffer_binding_size);
+        let b_bytes = u64::from(k) * u64::from(n) * 4;
         if b_bytes > max_binding {
-            let max_n_chunk = (max_binding / 4 / k as u64) as u32;
+            let max_n_chunk = (max_binding / 4 / u64::from(k)) as u32;
             let max_n_chunk = max_n_chunk.max(1);
 
             // Extract B chunks on GPU: B is [K, N] row-major.

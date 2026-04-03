@@ -260,9 +260,7 @@ impl ClassifyPipeline {
     /// Returns `Some((total_loss, correct))` on success, `None` to fall back.
     #[cfg(feature = "gpu")]
     fn try_train_batch_wgpu(&mut self, samples: &[SafetySample]) -> Option<(f32, usize)> {
-        if self.wgpu_forward_pass.is_none() {
-            return None;
-        }
+        self.wgpu_forward_pass.as_ref()?;
 
         let batch_token_ids: Vec<Vec<u32>> =
             samples.iter().map(|s| self.tokenize(&s.input)).collect();
@@ -277,7 +275,7 @@ impl ClassifyPipeline {
             .expect("checked is_none above")
             .forward_hidden_batch(&self.model, &batch_token_ids, lora_ref)
             .map_err(|e| {
-                eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}")
+                eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}");
             })
             .ok()?;
 

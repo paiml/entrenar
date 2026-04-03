@@ -109,7 +109,8 @@ fn run() -> Result<(), String> {
     // Test 3: NF4 quantize → dequant round-trip
     {
         let n = 256; // must be divisible by block_size=64
-        let original: Vec<f32> = (0..n).map(|i| ((i * 7 + 3) % 200) as f32 / 100.0 - 1.0).collect();
+        let _original: Vec<f32> =
+            (0..n).map(|i| ((i * 7 + 3) % 200) as f32 / 100.0 - 1.0).collect();
         // Our NF4 quantize is in wgpu_nf4, but it's not public. Test via the GPU dequant path.
         // Instead, test that GPU dequant matches known NF4 codebook values
         let nf4_lut: [f32; 16] = [
