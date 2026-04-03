@@ -135,9 +135,12 @@ pub(crate) struct CudaBlockScratch {
     swiglu_out: GpuBuffer<f32>,
     /// FFN down projection output
     ffn_out: GpuBuffer<f32>,
-    /// FP16 activation cast buffer for FP16 GEMM dispatch (PMAT-470)
+    /// FP16 activation cast buffers for FP16 GEMM dispatch (PMAT-470)
     /// Allocated lazily on first use when FP16_GEMM=1.
     norm1_out_f16: Option<GpuBuffer<u16>>,
+    attn_out_f16: Option<GpuBuffer<u16>>,
+    norm2_out_f16: Option<GpuBuffer<u16>>,
+    swiglu_out_f16: Option<GpuBuffer<u16>>,
     // === Seq-dependent backward scratch (per-layer for activation reuse) ===
     /// Gradient accumulator for hidden states
     grad_hidden: GpuBuffer<f32>,
@@ -238,7 +241,10 @@ impl CudaBlockScratch {
             up_out: GpuBuffer::new(ctx, max_seq_len * intermediate_size)?,
             swiglu_out: GpuBuffer::new(ctx, max_seq_len * intermediate_size)?,
             ffn_out: GpuBuffer::new(ctx, max_seq_len * hidden_size)?,
-            norm1_out_f16: None, // Allocated on first FP16 GEMM use
+            norm1_out_f16: None,
+            attn_out_f16: None,
+            norm2_out_f16: None,
+            swiglu_out_f16: None,
             grad_hidden: GpuBuffer::new(ctx, max_seq_len * hidden_size)?,
             grad_swiglu: GpuBuffer::new(ctx, max_seq_len * intermediate_size)?,
             attn_q_batched: GpuBuffer::new(ctx, num_heads * max_seq_len * head_dim)?,
@@ -555,6 +561,9 @@ impl CudaTransformerBlock {
             swiglu_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
             ffn_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             norm1_out_f16: None,
+            attn_out_f16: None,
+            norm2_out_f16: None,
+            swiglu_out_f16: None,
             // Seq-dependent backward scratch
             grad_hidden: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             grad_swiglu: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
@@ -3018,8 +3027,15 @@ impl CudaNf4TransformerBlock {
         self.compute_attention_cuda(seq_len, stream, scratch)?;
 
         // === Output Projection ===
-        // O-proj input is attn_out, not norm1_out — skip FP16 cast for now (TODO: dedicated buffer)
-        if nf4_gemm {
+        if fp16_gemm && self.w_o_fp16.is_some() {
+            if scratch.attn_out_f16.is_none() {
+                scratch.attn_out_f16 = Some(GpuBuffer::new(&self.ctx, seq_len * q_dim)?);
+            }
+            let f16_buf = scratch.attn_out_f16.as_mut().unwrap();
+            cast_f32_to_f16_gpu(&scratch.attn_out, f16_buf, (seq_len * q_dim) as u32, stream)?;
+            gemm_f16_to_f32_forward(f16_buf, self.w_o_fp16.as_ref().unwrap(), &mut scratch.o_proj_out,
+                saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
+        } else if nf4_gemm {
             gemm_nf4_forward(&scratch.attn_out, &self.w_o_nf4, &self.w_o_scales, &mut scratch.o_proj_out,
                 saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
         } else {
@@ -3043,7 +3059,17 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === FFN: Gate + Up + SwiGLU + Down ===
-        if nf4_gemm {
+        if fp16_gemm && self.w_gate_fp16.is_some() {
+            if scratch.norm2_out_f16.is_none() {
+                scratch.norm2_out_f16 = Some(GpuBuffer::new(&self.ctx, seq_len * hidden_size)?);
+            }
+            let f16_buf = scratch.norm2_out_f16.as_mut().unwrap();
+            cast_f32_to_f16_gpu(&scratch.norm2_out, f16_buf, (seq_len * hidden_size) as u32, stream)?;
+            gemm_f16_to_f32_forward(f16_buf, self.w_gate_fp16.as_ref().unwrap(), &mut scratch.gate_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+            gemm_f16_to_f32_forward(f16_buf, self.w_up_fp16.as_ref().unwrap(), &mut scratch.up_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+        } else if nf4_gemm {
             gemm_nf4_forward(&scratch.norm2_out, &self.w_gate_nf4, &self.w_gate_scales, &mut scratch.gate_out,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
             gemm_nf4_forward(&scratch.norm2_out, &self.w_up_nf4, &self.w_up_scales, &mut scratch.up_out,
@@ -3060,7 +3086,15 @@ impl CudaNf4TransformerBlock {
             saturating_u32(seq_len * intermediate_size), stream)?;
 
         // === FFN: Down Projection ===
-        if nf4_gemm {
+        if fp16_gemm && self.w_down_fp16.is_some() {
+            if scratch.swiglu_out_f16.is_none() {
+                scratch.swiglu_out_f16 = Some(GpuBuffer::new(&self.ctx, seq_len * intermediate_size)?);
+            }
+            let f16_buf = scratch.swiglu_out_f16.as_mut().unwrap();
+            cast_f32_to_f16_gpu(&scratch.swiglu_out, f16_buf, (seq_len * intermediate_size) as u32, stream)?;
+            gemm_f16_to_f32_forward(f16_buf, self.w_down_fp16.as_ref().unwrap(), &mut scratch.ffn_out,
+                saturating_u32(seq_len), saturating_u32(intermediate_size), saturating_u32(hidden_size), stream)?;
+        } else if nf4_gemm {
             gemm_nf4_forward(&scratch.swiglu_out, &self.w_down_nf4, &self.w_down_scales, &mut scratch.ffn_out,
                 saturating_u32(seq_len), saturating_u32(intermediate_size), saturating_u32(hidden_size), stream)?;
         } else {
