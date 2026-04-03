@@ -7,8 +7,8 @@
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    BatchedRopeBackwardKernel, BatchedRopeKernel, BatchedVectorizedRmsNormKernel, Kernel,
-    LayerNormKernel, PerHeadRmsNormKernel, RopeNeoxKernel,
+    BatchedRopeBackwardKernel, BatchedRopeKernel, BatchedVectorizedRmsNormKernel,
+    FusedResidualRmsNormKernel, Kernel, LayerNormKernel, PerHeadRmsNormKernel, RopeNeoxKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -371,6 +371,92 @@ pub fn batched_rope_neox_backward(
         stream.launch_kernel(module, "batched_rope_backward", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("Batched RoPE NeoX backward failed: {e:?}"))
         })?;
+    }
+
+    Ok(())
+}
+
+/// Fused residual add + RMSNorm forward: output = RMSNorm(residual + input, gamma)
+///
+/// Contract: entrenar#321 — eliminates NaN cascade in layers 24-27 by fusing
+/// the residual add with RMSNorm into a single kernel pass. The RMSNorm
+/// normalization prevents activation explosion through the residual chain.
+///
+/// Saves the un-normalized residual sum in `residual_out` for backward pass.
+///
+/// # Parameters
+/// - `residual`: Previous layer output (residual connection input)
+/// - `input`: Current block output to add
+/// - `residual_out`: Stores residual + input (for backward, can alias residual)
+/// - `output`: RMSNorm(residual + input) * gamma
+/// - `gamma`: Scale weights (hidden_size elements)
+/// - `batch_size`: Number of rows (seq_len)
+/// - `hidden_size`: Number of columns per row
+#[cfg(feature = "cuda")]
+pub fn fused_residual_rmsnorm_forward(
+    residual: &GpuBuffer<f32>,
+    input: &GpuBuffer<f32>,
+    residual_out: &mut GpuBuffer<f32>,
+    output: &mut GpuBuffer<f32>,
+    gamma: &GpuBuffer<f32>,
+    batch_size: u32,
+    hidden_size: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("fused_residual_rmsnorm_{hidden_size}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = FusedResidualRmsNormKernel::new(hidden_size);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    // Grid: (1, batch_size, 1) — one block per row
+    // Block: (32, 1, 1) — single warp for reduction
+    let config = LaunchConfig { grid: (1, batch_size, 1), block: (32, 1, 1), shared_mem: 0 };
+
+    let residual_ptr = residual.as_ptr();
+    let input_ptr = input.as_ptr();
+    let output_ptr = output.as_ptr();
+    let gamma_ptr = gamma.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 4] = [
+        &residual_ptr as *const _ as *mut _,
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &gamma_ptr as *const _ as *mut _,
+    ];
+
+    // Also store the un-normalized residual sum for backward pass
+    // The fused kernel writes residual+input to output before normalizing,
+    // so we need to save it separately if residual_out != output
+    if residual_out.as_ptr() != residual.as_ptr() {
+        // First do the residual add into residual_out
+        crate::autograd::cuda_forward::residual_add_forward(
+            residual,
+            input,
+            residual_out,
+            batch_size * hidden_size,
+            stream,
+        )?;
+    }
+
+    // Launch fused kernel: output = RMSNorm(residual + input) * gamma
+    unsafe {
+        stream.launch_kernel(module, "fused_residual_rmsnorm", &config, &mut args).map_err(
+            |e| {
+                CudaTensorError::KernelError(format!(
+                    "Fused residual+RMSNorm forward failed: {e:?}"
+                ))
+            },
+        )?;
     }
 
     Ok(())

@@ -46,8 +46,8 @@ use crate::autograd::cuda_backward::{
 use crate::autograd::cuda_forward::{
     batched_4d_gemm_forward, batched_rope_neox_backward, batched_rope_neox_forward,
     batched_softmax_forward, batched_to_interleaved_forward, batched_transpose_forward,
-    elementwise_mul_forward, expand_kv_heads, fused_swiglu_forward, gemm_forward,
-    interleaved_to_batched_forward, per_head_rmsnorm_forward, residual_add_forward,
+    elementwise_mul_forward, expand_kv_heads, fused_residual_rmsnorm_forward, fused_swiglu_forward,
+    gemm_forward, interleaved_to_batched_forward, per_head_rmsnorm_forward, residual_add_forward,
     rms_norm_forward, rope_neox_forward, scale_forward, silu_forward,
 };
 #[cfg(feature = "cuda")]
@@ -2978,20 +2978,16 @@ impl CudaNf4TransformerBlock {
                 saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
         }
 
-        // === Residual Add ===
-        cuda_add(
+        // === Fused Residual Add + RMSNorm (entrenar#321: eliminates NaN cascade) ===
+        // The separate cuda_add + rms_norm_forward allows activation explosion between
+        // the two operations. Fusing them prevents NaN in layers 24-27 because RMSNorm
+        // normalizes the residual sum immediately, before it can propagate.
+        fused_residual_rmsnorm_forward(
             input,
             &scratch.o_proj_out,
             &mut scratch.residual1,
-            seq_len * hidden_size,
-            stream,
-        )?;
-
-        // === Post-attention RMSNorm ===
-        rms_norm_forward(
-            &scratch.residual1,
-            &self.post_attn_norm_weight,
             &mut scratch.norm2_out,
+            &self.post_attn_norm_weight,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
             stream,
