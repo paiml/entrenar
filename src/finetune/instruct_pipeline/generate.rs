@@ -1,5 +1,6 @@
 //! Text generation methods: `generate`, `generate_chat`.
 
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 impl InstructPipeline {

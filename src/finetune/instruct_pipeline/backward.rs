@@ -1,6 +1,7 @@
 //! NF4 QLoRA backward pass: `backward_nf4_gpu_blocks`,
 //! `backward_nf4_gpu_blocks_gpu_resident`, `backward_nf4_gpu_blocks_loop`.
 
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 #[cfg(feature = "cuda")]

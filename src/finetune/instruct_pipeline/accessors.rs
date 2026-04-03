@@ -3,6 +3,7 @@
 //! `learning_rate`, `set_model_path`, `sync_lora_to_cpu`, `is_cuda`, `gpu_name`,
 //! `gpu_total_memory`, `summary`, `tokenizer`.
 
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 #[cfg(feature = "cuda")]

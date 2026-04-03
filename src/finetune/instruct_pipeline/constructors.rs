@@ -1,6 +1,7 @@
 //! InstructPipeline constructors: `new`, `from_pretrained`, `from_apr`,
 //! `build_lora_layers`, `inject_adapter_weights`.
 
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 impl InstructPipeline {
