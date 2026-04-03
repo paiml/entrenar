@@ -3747,18 +3747,37 @@ impl CudaNf4TransformerBlock {
         let i_size = saturating_u32(intermediate_size);
         let n_inter = saturating_u32(seq_len * intermediate_size);
 
+        // PMAT-481: NF4 tensor core backward dispatch
+        static USE_NF4_TC_BWD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let nf4_tc_bwd =
+            *USE_NF4_TC_BWD.get_or_init(|| std::env::var("NF4_TC_BWD_GEMM").as_deref() == Ok("1"));
+
         // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down^T (PMAT-472: fp16 dispatch)
-        gemm_backward_a_fp16_dispatch(
-            grad_output,
-            self.w_down_fp16.as_ref(),
-            &self.w_down_fp32,
-            &mut scratch.grad_swiglu,
-            s,
-            i_size,
-            h,
-            stream,
-            &self.ctx,
-        )?;
+        if nf4_tc_bwd {
+            // NF4 TC backward: fused dequant+WMMA, no separate dequant kernel
+            crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
+                grad_output,
+                &self.w_down_nf4,
+                &self.w_down_scales,
+                &mut scratch.grad_swiglu,
+                s,
+                h,      // N = hidden_size (grad_output cols)
+                i_size, // K = intermediate_size (output cols = W_down rows)
+                stream,
+            )?;
+        } else {
+            gemm_backward_a_fp16_dispatch(
+                grad_output,
+                self.w_down_fp16.as_ref(),
+                &self.w_down_fp32,
+                &mut scratch.grad_swiglu,
+                s,
+                i_size,
+                h,
+                stream,
+                &self.ctx,
+            )?;
+        }
 
         // Step 2: SwiGLU backward: swiglu = silu(gate) * up
         // d_gate = d_swiglu * up * silu'(gate)
@@ -3795,14 +3814,45 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // Step 3: gate/up backward (PMAT-472: fp16 dispatch)
+        // Step 3: gate/up backward (PMAT-472: fp16 dispatch, PMAT-481: TC dispatch)
         // PMAT-484: Fused backward — use cuBLAS beta=1.0 accumulate to eliminate
         // the separate cuda_add_inplace kernel launch (3 launches → 2).
         static USE_FUSED_BWD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let fused_bwd = *USE_FUSED_BWD
             .get_or_init(|| std::env::var("NF4_FUSED_BWD_GEMM").as_deref() == Ok("1"));
 
-        if fused_bwd {
+        if nf4_tc_bwd {
+            // PMAT-481: NF4 tensor core backward — fused dequant+WMMA per projection
+            // Up backward: grad_up[S,H] = d_up[S,I] @ W_up^T
+            crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
+                &scratch.gate_out, // d_up stored in gate_out buffer
+                &self.w_up_nf4,
+                &self.w_up_scales,
+                &mut scratch.grad_hidden,
+                s,
+                i_size, // N = intermediate_size (d_up cols)
+                h,      // K = hidden_size (output cols)
+                stream,
+            )?;
+            // Gate backward: grad_gate[S,H] = d_gate[S,I] @ W_gate^T
+            crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
+                &scratch.up_out, // d_gate stored in up_out buffer
+                &self.w_gate_nf4,
+                &self.w_gate_scales,
+                &mut scratch.ffn_out,
+                s,
+                i_size, // N = intermediate_size
+                h,      // K = hidden_size
+                stream,
+            )?;
+            // Accumulate: grad_hidden += grad_gate
+            cuda_add_inplace(
+                &mut scratch.grad_hidden,
+                &scratch.ffn_out,
+                seq_len * hidden_size,
+                stream,
+            )?;
+        } else if fused_bwd {
             // Fused path: compute up backward into grad_hidden, then accumulate gate
             gemm_backward_a_fp16_dispatch(
                 &scratch.gate_out,

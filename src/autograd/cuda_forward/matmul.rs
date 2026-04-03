@@ -1035,3 +1035,77 @@ pub fn gemm_nf4_backward_a(
 
     Ok(())
 }
+
+/// PMAT-481: NF4 tensor core backward GEMM — WMMA 16×16×16 with inline NF4 dequant.
+///
+/// Computes `grad_input[M×K] = grad_output[M×N] @ dequant(B_nf4[K×N])^T`
+///
+/// Eliminates separate dequant kernel + generic cuBLAS GEMM per backward projection.
+/// Uses trueno `Nf4TensorCoreGemmBackwardAKernel` (WMMA, shared memory NF4 dequant).
+///
+/// Contract: nf4-backward-tensor-core-gemm-v1.yaml
+#[cfg(feature = "cuda")]
+pub fn gemm_nf4_tc_backward_a(
+    grad_output: &GpuBuffer<f32>,
+    w_nf4: &GpuBuffer<u8>,
+    w_scales: &GpuBuffer<f32>,
+    grad_input: &mut GpuBuffer<f32>,
+    m: u32,
+    n: u32,
+    k: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    use trueno_gpu::kernels::backward::Nf4TensorCoreGemmBackwardAKernel;
+
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = Nf4TensorCoreGemmBackwardAKernel::new(m, n, k);
+
+    // Cache key: backward TC is shape-independent for (n, k) pair
+    let key = format!("nf4_tc_gemm_backward_a_{n}_{k}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    // WMMA backward: Grid = (ceil(K/16), ceil(M/16)), Block = 32 threads (1 warp)
+    let config = LaunchConfig {
+        grid: (k.div_ceil(16), m.div_ceil(16), 1),
+        block: (32, 1, 1),
+        shared_mem: 16 * 16 * 2 * 2, // grad_out[16×16] + B^T[16×16] in FP16
+    };
+
+    let grad_out_ptr = grad_output.as_ptr();
+    let scales_ptr = w_scales.as_ptr();
+    let data_ptr = w_nf4.as_ptr();
+    let grad_a_ptr = grad_input.as_ptr();
+
+    // Kernel signature: (grad_out_ptr, scales_ptr, data_ptr, grad_a_ptr, m, n, k)
+    let mut args: [*mut std::ffi::c_void; 7] = [
+        &grad_out_ptr as *const _ as *mut _,
+        &scales_ptr as *const _ as *mut _,
+        &data_ptr as *const _ as *mut _,
+        &grad_a_ptr as *const _ as *mut _,
+        &m as *const _ as *mut _,
+        &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream
+            .launch_kernel(module, "nf4_tensor_core_gemm_backward_a", &config, &mut args)
+            .map_err(|e| {
+                CudaTensorError::KernelError(format!(
+                    "NF4 tensor core GEMM backward_a launch failed: {e:?}"
+                ))
+            })?;
+    }
+
+    Ok(())
+}
