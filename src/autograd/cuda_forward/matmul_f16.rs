@@ -137,3 +137,49 @@ pub(crate) fn cublas_gemm_backward_b_f16(
         )
         .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS fp16 backward_b failed: {e:?}")))
 }
+
+/// Mixed-precision GEMM: C(fp32) = A(fp16) @ B(fp16) using tensor cores
+///
+/// Contract: fp16-cublas-gemm-v1.yaml C-FP16GEMM-001 (PMAT-470)
+/// A and B are FP16 (weights and activations cast to fp16). C is FP32.
+/// Uses CUBLAS_COMPUTE_32F with CUBLAS_GEMM_DEFAULT_TENSOR_OP.
+/// This is the "practical FP16 path": cast fp32 activations to fp16,
+/// multiply by fp16 weights, produce fp32 output for the rest of the pipeline.
+#[cfg(feature = "cuda")]
+pub fn gemm_f16_to_f32_forward(
+    a: &GpuBuffer<u16>,
+    b: &GpuBuffer<u16>,
+    c: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+    let cublas = cache.cublas().ok_or_else(|| {
+        CudaTensorError::KernelError("cuBLAS handle required for fp16→fp32 GEMM".to_string())
+    })?;
+    let _ = stream;
+    cublas
+        .gemm_f16_to_f32(
+            GemmOp::NoTrans,
+            GemmOp::NoTrans,
+            n as i32,
+            m as i32,
+            k as i32,
+            1.0,
+            b.as_ptr(),
+            n as i32,
+            a.as_ptr(),
+            k as i32,
+            0.0,
+            c.as_ptr(),
+            n as i32,
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS fp16→fp32 GEMM forward failed: {e:?}"))
+        })
+}

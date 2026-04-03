@@ -2596,6 +2596,15 @@ pub struct CudaNf4TransformerBlock {
     // QK-norm weights (ENT-270: per-head RMSNorm on Q and K, shape=[head_dim])
     q_norm_weight: Option<GpuBuffer<f32>>,
     k_norm_weight: Option<GpuBuffer<f32>>,
+    // FP16 weight buffers for Tier 2 parity (PMAT-470): halve memory BW
+    // When set, forward uses gemm_f16_to_f32 (fp16 weights × fp16 activations → fp32 output)
+    w_q_fp16: Option<GpuBuffer<u16>>,
+    w_k_fp16: Option<GpuBuffer<u16>>,
+    w_v_fp16: Option<GpuBuffer<u16>>,
+    w_o_fp16: Option<GpuBuffer<u16>>,
+    w_gate_fp16: Option<GpuBuffer<u16>>,
+    w_up_fp16: Option<GpuBuffer<u16>>,
+    w_down_fp16: Option<GpuBuffer<u16>>,
     ctx: Arc<CudaContext>,
     // NF4 blocks do NOT own scratch — shared across all layers (C-SCRATCH-001)
 }
@@ -2875,6 +2884,14 @@ impl CudaNf4TransformerBlock {
             lora_rank,
             q_norm_weight,
             k_norm_weight,
+            // FP16 weights: None by default, populated by set_fp16_weights() (PMAT-470)
+            w_q_fp16: None,
+            w_k_fp16: None,
+            w_v_fp16: None,
+            w_o_fp16: None,
+            w_gate_fp16: None,
+            w_up_fp16: None,
+            w_down_fp16: None,
             ctx,
         })
     }
