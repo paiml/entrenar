@@ -61,7 +61,9 @@ pub use matmul::{
     gemm_nf4_backward_a, gemm_nf4_forward, gemm_nf4_gate_up_forward, gemm_nf4_tc_forward,
 };
 #[cfg(feature = "cuda")]
-pub(crate) use matmul::{cublas_gemm_backward_a, cublas_gemm_backward_b};
+pub(crate) use matmul::{
+    cublas_gemm_backward_a, cublas_gemm_backward_a_accumulate, cublas_gemm_backward_b,
+};
 #[cfg(feature = "cuda")]
 pub use matmul::{gemm_nf4_backward_a_cublas, gemm_nf4_dequant_cublas};
 #[cfg(feature = "cuda")]
