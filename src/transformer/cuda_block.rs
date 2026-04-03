@@ -3033,10 +3033,15 @@ impl CudaNf4TransformerBlock {
             gemm_f16_to_f32_forward(f16_act, self.w_v_fp16.as_ref().unwrap(), &mut scratch.v,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
         } else if nf4_gemm {
-            gemm_nf4_forward(&scratch.norm1_out, &self.w_k_nf4, &self.w_k_scales, &mut scratch.k,
-                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
-            gemm_nf4_forward(&scratch.norm1_out, &self.w_v_nf4, &self.w_v_scales, &mut scratch.v,
-                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+            // PMAT-478: Fused K+V — shared input load (same pattern as Gate+Up)
+            crate::autograd::cuda_forward::gemm_nf4_gate_up_forward(
+                &scratch.norm1_out,
+                &self.w_k_nf4, &self.w_k_scales,
+                &self.w_v_nf4, &self.w_v_scales,
+                &mut scratch.k, &mut scratch.v,
+                saturating_u32(seq_len), saturating_u32(hidden_size),
+                saturating_u32(kv_hidden_size), stream,
+            )?;
         } else {
             gemm_forward(&scratch.norm1_out, &self.w_k_fp32, &mut scratch.k,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;

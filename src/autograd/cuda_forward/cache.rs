@@ -283,6 +283,14 @@ impl ForwardKernelCache {
                 FusedNf4GateUpGemmKernel::new(s as u32, i as u32, h as u32)
             );
         }
+        // PMAT-478: Fused K+V GEMM for GQA attention (reuses Gate+Up kernel).
+        if h.is_multiple_of(64) && kv_h.is_multiple_of(64) && kv_h != i {
+            use trueno_gpu::kernels::FusedNf4GateUpGemmKernel;
+            warm!(
+                format!("fused_nf4_gate_up_{h}_{kv_h}"),
+                FusedNf4GateUpGemmKernel::new(s as u32, kv_h as u32, h as u32)
+            );
+        }
 
         // 19-22. NF4 transposed GEMM for QLoRA backward (ENT-153).
         // C[M×K] = A[M×N] @ B[K×N]^T — gradient propagation through frozen NF4 layers.
