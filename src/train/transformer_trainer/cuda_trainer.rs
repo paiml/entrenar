@@ -1153,6 +1153,7 @@ impl CudaTransformerTrainer {
             }
             // SAFETY: input_ptr and output_ptr point to disjoint fwd_scratch_{a,b}.
             // ENT-263: Pass shared scratch for NF4 blocks (C-SCRATCH-001).
+            self.profiler.begin_layer();
             unsafe {
                 block
                     .forward(
@@ -1164,6 +1165,7 @@ impl CudaTransformerTrainer {
                     )
                     .ok()?;
             }
+            self.profiler.end_layer_fwd(i);
             input_is_a = !input_is_a;
         }
         self.profiler.end(StepProfiler::FORWARD);
@@ -1509,6 +1511,7 @@ impl CudaTransformerTrainer {
                 }
             };
 
+            self.profiler.begin_layer();
             if use_nf4 {
                 // ENT-263: NF4 backward — LoRA gradient computation
                 // Uses backward_nf4() which computes gradients for LoRA weights and norms only.
@@ -1651,6 +1654,7 @@ impl CudaTransformerTrainer {
                 }
             }
 
+            self.profiler.end_layer_bwd(layer_idx);
             grad_output_is_a = !grad_output_is_a;
         }
 

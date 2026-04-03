@@ -55,10 +55,17 @@ const PHASE_NAMES: [&str; NUM_PHASES] = [
     "opt",
 ];
 
+/// Maximum number of transformer layers to profile.
+const MAX_LAYERS: usize = 64;
+
 /// Per-step timing accumulator.
 ///
 /// Usage: call `begin(phase)` before each section, `end(phase)` after.
 /// Call `finish_step()` to record the step and optionally print a report.
+///
+/// Per-layer profiling (PMAT-480): call `begin_layer(layer)` / `end_layer_fwd(layer)`
+/// and `end_layer_bwd(layer)` inside the forward/backward loops to capture
+/// per-layer timing. Reports per-layer breakdown when enabled.
 pub struct StepProfiler {
     enabled: bool,
     /// Report every N steps (0 = never auto-report)
@@ -77,6 +84,14 @@ pub struct StepProfiler {
     step_count: usize,
     /// Per-step wall-clock durations (for percentile analysis)
     step_durations: Vec<Duration>,
+    /// Per-layer forward timing (accumulated across steps, PMAT-480)
+    layer_fwd_totals: Vec<Duration>,
+    /// Per-layer backward timing (accumulated across steps, PMAT-480)
+    layer_bwd_totals: Vec<Duration>,
+    /// Layer-level start timestamp (set by `begin_layer`)
+    layer_start: Option<Instant>,
+    /// Number of layers detected (set on first step)
+    num_layers: usize,
 }
 
 impl StepProfiler {
@@ -95,6 +110,10 @@ impl StepProfiler {
             total_wall: Duration::ZERO,
             step_count: 0,
             step_durations: Vec::new(),
+            layer_fwd_totals: vec![Duration::ZERO; MAX_LAYERS],
+            layer_bwd_totals: vec![Duration::ZERO; MAX_LAYERS],
+            layer_start: None,
+            num_layers: 0,
         }
     }
 
@@ -130,6 +149,47 @@ impl StepProfiler {
         }
         if let Some(start) = self.phase_start.take() {
             self.current[phase] += start.elapsed();
+        }
+    }
+
+    /// Start per-layer timing (PMAT-480). Call before each layer's forward or backward.
+    #[inline]
+    pub fn begin_layer(&mut self) {
+        if !self.enabled {
+            return;
+        }
+        self.layer_start = Some(Instant::now());
+    }
+
+    /// Record per-layer forward time (PMAT-480). Call after layer forward completes.
+    #[inline]
+    pub fn end_layer_fwd(&mut self, layer: usize) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(start) = self.layer_start.take() {
+            if layer < MAX_LAYERS {
+                self.layer_fwd_totals[layer] += start.elapsed();
+                if layer >= self.num_layers {
+                    self.num_layers = layer + 1;
+                }
+            }
+        }
+    }
+
+    /// Record per-layer backward time (PMAT-480). Call after layer backward completes.
+    #[inline]
+    pub fn end_layer_bwd(&mut self, layer: usize) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(start) = self.layer_start.take() {
+            if layer < MAX_LAYERS {
+                self.layer_bwd_totals[layer] += start.elapsed();
+                if layer >= self.num_layers {
+                    self.num_layers = layer + 1;
+                }
+            }
         }
     }
 
@@ -198,6 +258,72 @@ impl StepProfiler {
             avg_step_us / 1000.0
         );
         println!("└────────────┴──────────┴────────┴──────────┘");
+
+        // Per-layer breakdown (PMAT-480)
+        if self.num_layers > 0 && self.step_count > 0 {
+            println!(
+                "\n┌─ Per-Layer Profile ({} layers, {} steps) ─┐",
+                self.num_layers, self.step_count
+            );
+            println!(
+                "│ {:>5} │ {:>8} │ {:>8} │ {:>8} │ {:>8} │",
+                "layer", "fwd_ms", "bwd_ms", "fwd_avg", "bwd_avg"
+            );
+            println!("│ {:->5} │ {:->8} │ {:->8} │ {:->8} │ {:->8} │", "", "", "", "", "");
+            let mut fwd_total = Duration::ZERO;
+            let mut bwd_total = Duration::ZERO;
+            for i in 0..self.num_layers {
+                let fwd = self.layer_fwd_totals[i];
+                let bwd = self.layer_bwd_totals[i];
+                fwd_total += fwd;
+                bwd_total += bwd;
+                let fwd_ms = fwd.as_micros() as f64 / 1000.0;
+                let bwd_ms = bwd.as_micros() as f64 / 1000.0;
+                let fwd_avg = fwd_ms / self.step_count as f64;
+                let bwd_avg = bwd_ms / self.step_count as f64;
+                println!(
+                    "│ {:>5} │ {:>8.1} │ {:>8.1} │ {:>8.2} │ {:>8.2} │",
+                    i, fwd_ms, bwd_ms, fwd_avg, bwd_avg
+                );
+            }
+            let fwd_total_ms = fwd_total.as_micros() as f64 / 1000.0;
+            let bwd_total_ms = bwd_total.as_micros() as f64 / 1000.0;
+            println!(
+                "│ {:>5} │ {:>8.1} │ {:>8.1} │ {:>8.2} │ {:>8.2} │",
+                "TOTAL",
+                fwd_total_ms,
+                bwd_total_ms,
+                fwd_total_ms / self.step_count as f64,
+                bwd_total_ms / self.step_count as f64
+            );
+            println!("└───────┴──────────┴──────────┴──────────┴──────────┘");
+
+            // Identify hotspot layers (>1.5x average)
+            let avg_fwd = fwd_total / self.num_layers as u32;
+            let avg_bwd = bwd_total / self.num_layers as u32;
+            let mut hotspots = Vec::new();
+            for i in 0..self.num_layers {
+                let fwd_ratio = if avg_fwd.as_nanos() > 0 {
+                    self.layer_fwd_totals[i].as_nanos() as f64 / avg_fwd.as_nanos() as f64
+                } else {
+                    0.0
+                };
+                let bwd_ratio = if avg_bwd.as_nanos() > 0 {
+                    self.layer_bwd_totals[i].as_nanos() as f64 / avg_bwd.as_nanos() as f64
+                } else {
+                    0.0
+                };
+                if fwd_ratio > 1.5 || bwd_ratio > 1.5 {
+                    hotspots.push((i, fwd_ratio, bwd_ratio));
+                }
+            }
+            if !hotspots.is_empty() {
+                println!("  Hotspot layers (>1.5x average):");
+                for (layer, fwd_r, bwd_r) in &hotspots {
+                    println!("    L{}: fwd {:.1}x, bwd {:.1}x", layer, fwd_r, bwd_r);
+                }
+            }
+        }
 
         // Percentiles for step wall-clock
         if self.step_durations.len() >= 10 {
@@ -466,5 +592,95 @@ mod tests {
         // Should record Duration::ZERO for wall time
         assert_eq!(p.step_count(), 1);
         assert_eq!(p.total_wall, Duration::ZERO);
+    }
+
+    // --- Per-layer profiling tests (PMAT-480) ---
+
+    #[test]
+    fn test_per_layer_fwd_timing() {
+        let mut p = StepProfiler::new(true, 0);
+        p.begin_step();
+        for layer in 0..3 {
+            p.begin_layer();
+            std::thread::sleep(Duration::from_millis(1));
+            p.end_layer_fwd(layer);
+        }
+        p.finish_step();
+        assert_eq!(p.num_layers, 3);
+        for layer in 0..3 {
+            assert!(p.layer_fwd_totals[layer] >= Duration::from_micros(500));
+        }
+    }
+
+    #[test]
+    fn test_per_layer_bwd_timing() {
+        let mut p = StepProfiler::new(true, 0);
+        p.begin_step();
+        for layer in (0..4).rev() {
+            p.begin_layer();
+            std::thread::sleep(Duration::from_millis(1));
+            p.end_layer_bwd(layer);
+        }
+        p.finish_step();
+        assert_eq!(p.num_layers, 4);
+        for layer in 0..4 {
+            assert!(p.layer_bwd_totals[layer] >= Duration::from_micros(500));
+        }
+    }
+
+    #[test]
+    fn test_per_layer_accumulates_across_steps() {
+        let mut p = StepProfiler::new(true, 0);
+        for _ in 0..3 {
+            p.begin_step();
+            p.begin_layer();
+            std::thread::sleep(Duration::from_millis(1));
+            p.end_layer_fwd(0);
+            p.finish_step();
+        }
+        assert!(p.layer_fwd_totals[0] >= Duration::from_millis(3));
+    }
+
+    #[test]
+    fn test_per_layer_disabled_is_noop() {
+        let mut p = StepProfiler::disabled();
+        p.begin_layer();
+        p.end_layer_fwd(0);
+        p.begin_layer();
+        p.end_layer_bwd(0);
+        assert_eq!(p.num_layers, 0);
+    }
+
+    #[test]
+    fn test_per_layer_out_of_bounds_ignored() {
+        let mut p = StepProfiler::new(true, 0);
+        p.begin_step();
+        p.begin_layer();
+        // Layer index >= MAX_LAYERS should be silently ignored
+        p.end_layer_fwd(MAX_LAYERS + 1);
+        p.finish_step();
+        assert_eq!(p.num_layers, 0);
+    }
+
+    #[test]
+    fn test_per_layer_report_prints() {
+        let mut p = StepProfiler::new(true, 0);
+        for _ in 0..2 {
+            p.begin_step();
+            for layer in 0..3 {
+                p.begin_layer();
+                std::thread::sleep(Duration::from_millis(1));
+                p.end_layer_fwd(layer);
+            }
+            for layer in (0..3).rev() {
+                p.begin_layer();
+                std::thread::sleep(Duration::from_millis(1));
+                p.end_layer_bwd(layer);
+            }
+            p.finish_step();
+        }
+        // Should print per-layer breakdown without panic
+        p.print_report();
+        assert_eq!(p.num_layers, 3);
     }
 }
