@@ -8,7 +8,7 @@ use trueno_gpu::driver::{CublasHandle, CudaStream, GemmOp, GpuBuffer, LaunchConf
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel,
-    Nf4GemmTransposeKernel,
+    Nf4GemmTransposeKernel, Nf4TensorCoreGemmKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -454,6 +454,73 @@ pub fn gemm_nf4_forward(
     unsafe {
         stream.launch_kernel(module, "nf4_gemm_fused", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("NF4 GEMM forward launch failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+/// PMAT-481: NF4 tensor core GEMM — WMMA 16×16×16 with inline NF4 dequant in SHMEM.
+///
+/// Dequantizes NF4 blocks to FP16 in shared memory, uses tensor cores for matmul.
+/// Expected 5-40x compute improvement over naive tiled NF4 GEMM.
+///
+/// Contract: nf4-tensor-core-gemm-v1.yaml (F-NF4-TC-001, F-NF4-TC-002)
+#[cfg(feature = "cuda")]
+pub fn gemm_nf4_tc_forward(
+    a: &GpuBuffer<f32>,
+    b_nf4: &GpuBuffer<u8>,
+    b_scales: &GpuBuffer<f32>,
+    c: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = Nf4TensorCoreGemmKernel::new(m, n, k);
+
+    let key = format!("nf4_tc_gemm_forward_{k}_{n}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    // WMMA: 1 warp (32 threads) per 16×16 tile
+    let config = LaunchConfig {
+        grid: (n.div_ceil(16), m.div_ceil(16), 1),
+        block: (32, 1, 1),
+        shared_mem: 16 * 16 * 2 * 2, // A[16×16] + B[16×16] in FP16
+    };
+
+    let a_ptr = a.as_ptr();
+    let b_nf4_ptr = b_nf4.as_ptr();
+    let b_scales_ptr = b_scales.as_ptr();
+    let c_ptr = c.as_ptr();
+
+    // Kernel signature: (a_ptr, scales_ptr, data_ptr, c_ptr, m, n, k)
+    let mut args: [*mut std::ffi::c_void; 7] = [
+        &a_ptr as *const _ as *mut _,
+        &b_scales_ptr as *const _ as *mut _,
+        &b_nf4_ptr as *const _ as *mut _,
+        &c_ptr as *const _ as *mut _,
+        &m as *const _ as *mut _,
+        &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream.launch_kernel(module, "nf4_tensor_core_gemm", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!(
+                "NF4 tensor core GEMM forward launch failed: {e:?}"
+            ))
         })?;
     }
 

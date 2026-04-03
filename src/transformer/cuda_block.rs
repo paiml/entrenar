@@ -2959,7 +2959,7 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::{gemm_forward, gemm_nf4_forward};
+        use crate::autograd::cuda_forward::{gemm_forward, gemm_nf4_forward, gemm_nf4_tc_forward};
 
         let hidden_size = self.config.hidden_size;
         let q_dim = self.config.q_dim();
@@ -2986,6 +2986,8 @@ impl CudaNf4TransformerBlock {
         //   Default: cuBLAS fp32 (197 tok/s, 7% GPU, memory-BW bound)
         static USE_NF4_GEMM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let nf4_gemm = *USE_NF4_GEMM.get_or_init(|| std::env::var("NF4_FUSED_GEMM").as_deref() == Ok("1"));
+        static USE_NF4_TC_GEMM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let nf4_tc_gemm = *USE_NF4_TC_GEMM.get_or_init(|| std::env::var("NF4_TC_GEMM").as_deref() == Ok("1"));
         static USE_FP16_GEMM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let fp16_gemm = *USE_FP16_GEMM.get_or_init(|| std::env::var("FP16_GEMM").as_deref() == Ok("1"));
 
@@ -3003,6 +3005,9 @@ impl CudaNf4TransformerBlock {
         if fp16_gemm && self.w_q_fp16.is_some() {
             let f16_act = scratch.norm1_out_f16.as_ref().unwrap();
             gemm_f16_to_f32_forward(f16_act, self.w_q_fp16.as_ref().unwrap(), &mut scratch.q,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(q_dim), stream)?;
+        } else if nf4_tc_gemm {
+            gemm_nf4_tc_forward(&scratch.norm1_out, &self.w_q_nf4, &self.w_q_scales, &mut scratch.q,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(q_dim), stream)?;
         } else if nf4_gemm {
             gemm_nf4_forward(&scratch.norm1_out, &self.w_q_nf4, &self.w_q_scales, &mut scratch.q,
@@ -3031,6 +3036,12 @@ impl CudaNf4TransformerBlock {
             gemm_f16_to_f32_forward(f16_act, self.w_k_fp16.as_ref().unwrap(), &mut scratch.k,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
             gemm_f16_to_f32_forward(f16_act, self.w_v_fp16.as_ref().unwrap(), &mut scratch.v,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+        } else if nf4_tc_gemm {
+            // PMAT-481: NF4 tensor core GEMM for K and V projections (separate)
+            gemm_nf4_tc_forward(&scratch.norm1_out, &self.w_k_nf4, &self.w_k_scales, &mut scratch.k,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+            gemm_nf4_tc_forward(&scratch.norm1_out, &self.w_v_nf4, &self.w_v_scales, &mut scratch.v,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
         } else if nf4_gemm {
             // PMAT-478: Fused K+V — shared input load (same pattern as Gate+Up)
@@ -3075,6 +3086,9 @@ impl CudaNf4TransformerBlock {
             cast_f32_to_f16_gpu(&scratch.attn_out, f16_buf, (seq_len * q_dim) as u32, stream)?;
             gemm_f16_to_f32_forward(f16_buf, self.w_o_fp16.as_ref().unwrap(), &mut scratch.o_proj_out,
                 saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
+        } else if nf4_tc_gemm {
+            gemm_nf4_tc_forward(&scratch.attn_out, &self.w_o_nf4, &self.w_o_scales, &mut scratch.o_proj_out,
+                saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
         } else if nf4_gemm {
             gemm_nf4_forward(&scratch.attn_out, &self.w_o_nf4, &self.w_o_scales, &mut scratch.o_proj_out,
                 saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
@@ -3109,6 +3123,12 @@ impl CudaNf4TransformerBlock {
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
             gemm_f16_to_f32_forward(f16_buf, self.w_up_fp16.as_ref().unwrap(), &mut scratch.up_out,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+        } else if nf4_tc_gemm {
+            // PMAT-481: NF4 tensor core GEMM for Gate and Up projections (separate)
+            gemm_nf4_tc_forward(&scratch.norm2_out, &self.w_gate_nf4, &self.w_gate_scales, &mut scratch.gate_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+            gemm_nf4_tc_forward(&scratch.norm2_out, &self.w_up_nf4, &self.w_up_scales, &mut scratch.up_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
         } else if nf4_gemm {
             // PMAT-475: Fused gate+up — shared input load, saves M×K×4 bytes DRAM
             crate::autograd::cuda_forward::gemm_nf4_gate_up_forward(
@@ -3138,6 +3158,9 @@ impl CudaNf4TransformerBlock {
             let f16_buf = scratch.swiglu_out_f16.as_mut().unwrap();
             cast_f32_to_f16_gpu(&scratch.swiglu_out, f16_buf, (seq_len * intermediate_size) as u32, stream)?;
             gemm_f16_to_f32_forward(f16_buf, self.w_down_fp16.as_ref().unwrap(), &mut scratch.ffn_out,
+                saturating_u32(seq_len), saturating_u32(intermediate_size), saturating_u32(hidden_size), stream)?;
+        } else if nf4_tc_gemm {
+            gemm_nf4_tc_forward(&scratch.swiglu_out, &self.w_down_nf4, &self.w_down_scales, &mut scratch.ffn_out,
                 saturating_u32(seq_len), saturating_u32(intermediate_size), saturating_u32(hidden_size), stream)?;
         } else if nf4_gemm {
             gemm_nf4_forward(&scratch.swiglu_out, &self.w_down_nf4, &self.w_down_scales, &mut scratch.ffn_out,
