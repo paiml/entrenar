@@ -40,8 +40,8 @@ use trueno_gpu::driver::{CudaContext, CudaStream, GpuBuffer};
 
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_backward::{
-    batched_softmax_backward, gemm_backward_a, gemm_backward_a_fp16_dispatch, gemm_backward_b,
-    rms_norm_backward, silu_backward,
+    batched_softmax_backward, gemm_backward_a, gemm_backward_a_fp16_dispatch,
+    gemm_backward_a_fp16_dispatch_accumulate, gemm_backward_b, rms_norm_backward, silu_backward,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{
@@ -3748,36 +3748,70 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // Step 3: gate/up backward (PMAT-472: fp16 dispatch)
-        gemm_backward_a_fp16_dispatch(
-            &scratch.up_out,
-            self.w_gate_fp16.as_ref(),
-            &self.w_gate_fp32,
-            &mut scratch.ffn_out,
-            s,
-            h,
-            i_size,
-            stream,
-            &self.ctx,
-        )?;
-        gemm_backward_a_fp16_dispatch(
-            &scratch.gate_out,
-            self.w_up_fp16.as_ref(),
-            &self.w_up_fp32,
-            &mut scratch.grad_hidden,
-            s,
-            h,
-            i_size,
-            stream,
-            &self.ctx,
-        )?;
+        // PMAT-484: Fused backward — use cuBLAS beta=1.0 accumulate to eliminate
+        // the separate cuda_add_inplace kernel launch (3 launches → 2).
+        static USE_FUSED_BWD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let fused_bwd = *USE_FUSED_BWD
+            .get_or_init(|| std::env::var("NF4_FUSED_BWD_GEMM").as_deref() == Ok("1"));
 
-        // Accumulate: grad_hidden = grad_norm2_gate + grad_norm2_up
-        cuda_add_inplace(
-            &mut scratch.grad_hidden,
-            &scratch.ffn_out,
-            seq_len * hidden_size,
-            stream,
-        )?;
+        if fused_bwd {
+            // Fused path: compute up backward into grad_hidden, then accumulate gate
+            gemm_backward_a_fp16_dispatch(
+                &scratch.gate_out,
+                self.w_up_fp16.as_ref(),
+                &self.w_up_fp32,
+                &mut scratch.grad_hidden,
+                s,
+                h,
+                i_size,
+                stream,
+                &self.ctx,
+            )?;
+            // Accumulate gate backward into grad_hidden (beta=1.0)
+            gemm_backward_a_fp16_dispatch_accumulate(
+                &scratch.up_out,
+                self.w_gate_fp16.as_ref(),
+                &self.w_gate_fp32,
+                &mut scratch.grad_hidden,
+                s,
+                h,
+                i_size,
+                stream,
+                &self.ctx,
+            )?;
+        } else {
+            // Unfused path: separate GEMMs + explicit add
+            gemm_backward_a_fp16_dispatch(
+                &scratch.up_out,
+                self.w_gate_fp16.as_ref(),
+                &self.w_gate_fp32,
+                &mut scratch.ffn_out,
+                s,
+                h,
+                i_size,
+                stream,
+                &self.ctx,
+            )?;
+            gemm_backward_a_fp16_dispatch(
+                &scratch.gate_out,
+                self.w_up_fp16.as_ref(),
+                &self.w_up_fp32,
+                &mut scratch.grad_hidden,
+                s,
+                h,
+                i_size,
+                stream,
+                &self.ctx,
+            )?;
+
+            // Accumulate: grad_hidden = grad_norm2_gate + grad_norm2_up
+            cuda_add_inplace(
+                &mut scratch.grad_hidden,
+                &scratch.ffn_out,
+                seq_len * hidden_size,
+                stream,
+            )?;
+        }
 
         Ok(())
     }

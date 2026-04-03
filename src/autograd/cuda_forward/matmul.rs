@@ -248,6 +248,42 @@ pub(crate) fn cublas_gemm_backward_a(
         .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS GEMM backward_a failed: {e:?}")))
 }
 
+/// cuBLAS backward A with accumulation: grad_A += grad_C @ B^T (PMAT-484)
+///
+/// Same as cublas_gemm_backward_a but uses beta=1.0 to ACCUMULATE into grad_a
+/// instead of overwriting. Enables fused Gate+Up backward without a separate
+/// cuda_add_inplace call.
+#[cfg(feature = "cuda")]
+pub(crate) fn cublas_gemm_backward_a_accumulate(
+    cublas: &CublasHandle,
+    grad_output: &GpuBuffer<f32>,
+    b: &GpuBuffer<f32>,
+    grad_a: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+) -> Result<()> {
+    cublas
+        .gemm_f32(
+            GemmOp::Trans,
+            GemmOp::NoTrans,
+            k as i32,
+            m as i32,
+            n as i32,
+            1.0,
+            b.as_ptr(),
+            n as i32,
+            grad_output.as_ptr(),
+            n as i32,
+            1.0, // ACCUMULATE: C = 1.0 * A @ B + 1.0 * C
+            grad_a.as_ptr(),
+            k as i32,
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS GEMM backward_a accumulate failed: {e:?}"))
+        })
+}
+
 /// cuBLAS backward B: grad_B[K,N] = A[M,K]^T @ grad_C[M,N]
 #[cfg(feature = "cuda")]
 pub(crate) fn cublas_gemm_backward_b(

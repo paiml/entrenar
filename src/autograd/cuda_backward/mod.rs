@@ -40,7 +40,10 @@ mod tests;
 pub(crate) use cache::set_backward_cublas_stream;
 pub use cache::{init_kernel_cache, pre_warm_lora_backward_kernels};
 pub use elementwise::{gelu_backward, relu_backward, silu_backward};
-pub use gemm::{gemm_backward_a, gemm_backward_a_fp16_dispatch, gemm_backward_b};
+pub use gemm::{
+    gemm_backward_a, gemm_backward_a_accumulate, gemm_backward_a_fp16_dispatch,
+    gemm_backward_a_fp16_dispatch_accumulate, gemm_backward_b,
+};
 pub use structured::{
     batched_softmax_backward, layer_norm_backward, rms_norm_backward, rms_norm_forward,
     softmax_backward,

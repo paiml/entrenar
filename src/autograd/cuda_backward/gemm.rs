@@ -178,6 +178,91 @@ pub fn gemm_backward_b(
     Ok(())
 }
 
+/// GEMM backward A with accumulation: grad_A += grad_C @ B^T (PMAT-484)
+///
+/// Adds result into grad_a instead of overwriting. Used for fused Gate+Up backward
+/// to eliminate the separate cuda_add_inplace kernel launch.
+#[cfg(feature = "cuda")]
+pub fn gemm_backward_a_accumulate(
+    grad_output: &GpuBuffer<f32>,
+    b: &GpuBuffer<f32>,
+    grad_a: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    // cuBLAS accumulate path (beta=1.0)
+    if let Some(cublas) = cache.cublas() {
+        return crate::autograd::cuda_forward::cublas_gemm_backward_a_accumulate(
+            cublas,
+            grad_output,
+            b,
+            grad_a,
+            m,
+            k,
+            n,
+        );
+    }
+
+    // Fallback: no cuBLAS, use separate compute + add
+    drop(cache);
+    let ctx = trueno_gpu::driver::CudaContext::current()
+        .map_err(|e| CudaTensorError::KernelError(format!("No CUDA context: {e:?}")))?;
+    let mut temp = GpuBuffer::<f32>::new(&ctx, (m * k) as usize)
+        .map_err(|e| CudaTensorError::AllocationFailed(format!("backward_a_accum temp: {e:?}")))?;
+    gemm_backward_a(grad_output, b, &mut temp, m, k, n, stream)?;
+    crate::transformer::cuda_block::cuda_add_inplace(grad_a, &temp, (m * k) as usize, stream)?;
+    Ok(())
+}
+
+/// FP16-aware backward A with accumulation (PMAT-484): grad_A += grad_C @ B^T
+///
+/// Same as gemm_backward_a_fp16_dispatch but accumulates into grad_a.
+/// Used for fused Gate+Up backward to eliminate cuda_add_inplace.
+#[cfg(feature = "cuda")]
+pub fn gemm_backward_a_fp16_dispatch_accumulate(
+    grad_output: &GpuBuffer<f32>,
+    w_fp16: Option<&GpuBuffer<u16>>,
+    w_fp32: &GpuBuffer<f32>,
+    grad_a: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+    _ctx: &trueno_gpu::driver::CudaContext,
+) -> Result<()> {
+    // For fp16 path: compute into temp then add (cuBLAS fp16 doesn't easily support beta=1 mixed)
+    // For fp32 path: use cuBLAS beta=1.0 directly
+    if w_fp16.is_some() {
+        // FP16: compute into temp, then accumulate
+        let ctx = trueno_gpu::driver::CudaContext::current()
+            .map_err(|e| CudaTensorError::KernelError(format!("No CUDA context: {e:?}")))?;
+        let mut temp = GpuBuffer::<f32>::new(&ctx, (m * k) as usize)
+            .map_err(|e| CudaTensorError::AllocationFailed(format!("fp16 accum temp: {e:?}")))?;
+        gemm_backward_a_fp16_dispatch(
+            grad_output,
+            w_fp16,
+            w_fp32,
+            &mut temp,
+            m,
+            k,
+            n,
+            stream,
+            _ctx,
+        )?;
+        crate::transformer::cuda_block::cuda_add_inplace(grad_a, &temp, (m * k) as usize, stream)?;
+        Ok(())
+    } else {
+        gemm_backward_a_accumulate(grad_output, w_fp32, grad_a, m, k, n, stream)
+    }
+}
+
 /// FP16-aware backward A dispatch (PMAT-472): uses fp16 weights when available.
 ///
 /// If `w_fp16` is Some, casts grad_output to fp16 and uses tensor core GEMM
