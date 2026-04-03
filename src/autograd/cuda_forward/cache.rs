@@ -275,6 +275,15 @@ impl ForwardKernelCache {
             }
         }
 
+        // PMAT-475: Fused NF4 Gate+Up GEMM for FFN (shared input load).
+        if h.is_multiple_of(64) && i.is_multiple_of(64) {
+            use trueno_gpu::kernels::FusedNf4GateUpGemmKernel;
+            warm!(
+                format!("fused_nf4_gate_up_{h}_{i}"),
+                FusedNf4GateUpGemmKernel::new(s as u32, i as u32, h as u32)
+            );
+        }
+
         // 19-22. NF4 transposed GEMM for QLoRA backward (ENT-153).
         // C[M×K] = A[M×N] @ B[K×N]^T — gradient propagation through frozen NF4 layers.
         if h.is_multiple_of(64) {
