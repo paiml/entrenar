@@ -282,8 +282,7 @@ impl StepProfiler {
                 let fwd_avg = fwd_ms / self.step_count as f64;
                 let bwd_avg = bwd_ms / self.step_count as f64;
                 println!(
-                    "│ {:>5} │ {:>8.1} │ {:>8.1} │ {:>8.2} │ {:>8.2} │",
-                    i, fwd_ms, bwd_ms, fwd_avg, bwd_avg
+                    "│ {i:>5} │ {fwd_ms:>8.1} │ {bwd_ms:>8.1} │ {fwd_avg:>8.2} │ {bwd_avg:>8.2} │"
                 );
             }
             let fwd_total_ms = fwd_total.as_micros() as f64 / 1000.0;
@@ -320,7 +319,7 @@ impl StepProfiler {
             if !hotspots.is_empty() {
                 println!("  Hotspot layers (>1.5x average):");
                 for (layer, fwd_r, bwd_r) in &hotspots {
-                    println!("    L{}: fwd {:.1}x, bwd {:.1}x", layer, fwd_r, bwd_r);
+                    println!("    L{layer}: fwd {fwd_r:.1}x, bwd {bwd_r:.1}x");
                 }
             }
         }
