@@ -1538,7 +1538,6 @@ impl InstructPipeline {
             self.cuda_blocks.as_ref(),
         );
 
-        // NF4 LoRA training state
         if self.config.quantize_nf4 {
             let (grad_ws, opt_states) = Self::try_init_nf4_lora_training(
                 self.cuda_trainer.as_ref(),
@@ -1546,8 +1545,9 @@ impl InstructPipeline {
                 model_config,
                 &self.config,
             );
-            if let (Some(ref ws), Some(ref t)) = (&grad_ws, &self.cuda_trainer) {
-                self.lora_fused_clip = super::fused_lora_clip::init_lora_fused_clip(ws, t.context());
+            if let (Some(ws), Some(t)) = (&grad_ws, &self.cuda_trainer) {
+                self.lora_fused_clip =
+                    super::fused_lora_clip::init_lora_fused_clip(ws, t.context());
             }
             self.cuda_lora_grad_workspace = grad_ws;
             self.cuda_lora_optimizer_states = opt_states;
