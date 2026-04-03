@@ -3969,34 +3969,72 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
-        // K backward (PMAT-472: fp16 dispatch)
-        gemm_backward_a_fp16_dispatch(
-            &scratch.k,
-            self.w_k_fp16.as_ref(),
-            &self.w_k_fp32,
-            &mut scratch.ffn_out,
-            s,
-            h,
-            kvh,
-            stream,
-            &self.ctx,
-        )?;
-        // Accumulate: grad_norm1 += grad_norm1_k
-        cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;
+        // K+V backward (PMAT-484: fused accumulate eliminates 2 add_inplace launches)
+        static USE_FUSED_BWD_ATTN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let fused_bwd = *USE_FUSED_BWD_ATTN
+            .get_or_init(|| std::env::var("NF4_FUSED_BWD_GEMM").as_deref() == Ok("1"));
+        if fused_bwd {
+            // Fused: K and V backward accumulate directly into o_proj_out
+            gemm_backward_a_fp16_dispatch_accumulate(
+                &scratch.k,
+                self.w_k_fp16.as_ref(),
+                &self.w_k_fp32,
+                &mut scratch.o_proj_out,
+                s,
+                h,
+                kvh,
+                stream,
+                &self.ctx,
+            )?;
+            gemm_backward_a_fp16_dispatch_accumulate(
+                &scratch.v,
+                self.w_v_fp16.as_ref(),
+                &self.w_v_fp32,
+                &mut scratch.o_proj_out,
+                s,
+                h,
+                kvh,
+                stream,
+                &self.ctx,
+            )?;
+        } else {
+            // Unfused: K backward → temp, accumulate; V backward → temp, accumulate
+            gemm_backward_a_fp16_dispatch(
+                &scratch.k,
+                self.w_k_fp16.as_ref(),
+                &self.w_k_fp32,
+                &mut scratch.ffn_out,
+                s,
+                h,
+                kvh,
+                stream,
+                &self.ctx,
+            )?;
+            cuda_add_inplace(
+                &mut scratch.o_proj_out,
+                &scratch.ffn_out,
+                seq_len * hidden_size,
+                stream,
+            )?;
 
-        // V backward (PMAT-472: fp16 dispatch)
-        gemm_backward_a_fp16_dispatch(
-            &scratch.v,
-            self.w_v_fp16.as_ref(),
-            &self.w_v_fp32,
-            &mut scratch.ffn_out,
-            s,
-            h,
-            kvh,
-            stream,
-            &self.ctx,
-        )?;
-        cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;
+            gemm_backward_a_fp16_dispatch(
+                &scratch.v,
+                self.w_v_fp16.as_ref(),
+                &self.w_v_fp32,
+                &mut scratch.ffn_out,
+                s,
+                h,
+                kvh,
+                stream,
+                &self.ctx,
+            )?;
+            cuda_add_inplace(
+                &mut scratch.o_proj_out,
+                &scratch.ffn_out,
+                seq_len * hidden_size,
+                stream,
+            )?;
+        }
 
         // LoRA V backward
         if let (Some(a_v), Some(b_v)) = (&self.lora_a_v, &self.lora_b_v) {
