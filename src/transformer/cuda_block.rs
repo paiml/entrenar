@@ -40,7 +40,8 @@ use trueno_gpu::driver::{CudaContext, CudaStream, GpuBuffer};
 
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_backward::{
-    batched_softmax_backward, gemm_backward_a, gemm_backward_b, rms_norm_backward, silu_backward,
+    batched_softmax_backward, gemm_backward_a, gemm_backward_a_fp16_dispatch, gemm_backward_b,
+    rms_norm_backward, silu_backward,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{
@@ -2911,11 +2912,7 @@ impl CudaNf4TransformerBlock {
         })
     }
 
-    /// Cast all 7 fp32 weight buffers to fp16 on GPU (PMAT-470: Tier 2 parity).
-    ///
-    /// Enables the FP16_GEMM=1 dispatch path. Halves weight memory bandwidth from
-    /// 9.4 MB to 4.7 MB per GEMM (1536×1536 matrix), enabling tensor core utilization.
-    /// Cast cost: ~0.02ms per weight matrix — one-time at init, amortized over all steps.
+    /// Cast fp32→fp16 weights + drop fp32 (PMAT-470/472). Frees ~2.6 GB VRAM.
     pub fn set_fp16_weights(&mut self, stream: &CudaStream) -> Result<()> {
         let cast_weight = |w_fp32: &GpuBuffer<f32>, ctx: &CudaContext| -> Result<GpuBuffer<u16>> {
             let n = w_fp32.len();
@@ -2937,8 +2934,17 @@ impl CudaNf4TransformerBlock {
                 "FP16 weight cast sync failed: {e:?}"
             ))
         })?;
-
-        eprintln!("[FP16] Layer weights cast to fp16 (tensor cores enabled)");
+        // PMAT-472: Drop fp32 weights — backward now uses fp16 via gemm_backward_a_fp16_dispatch.
+        // Frees ~2.6 GB VRAM on yoga 8GB, allowing GPU embeddings to fit.
+        let dummy = |ctx: &CudaContext| GpuBuffer::<f32>::new(ctx, 1).unwrap();
+        self.w_q_fp32 = dummy(&self.ctx);
+        self.w_k_fp32 = dummy(&self.ctx);
+        self.w_v_fp32 = dummy(&self.ctx);
+        self.w_o_fp32 = dummy(&self.ctx);
+        self.w_gate_fp32 = dummy(&self.ctx);
+        self.w_up_fp32 = dummy(&self.ctx);
+        self.w_down_fp32 = dummy(&self.ctx);
+        eprintln!("[FP16] Weights cast + fp32 dropped (~2.6 GB freed)");
 
         Ok(())
     }
@@ -3660,18 +3666,17 @@ impl CudaNf4TransformerBlock {
         let i_size = saturating_u32(intermediate_size);
         let n_inter = saturating_u32(seq_len * intermediate_size);
 
-        // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down^T
-        // Forward was: ffn_out[S,H] = swiglu[S,I] @ W_down[I,H]  (m=S, k=I, n=H)
-        // Backward: grad_A[S,I] = grad_C[S,H] @ B[I,H]^T  (gemm_backward_a)
-        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
-        gemm_backward_a(
+        // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down^T (PMAT-472: fp16 dispatch)
+        gemm_backward_a_fp16_dispatch(
             grad_output,
+            self.w_down_fp16.as_ref(),
             &self.w_down_fp32,
             &mut scratch.grad_swiglu,
             s,
-            i_size, // k = I (grad_A cols = forward's k)
-            h,      // n = H (grad_C cols = forward's n)
+            i_size,
+            h,
             stream,
+            &self.ctx,
         )?;
 
         // Step 2: SwiGLU backward: swiglu = silu(gate) * up
@@ -3709,31 +3714,28 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // Step 3: Propagate through gate/up projections (cuBLAS fp32)
-        // Forward: gate[S,I] = norm2[S,H] @ W_gate[H,I]  (m=S, k=H, n=I)
-        // Backward: grad_norm2_gate[S,H] = d_gate[S,I] @ W_gate[H,I]^T
-        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
-        gemm_backward_a(
-            &scratch.up_out, // d_gate [S, I]
+        // Step 3: gate/up backward (PMAT-472: fp16 dispatch)
+        gemm_backward_a_fp16_dispatch(
+            &scratch.up_out,
+            self.w_gate_fp16.as_ref(),
             &self.w_gate_fp32,
-            &mut scratch.ffn_out, // grad_norm2 part 1 [S, H]
+            &mut scratch.ffn_out,
             s,
-            h,      // k = H (grad_A cols = forward's k)
-            i_size, // n = I (grad_C cols = forward's n)
+            h,
+            i_size,
             stream,
+            &self.ctx,
         )?;
-
-        // Forward: up[S,I] = norm2[S,H] @ W_up[H,I]  (m=S, k=H, n=I)
-        // Backward: grad_norm2_up[S,H] = d_up[S,I] @ W_up[H,I]^T
-        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
-        gemm_backward_a(
-            &scratch.gate_out, // d_up [S, I]
+        gemm_backward_a_fp16_dispatch(
+            &scratch.gate_out,
+            self.w_up_fp16.as_ref(),
             &self.w_up_fp32,
-            &mut scratch.grad_hidden, // grad_norm2 part 2 [S, H]
+            &mut scratch.grad_hidden,
             s,
-            h,      // k = H (grad_A cols = forward's k)
-            i_size, // n = I (grad_C cols = forward's n)
+            h,
+            i_size,
             stream,
+            &self.ctx,
         )?;
 
         // Accumulate: grad_hidden = grad_norm2_gate + grad_norm2_up
@@ -3775,16 +3777,17 @@ impl CudaNf4TransformerBlock {
 
         // Step 1: O projection backward
         // Forward: o_proj[S,H] = attn_out[S,qd] @ W_o[qd,H]  (m=S, k=qd, n=H)
-        // Backward: grad_attn_out[S,qd] = grad_residual1[S,H] @ W_o[qd,H]^T
-        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
-        gemm_backward_a(
+        // O-proj backward (PMAT-472: fp16 dispatch)
+        gemm_backward_a_fp16_dispatch(
             grad_residual1,
+            self.w_o_fp16.as_ref(),
             &self.w_o_fp32,
-            &mut scratch.attn_out, // reuse as grad_attn_out [S, q_dim]
+            &mut scratch.attn_out,
             s,
-            qd, // k = q_dim (grad_A cols = forward's k)
-            h,  // n = H (grad_C cols = forward's n)
+            qd,
+            h,
             stream,
+            &self.ctx,
         )?;
 
         // Step 2: Attention mechanism backward
@@ -3828,18 +3831,17 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
-        // Step 3: Q projection backward (cuBLAS fp32 + LoRA)
-        // Forward: q[S,qd] = norm1[S,H] @ W_q[H,qd]  (m=S, k=H, n=qd)
-        // Backward: grad_norm1_q[S,H] = grad_q[S,qd] @ W_q[H,qd]^T
-        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
-        gemm_backward_a(
-            &scratch.q, // grad_q [S, q_dim]
+        // Q backward (PMAT-472: fp16 dispatch)
+        gemm_backward_a_fp16_dispatch(
+            &scratch.q,
+            self.w_q_fp16.as_ref(),
             &self.w_q_fp32,
-            &mut scratch.o_proj_out, // grad_norm1 (partial) [S, H]
+            &mut scratch.o_proj_out,
             s,
-            h,  // k = H (grad_A cols = forward's k)
-            qd, // n = q_dim (grad_C cols = forward's n)
+            h,
+            qd,
             stream,
+            &self.ctx,
         )?;
 
         // LoRA Q backward: compute grad_A_q, grad_B_q, and add to grad_norm1
@@ -3901,34 +3903,32 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
-        // Step 4: K projection backward (no LoRA on K)
-        // Forward: k[S,kvh] = norm1[S,H] @ W_k[H,kvh]  (m=S, k=H, n=kvh)
-        // Backward: grad_norm1_k[S,H] = grad_k[S,kvh] @ W_k[H,kvh]^T
-        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
-        gemm_backward_a(
-            &scratch.k, // grad_k [S, kv_hidden]
+        // K backward (PMAT-472: fp16 dispatch)
+        gemm_backward_a_fp16_dispatch(
+            &scratch.k,
+            self.w_k_fp16.as_ref(),
             &self.w_k_fp32,
-            &mut scratch.ffn_out, // temp [S, H]
+            &mut scratch.ffn_out,
             s,
-            h,   // k = H (grad_A cols = forward's k)
-            kvh, // n = kv_hidden (grad_C cols = forward's n)
+            h,
+            kvh,
             stream,
+            &self.ctx,
         )?;
         // Accumulate: grad_norm1 += grad_norm1_k
         cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;
 
-        // Step 5: V projection backward (cuBLAS fp32 + LoRA)
-        // Forward: v[S,kvh] = norm1[S,H] @ W_v[H,kvh]  (m=S, k=H, n=kvh)
-        // Backward: grad_norm1_v[S,H] = grad_v[S,kvh] @ W_v[H,kvh]^T
-        // FIX(#300): was gemm_forward which computes A@B, not A@B^T
-        gemm_backward_a(
-            &scratch.v, // grad_v [S, kv_hidden]
+        // V backward (PMAT-472: fp16 dispatch)
+        gemm_backward_a_fp16_dispatch(
+            &scratch.v,
+            self.w_v_fp16.as_ref(),
             &self.w_v_fp32,
-            &mut scratch.ffn_out, // temp [S, H]
+            &mut scratch.ffn_out,
             s,
-            h,   // k = H (grad_A cols = forward's k)
-            kvh, // n = kv_hidden (grad_C cols = forward's n)
+            h,
+            kvh,
             stream,
+            &self.ctx,
         )?;
         cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;
 

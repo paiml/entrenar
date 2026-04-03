@@ -138,6 +138,50 @@ pub(crate) fn cublas_gemm_backward_b_f16(
         .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS fp16 backward_b failed: {e:?}")))
 }
 
+/// Mixed-precision backward_a: grad_A(fp32) = grad_C(fp16) @ B(fp16)^T (tensor cores)
+///
+/// Contract: C-FP16GEMM-002 (PMAT-472)
+/// Enables dropping fp32 weights: backward uses fp16 weights with fp32 accumulation.
+/// Cast grad_output fp32→fp16 at call site, pass fp16 weights, get fp32 grad_input.
+#[cfg(feature = "cuda")]
+pub fn gemm_f16_to_f32_backward_a(
+    grad_output: &GpuBuffer<u16>,
+    b: &GpuBuffer<u16>,
+    grad_a: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+    let cublas = cache.cublas().ok_or_else(|| {
+        CudaTensorError::KernelError("cuBLAS handle required for fp16→fp32 backward".to_string())
+    })?;
+    let _ = stream;
+    cublas
+        .gemm_f16_to_f32(
+            GemmOp::Trans,
+            GemmOp::NoTrans,
+            k as i32,
+            m as i32,
+            n as i32,
+            1.0,
+            b.as_ptr(),
+            n as i32,
+            grad_output.as_ptr(),
+            n as i32,
+            0.0,
+            grad_a.as_ptr(),
+            k as i32,
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS fp16→fp32 backward_a failed: {e:?}"))
+        })
+}
+
 /// Mixed-precision GEMM: C(fp32) = A(fp16) @ B(fp16) using tensor cores
 ///
 /// Contract: fp16-cublas-gemm-v1.yaml C-FP16GEMM-001 (PMAT-470)

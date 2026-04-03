@@ -177,3 +177,38 @@ pub fn gemm_backward_b(
 
     Ok(())
 }
+
+/// FP16-aware backward A dispatch (PMAT-472): uses fp16 weights when available.
+///
+/// If `w_fp16` is Some, casts grad_output to fp16 and uses tensor core GEMM
+/// (fp16×fp16→fp32). Otherwise falls back to fp32. Eliminates fp32 weight
+/// storage — freeing ~2.6 GB VRAM for GPU embeddings on yoga 8GB.
+#[cfg(feature = "cuda")]
+pub fn gemm_backward_a_fp16_dispatch(
+    grad_output: &GpuBuffer<f32>,
+    w_fp16: Option<&GpuBuffer<u16>>,
+    w_fp32: &GpuBuffer<f32>,
+    grad_a: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+    ctx: &trueno_gpu::driver::CudaContext,
+) -> Result<()> {
+    if let Some(w16) = w_fp16 {
+        let elems = (m * n) as usize;
+        let mut grad_f16 = GpuBuffer::<u16>::new(ctx, elems)
+            .map_err(|e| CudaTensorError::AllocationFailed(format!("grad f16 cast: {e:?}")))?;
+        crate::autograd::cuda_forward::cast_f32_to_f16_gpu(
+            grad_output,
+            &mut grad_f16,
+            m * n,
+            stream,
+        )?;
+        crate::autograd::cuda_forward::gemm_f16_to_f32_backward_a(
+            &grad_f16, w16, grad_a, m, k, n, stream,
+        )
+    } else {
+        gemm_backward_a(grad_output, w_fp32, grad_a, m, k, n, stream)
+    }
+}
