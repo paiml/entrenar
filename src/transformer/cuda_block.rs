@@ -2933,26 +2933,17 @@ impl CudaNf4TransformerBlock {
         self.w_down_fp16 = Some(cast_weight(&self.w_down_fp32, &self.ctx)?);
 
         stream.synchronize().map_err(|e| {
-            crate::autograd::cuda_tensor::CudaTensorError::KernelError(
-                format!("FP16 weight cast sync failed: {e:?}"),
-            )
+            crate::autograd::cuda_tensor::CudaTensorError::KernelError(format!(
+                "FP16 weight cast sync failed: {e:?}"
+            ))
         })?;
 
-        // Report VRAM savings
-        let total_fp32: usize = [
-            &self.w_q_fp32, &self.w_k_fp32, &self.w_v_fp32, &self.w_o_fp32,
-            &self.w_gate_fp32, &self.w_up_fp32, &self.w_down_fp32,
-        ].iter().map(|w| w.len()).sum();
-        let fp16_mb = (total_fp32 * 2) as f64 / (1024.0 * 1024.0);
-        eprintln!("[FP16] Layer weights cast: {:.1}MB fp16 (tensor cores enabled)", fp16_mb);
+        eprintln!("[FP16] Layer weights cast to fp16 (tensor cores enabled)");
 
         Ok(())
     }
 
-    /// Forward pass using cuBLAS GEMM with pre-dequantized fp32 weights (ENT-287).
-    ///
-    /// Uses shared scratch buffers (C-SCRATCH-001). Weight layout: W is `[N,K]` row-major.
-    /// cuBLAS call: `C[M,N] = A[M,K] @ W[N,K]^T` via `gemm_forward`.
+    /// Forward pass: cuBLAS GEMM with pre-dequantized weights (ENT-287, C-SCRATCH-001).
     #[rustfmt::skip]
     pub(crate) fn forward(
         &self,

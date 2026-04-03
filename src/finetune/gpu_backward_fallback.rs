@@ -100,9 +100,7 @@ pub fn init_fp16_weights(
 /// Must be called BEFORE `stream.begin_capture()`. Returns the workspace
 /// buffer that must be kept alive for the duration of graph use.
 #[cfg(feature = "cuda")]
-pub fn preallocate_cublas_workspace(
-    trainer: &CudaTrainer,
-) -> Option<GpuBuffer<f32>> {
+pub fn preallocate_cublas_workspace(trainer: &CudaTrainer) -> Option<GpuBuffer<f32>> {
     const WORKSPACE_BYTES: usize = 32 * 1024 * 1024; // 32 MB
     const WORKSPACE_ELEMS: usize = WORKSPACE_BYTES / 4;
 

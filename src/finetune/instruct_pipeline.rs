@@ -127,11 +127,8 @@ struct InstructGpuTrainingState {
     grad_buf_b: GpuBuffer<f32>,
     /// Gradient for final RMSNorm weight [hidden_size]
     grad_final_norm_weight: GpuBuffer<f32>,
-    /// Transposed embedding weights on GPU [hidden_size * vocab_size] for lm_head forward GEMM
-    embed_transposed: GpuBuffer<f32>,
-    /// KAIZEN-068: Non-transposed embedding weights on GPU [vocab_size * hidden_size] for
-    /// lm_head backward GEMM. Eliminates ~1.45GB H2D upload per training step.
-    embed_original: GpuBuffer<f32>,
+    embed_transposed: GpuBuffer<f32>, // [hidden*vocab] lm_head forward
+    embed_original: GpuBuffer<f32>,   // [vocab*hidden] lm_head backward (KAIZEN-068)
     /// GPU scratch for logits [max_seq_len * vocab_size]
     logits_buf: GpuBuffer<f32>,
     /// GPU scratch for grad_hidden [max_seq_len * hidden_size]
@@ -858,13 +855,20 @@ impl InstructPipeline {
                 let embed = self.model.embed_tokens.weight.data();
                 let embed = embed.as_slice().expect("contiguous embed");
                 super::gpu_backward_fallback::cpu_lmhead_backward(
-                    trainer, &training.logits_buf, &mut training.grad_hidden_buf,
-                    embed, seq_len, vocab_size, hidden_size, trainer.stream(),
+                    trainer,
+                    &training.logits_buf,
+                    &mut training.grad_hidden_buf,
+                    embed,
+                    seq_len,
+                    vocab_size,
+                    hidden_size,
+                    trainer.stream(),
                 )
             })();
             if cpu_ok.is_none() {
                 return InstructStepResult {
-                    loss: avg_loss, num_response_tokens: num_loss_tokens,
+                    loss: avg_loss,
+                    num_response_tokens: num_loss_tokens,
                     perplexity: avg_loss.exp().min(1e6),
                 };
             }
@@ -1864,9 +1868,7 @@ impl InstructPipeline {
         let embed_data = model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
-        // entrenar#317: single embedding layout (not both orig + transposed).
-        // Halves VRAM from 1780MB to 890MB, fitting 8GB yoga.
-        let embed_bytes = vocab_size * hidden_size * 4; // single layout
+        let embed_bytes = vocab_size * hidden_size * 4; // entrenar#317: single layout
         let vram_available_mb = trainer.free_memory_mb().unwrap_or(0);
         let embed_mb = embed_bytes / (1024 * 1024);
         let use_gpu_embed = vram_available_mb > (embed_mb + 256) as u64; // 256MB headroom
@@ -2053,16 +2055,13 @@ impl InstructPipeline {
         ] {
             b.zero_async(stream).ok();
         }
-        // PMAT-464: CUDA graph capture/replay for forward pass.
-        // CUDA_GRAPH=1 env enables graph mode. First forward at a given seq_len
-        // captures the layer loop; subsequent forwards replay with single launch.
+        // PMAT-464: CUDA graph capture/replay (CUDA_GRAPH=1)
         static USE_CUDA_GRAPH: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let use_graph =
             *USE_CUDA_GRAPH.get_or_init(|| std::env::var("CUDA_GRAPH").as_deref() == Ok("1"));
 
-        // Pre-allocate layer_inputs before capture (host-side branches not capturable)
         for (i, block_) in cuda_blocks.iter().enumerate() {
-            let _ = block_;
+            let _ = block_; // Pre-alloc layer_inputs before capture
             let expected_len = seq_len * hidden_size;
             if training_state.layer_inputs[i].len() != expected_len {
                 training_state.layer_inputs[i] = trainer
