@@ -1,8 +1,6 @@
-//! WgpuInstructPipeline — GPU-only training pipeline (§26.11.7)
-//!
-//! Bypasses entrenar's `Transformer` (which requires 20-min CPU dequant of 28 GB Q4K→F32).
+//! WgpuInstructPipeline — GPU-only training pipeline (§26.11.7).
+//! Bypasses entrenar's `Transformer` (20-min CPU dequant of 28 GB Q4K→F32).
 //! Uses `WgslForwardPass` with pre-uploaded GPU weights from `dequant_model_weights()`.
-//!
 //! No `Transformer` object. No CPU F32 projection weights. No SATD.
 //!
 //! # Architecture (Unsloth pattern)
@@ -20,14 +18,13 @@
 //! - `no_transformer`: does not construct Transformer
 
 #[cfg(feature = "gpu")]
-use trueno::backends::gpu::wgpu;
+use crate::{
+    autograd::{wgpu_cross_entropy::WgslCrossEntropy, wgpu_training::WgpuTrainer},
+    finetune::instruct_pipeline::InstructStepResult,
+    tokenizer::HfTokenizer,
+};
 #[cfg(feature = "gpu")]
-use trueno::backends::gpu::WgslForwardPass;
-
-#[cfg(feature = "gpu")]
-use crate::autograd::wgpu_cross_entropy::WgslCrossEntropy;
-#[cfg(feature = "gpu")]
-use crate::autograd::wgpu_training::WgpuTrainer;
+use trueno::backends::gpu::{wgpu, WgslForwardPass};
 
 /// LoRA adapters for one transformer layer (7 projections).
 #[cfg(feature = "gpu")]
