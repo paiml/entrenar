@@ -460,6 +460,80 @@ pub fn gemm_nf4_forward(
     Ok(())
 }
 
+/// PMAT-475: Fused NF4 Gate+Up GEMM — computes both projections with shared input load.
+///
+/// Eliminates one full input activation read from DRAM per call.
+/// Savings: M × K × 4 bytes/call (12 MB/layer for Qwen 1.5B batch=4 seq=512).
+///
+/// `gate[M×N] = A[M×K] @ dequant(W_gate_nf4)` and
+/// `up[M×N]   = A[M×K] @ dequant(W_up_nf4)` in one kernel launch.
+pub fn gemm_nf4_gate_up_forward(
+    a: &GpuBuffer<f32>,
+    wg_nf4: &GpuBuffer<u8>,
+    wg_scales: &GpuBuffer<f32>,
+    wu_nf4: &GpuBuffer<u8>,
+    wu_scales: &GpuBuffer<f32>,
+    gate: &mut GpuBuffer<f32>,
+    up: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    use trueno_gpu::kernels::FusedNf4GateUpGemmKernel;
+
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = FusedNf4GateUpGemmKernel::new(m, n, k);
+    let tile = kernel.tile_size;
+    let key = format!("fused_nf4_gate_up_{k}_{n}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    let config = LaunchConfig {
+        grid: (n.div_ceil(tile), m.div_ceil(tile), 1),
+        block: (tile * tile, 1, 1),
+        shared_mem: 16 * 4,
+    };
+
+    let a_ptr = a.as_ptr();
+    let gate_ptr = gate.as_ptr();
+    let up_ptr = up.as_ptr();
+    let wg_nf4_ptr = wg_nf4.as_ptr();
+    let wg_scales_ptr = wg_scales.as_ptr();
+    let wu_nf4_ptr = wu_nf4.as_ptr();
+    let wu_scales_ptr = wu_scales.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 10] = [
+        &gate_ptr as *const _ as *mut _,
+        &up_ptr as *const _ as *mut _,
+        &a_ptr as *const _ as *mut _,
+        &wg_scales_ptr as *const _ as *mut _,
+        &wg_nf4_ptr as *const _ as *mut _,
+        &wu_scales_ptr as *const _ as *mut _,
+        &wu_nf4_ptr as *const _ as *mut _,
+        &m as *const _ as *mut _,
+        &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream.launch_kernel(module, "fused_nf4_gate_up_gemm", &config, &mut args).map_err(
+            |e| CudaTensorError::KernelError(format!("Fused NF4 gate+up launch: {e:?}")),
+        )?;
+    }
+
+    Ok(())
+}
+
 /// BF16-precision GEMM forward pass on GPU (R-002: BF16 mixed precision).
 ///
 /// Computes: C = A @ B where A is MxK, B is KxN, C is MxN

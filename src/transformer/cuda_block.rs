@@ -3105,10 +3105,15 @@ impl CudaNf4TransformerBlock {
             gemm_f16_to_f32_forward(f16_buf, self.w_up_fp16.as_ref().unwrap(), &mut scratch.up_out,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
         } else if nf4_gemm {
-            gemm_nf4_forward(&scratch.norm2_out, &self.w_gate_nf4, &self.w_gate_scales, &mut scratch.gate_out,
-                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
-            gemm_nf4_forward(&scratch.norm2_out, &self.w_up_nf4, &self.w_up_scales, &mut scratch.up_out,
-                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
+            // PMAT-475: Fused gate+up — shared input load, saves M×K×4 bytes DRAM
+            crate::autograd::cuda_forward::gemm_nf4_gate_up_forward(
+                &scratch.norm2_out,
+                &self.w_gate_nf4, &self.w_gate_scales,
+                &self.w_up_nf4, &self.w_up_scales,
+                &mut scratch.gate_out, &mut scratch.up_out,
+                saturating_u32(seq_len), saturating_u32(hidden_size),
+                saturating_u32(intermediate_size), stream,
+            )?;
         } else {
             gemm_forward(&scratch.norm2_out, &self.w_gate_fp32, &mut scratch.gate_out,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
