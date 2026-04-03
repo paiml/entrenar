@@ -169,10 +169,36 @@ pub(crate) struct CudaBlockScratch {
     causal_mask_contiguous: GpuBuffer<f32>,
     /// PMAT-420: seq_len that causal_mask_contiguous was generated for (cache key)
     pub(crate) causal_mask_cached_seq_len: usize,
+    /// PMAT-483/entrenar#328: Per-operation timing accumulator (microseconds).
+    /// Index matches StepProfiler OP_* constants. Accumulated across layers per step.
+    /// Zero-overhead when profiling disabled (check op_profiling_enabled first).
+    pub(crate) op_us: [u64; 16],
+    /// Whether per-op profiling is active this step
+    pub(crate) op_profiling_enabled: bool,
 }
 
 #[cfg(feature = "cuda")]
 impl CudaBlockScratch {
+    /// PMAT-483: Start timing an operation (no-op if profiling disabled).
+    #[inline]
+    pub(crate) fn op_begin(&self) -> Option<std::time::Instant> {
+        if self.op_profiling_enabled {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        }
+    }
+
+    /// PMAT-483: Record elapsed time for an operation.
+    #[inline]
+    pub(crate) fn op_end(&mut self, start: Option<std::time::Instant>, op: usize) {
+        if let Some(t) = start {
+            if op < 16 {
+                self.op_us[op] += t.elapsed().as_micros() as u64;
+            }
+        }
+    }
+
     /// Zero all forward scratch buffers to prevent backward gradient contamination.
     /// entrenar#318 Tier 1: GPU-side memset via cuMemsetD32Async (no PCIe transfer).
     /// Max sequence length this scratch was allocated for.
@@ -588,6 +614,8 @@ impl CudaTransformerBlock {
             },
             causal_mask_contiguous: GpuBuffer::from_host(&ctx, &single_mask)?,
             causal_mask_cached_seq_len: max_seq_len,
+            op_us: [0u64; 16],
+            op_profiling_enabled: false,
         };
 
         Ok(Self {
@@ -2968,7 +2996,8 @@ impl CudaNf4TransformerBlock {
         // entrenar#318: scratch zeroing moved to forward_cuda_training (once per step, not per layer)
         scratch.prepare_causal_mask(seq_len, &self.ctx)?;
 
-        // === Pre-attention RMSNorm ===
+        // === Pre-attention RMSNorm === (PMAT-483: per-op profiling)
+        let _t = scratch.op_begin();
         rms_norm_forward(
             input,
             &self.input_norm_weight,
@@ -2977,6 +3006,7 @@ impl CudaNf4TransformerBlock {
             saturating_u32(hidden_size),
             stream,
         )?;
+        scratch.op_end(_t, OP_RMSNORM_ATTN);
 
         // === Q, K, V Projections ===
         // Backend selection:
@@ -3001,6 +3031,7 @@ impl CudaNf4TransformerBlock {
             cast_f32_to_f16_gpu(&scratch.norm1_out, f16_buf, act_n, stream)?;
         }
 
+        let _t = scratch.op_begin(); // QKV GEMM timing
         if fp16_gemm && self.w_q_fp16.is_some() {
             let f16_act = scratch.norm1_out_f16.as_ref().unwrap();
             gemm_f16_to_f32_forward(f16_act, self.w_q_fp16.as_ref().unwrap(), &mut scratch.q,
@@ -3059,6 +3090,8 @@ impl CudaNf4TransformerBlock {
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
         }
 
+        scratch.op_end(_t, OP_QKV_GEMM); // End QKV timing (includes Q/K/V GEMMs + Q LoRA)
+
         // ENT-153: V LoRA: v += (norm1_out @ A_v) @ B_v  (B_v pre-scaled by lora_scale)
         if let (Some(a_v), Some(b_v)) = (&self.lora_a_v, &self.lora_b_v) {
             let s = saturating_u32(seq_len);
@@ -3074,9 +3107,12 @@ impl CudaNf4TransformerBlock {
         }
 
         // === Multi-Head Attention (GPU-only, zero CPU transfers) ===
+        let _t = scratch.op_begin();
         self.compute_attention_cuda(seq_len, stream, scratch)?;
+        scratch.op_end(_t, OP_ATTENTION);
 
         // === Output Projection ===
+        let _t = scratch.op_begin();
         if fp16_gemm && self.w_o_fp16.is_some() {
             if scratch.attn_out_f16.is_none() {
                 scratch.attn_out_f16 = Some(GpuBuffer::new(&self.ctx, seq_len * q_dim)?);
@@ -3096,7 +3132,10 @@ impl CudaNf4TransformerBlock {
                 saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;
         }
 
+        scratch.op_end(_t, OP_O_PROJ);
+
         // === Fused Residual Add + RMSNorm (entrenar#321: eliminates NaN cascade) ===
+        let _t = scratch.op_begin();
         // The separate cuda_add + rms_norm_forward allows activation explosion between
         // the two operations. Fusing them prevents NaN in layers 24-27 because RMSNorm
         // normalizes the residual sum immediately, before it can propagate.
@@ -3111,7 +3150,10 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
+        scratch.op_end(_t, OP_RMSNORM_FFN); // Fused residual + RMSNorm
+
         // === FFN: Gate + Up + SwiGLU + Down ===
+        let _t = scratch.op_begin(); // Gate+Up GEMM timing
         if fp16_gemm && self.w_gate_fp16.is_some() {
             if scratch.norm2_out_f16.is_none() {
                 scratch.norm2_out_f16 = Some(GpuBuffer::new(&self.ctx, seq_len * hidden_size)?);
@@ -3145,11 +3187,16 @@ impl CudaNf4TransformerBlock {
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(intermediate_size), stream)?;
         }
 
+        scratch.op_end(_t, OP_GATE_UP_GEMM);
+
         // === FFN: Fused SwiGLU ===
+        let _t = scratch.op_begin();
         fused_swiglu_forward(&scratch.gate_out, &scratch.up_out, &mut scratch.swiglu_out,
             saturating_u32(seq_len * intermediate_size), stream)?;
+        scratch.op_end(_t, OP_SILU);
 
         // === FFN: Down Projection ===
+        let _t = scratch.op_begin();
         if fp16_gemm && self.w_down_fp16.is_some() {
             if scratch.swiglu_out_f16.is_none() {
                 scratch.swiglu_out_f16 = Some(GpuBuffer::new(&self.ctx, seq_len * intermediate_size)?);
@@ -3168,6 +3215,8 @@ impl CudaNf4TransformerBlock {
             gemm_forward(&scratch.swiglu_out, &self.w_down_fp32, &mut scratch.ffn_out,
                 saturating_u32(seq_len), saturating_u32(intermediate_size), saturating_u32(hidden_size), stream)?;
         }
+
+        scratch.op_end(_t, OP_DOWN_GEMM);
 
         // === Final Residual Add ===
         cuda_add(&scratch.residual1, &scratch.ffn_out, output, seq_len * hidden_size, stream)?;

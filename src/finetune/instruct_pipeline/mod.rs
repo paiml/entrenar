@@ -160,6 +160,11 @@ pub(super) struct InstructGpuTrainingState {
     profiler_layer_bwd_us: Vec<u64>,
     /// PMAT-483: Temporary layer start timestamp
     profiler_layer_start: Option<std::time::Instant>,
+    /// PMAT-483/entrenar#328: Per-operation timing within layers (accumulated per step)
+    /// Index matches StepProfiler::OP_* constants. Reset each step.
+    profiler_op_us: [u64; 16],
+    /// Per-operation start timestamp
+    profiler_op_start: Option<std::time::Instant>,
 }
 
 pub struct InstructPipeline {

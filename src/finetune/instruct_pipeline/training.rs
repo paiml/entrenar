@@ -148,6 +148,14 @@ impl InstructPipeline {
             );
         }
 
+        // PMAT-483: Enable per-op profiling on scratch if profiler is active
+        if self.profiler.is_enabled() {
+            if let Some(ref mut scratch) = self.shared_scratch {
+                scratch.op_profiling_enabled = true;
+                scratch.op_us = [0u64; 16];
+            }
+        }
+
         // 1. GPU forward → logits stay GPU-resident in training.logits_buf (KAIZEN-064)
         self.profiler.begin(StepProfiler::FORWARD);
         if !self.forward_logits_gpu_resident(full_ids) {
@@ -283,6 +291,17 @@ impl InstructPipeline {
                 &training.profiler_layer_fwd_us,
                 &training.profiler_layer_bwd_us,
             );
+        }
+
+        // PMAT-483/entrenar#328: Feed per-op timing from scratch to profiler
+        if let Some(ref scratch) = self.shared_scratch {
+            if scratch.op_profiling_enabled {
+                for (i, &us) in scratch.op_us.iter().enumerate() {
+                    if us > 0 {
+                        self.profiler.end_op_raw(i, us);
+                    }
+                }
+            }
         }
 
         InstructStepResult {

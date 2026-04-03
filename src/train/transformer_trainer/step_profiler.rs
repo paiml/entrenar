@@ -58,6 +58,45 @@ const PHASE_NAMES: [&str; NUM_PHASES] = [
 /// Maximum number of transformer layers to profile.
 const MAX_LAYERS: usize = 64;
 
+/// Per-operation indices for within-layer profiling (PMAT-483/entrenar#328).
+/// These track where time goes INSIDE each layer's forward and backward.
+const OP_RMSNORM_ATTN: usize = 0;
+const OP_QKV_GEMM: usize = 1;
+const OP_ATTENTION: usize = 2;
+const OP_O_PROJ: usize = 3;
+const OP_RMSNORM_FFN: usize = 4;
+const OP_GATE_UP_GEMM: usize = 5;
+const OP_SILU: usize = 6;
+const OP_DOWN_GEMM: usize = 7;
+const OP_LORA: usize = 8;
+const OP_DOWN_BWD: usize = 9;
+const OP_SWIGLU_BWD: usize = 10;
+const OP_GATE_UP_BWD: usize = 11;
+const OP_ATTN_BWD: usize = 12;
+const OP_QKV_BWD: usize = 13;
+const OP_NORM_BWD: usize = 14;
+const OP_LORA_BWD: usize = 15;
+const NUM_OPS: usize = 16;
+
+const OP_NAMES: [&str; NUM_OPS] = [
+    "rmsnorm_attn",
+    "qkv_gemm",
+    "attention",
+    "o_proj",
+    "rmsnorm_ffn",
+    "gate_up_gemm",
+    "silu",
+    "down_gemm",
+    "lora",
+    "down_bwd",
+    "swiglu_bwd",
+    "gate_up_bwd",
+    "attn_bwd",
+    "qkv_bwd",
+    "norm_bwd",
+    "lora_bwd",
+];
+
 /// Per-step timing accumulator.
 ///
 /// Usage: call `begin(phase)` before each section, `end(phase)` after.
@@ -92,6 +131,10 @@ pub struct StepProfiler {
     layer_start: Option<Instant>,
     /// Number of layers detected (set on first step)
     num_layers: usize,
+    /// PMAT-483: Per-operation timing (accumulated across all layers and steps)
+    op_totals: [Duration; NUM_OPS],
+    /// Per-operation start timestamp
+    op_start: Option<Instant>,
 }
 
 impl StepProfiler {
@@ -114,6 +157,8 @@ impl StepProfiler {
             layer_bwd_totals: vec![Duration::ZERO; MAX_LAYERS],
             layer_start: None,
             num_layers: 0,
+            op_totals: [Duration::ZERO; NUM_OPS],
+            op_start: None,
         }
     }
 
@@ -341,6 +386,37 @@ impl StepProfiler {
         }
     }
 
+    /// PMAT-483/entrenar#328: Start timing a per-operation phase within a layer.
+    #[inline]
+    pub fn begin_op(&mut self) {
+        if !self.enabled {
+            return;
+        }
+        self.op_start = Some(Instant::now());
+    }
+
+    /// PMAT-483/entrenar#328: Record elapsed time for a per-operation phase.
+    #[inline]
+    pub fn end_op(&mut self, op: usize) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(start) = self.op_start.take() {
+            if op < NUM_OPS {
+                self.op_totals[op] += start.elapsed();
+            }
+        }
+    }
+
+    /// PMAT-483: Feed pre-accumulated microseconds for an operation (from CudaBlockScratch).
+    #[inline]
+    pub fn end_op_raw(&mut self, op: usize, us: u64) {
+        if !self.enabled || op >= NUM_OPS {
+            return;
+        }
+        self.op_totals[op] += Duration::from_micros(us);
+    }
+
     /// Whether the profiler is active.
     pub fn is_enabled(&self) -> bool {
         self.enabled
@@ -405,14 +481,41 @@ impl StepProfiler {
             "memory_bw"
         };
 
+        // PMAT-483: Per-operation breakdown
+        let mut ops_json = Vec::new();
+        let mut total_op_us = 0u128;
+        for i in 0..NUM_OPS {
+            let t = self.op_totals[i];
+            let us = t.as_micros();
+            total_op_us += us;
+            if us > 0 {
+                let ms = us as f64 / 1000.0;
+                ops_json.push(format!("\"{}\":{:.1}", OP_NAMES[i], ms));
+            }
+        }
+
+        // Classify which operation type dominates
+        let gemm_us = self.op_totals[OP_QKV_GEMM].as_micros()
+            + self.op_totals[OP_O_PROJ].as_micros()
+            + self.op_totals[OP_GATE_UP_GEMM].as_micros()
+            + self.op_totals[OP_DOWN_GEMM].as_micros();
+        let gemm_bwd_us = self.op_totals[OP_QKV_BWD].as_micros()
+            + self.op_totals[OP_GATE_UP_BWD].as_micros()
+            + self.op_totals[OP_DOWN_BWD].as_micros();
+        let total_gemm_us = gemm_us + gemm_bwd_us;
+        let gemm_pct =
+            if total_op_us > 0 { total_gemm_us as f64 / total_op_us as f64 * 100.0 } else { 0.0 };
+
         eprintln!(
-            "{{\"_profiler\":\"step_profiler_v1\",\"steps\":{},\"avg_step_ms\":{:.2},\"wall_coverage\":{:.3},\"bottleneck\":\"{}\",\"phases\":{{{}}},\"per_layer\":[{}]}}",
+            "{{\"_profiler\":\"step_profiler_v2\",\"steps\":{},\"avg_step_ms\":{:.2},\"wall_coverage\":{:.3},\"bottleneck\":\"{}\",\"gemm_pct\":{:.1},\"phases\":{{{}}},\"per_layer\":[{}],\"ops\":{{{}}}}}",
             self.step_count,
             avg_step_ms,
             wall_coverage,
             bottleneck,
+            gemm_pct,
             phases.join(","),
             layers_json.join(","),
+            ops_json.join(","),
         );
     }
 
@@ -442,6 +545,24 @@ impl StepProfiler {
 
     // Phase constants for external callers
     pub const EMBED: usize = EMBED;
+
+    // Per-operation constants (PMAT-483/entrenar#328)
+    pub const OP_RMSNORM_ATTN: usize = OP_RMSNORM_ATTN;
+    pub const OP_QKV_GEMM: usize = OP_QKV_GEMM;
+    pub const OP_ATTENTION: usize = OP_ATTENTION;
+    pub const OP_O_PROJ: usize = OP_O_PROJ;
+    pub const OP_RMSNORM_FFN: usize = OP_RMSNORM_FFN;
+    pub const OP_GATE_UP_GEMM: usize = OP_GATE_UP_GEMM;
+    pub const OP_SILU: usize = OP_SILU;
+    pub const OP_DOWN_GEMM: usize = OP_DOWN_GEMM;
+    pub const OP_LORA: usize = OP_LORA;
+    pub const OP_DOWN_BWD: usize = OP_DOWN_BWD;
+    pub const OP_SWIGLU_BWD: usize = OP_SWIGLU_BWD;
+    pub const OP_GATE_UP_BWD: usize = OP_GATE_UP_BWD;
+    pub const OP_ATTN_BWD: usize = OP_ATTN_BWD;
+    pub const OP_QKV_BWD: usize = OP_QKV_BWD;
+    pub const OP_NORM_BWD: usize = OP_NORM_BWD;
+    pub const OP_LORA_BWD: usize = OP_LORA_BWD;
     pub const H2D: usize = H2D;
     pub const FORWARD: usize = FORWARD;
     pub const NORM_LM: usize = NORM_LM;

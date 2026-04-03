@@ -452,6 +452,8 @@ impl InstructPipeline {
             profiler_layer_fwd_us: vec![0u64; num_layers],
             profiler_layer_bwd_us: vec![0u64; num_layers],
             profiler_layer_start: None,
+            profiler_op_us: [0u64; 16],
+            profiler_op_start: None,
         })
     }
 
