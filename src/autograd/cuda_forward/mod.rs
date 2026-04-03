@@ -42,7 +42,7 @@ pub use activations::{
 };
 pub use bf16_cast::{bf16_slice_to_f32, f32_slice_to_bf16};
 #[cfg(feature = "cuda")]
-pub use bf16_cast::{cast_bf16_to_f32_gpu, cast_f32_to_bf16_gpu};
+pub use bf16_cast::{cast_bf16_to_f32_gpu, cast_f32_to_bf16_gpu, cast_f32_to_f16_gpu};
 #[cfg(feature = "cuda")]
 pub(crate) use cache::set_forward_cublas_stream;
 pub use cache::{

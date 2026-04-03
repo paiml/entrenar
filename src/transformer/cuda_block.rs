@@ -46,9 +46,10 @@ use crate::autograd::cuda_backward::{
 use crate::autograd::cuda_forward::{
     batched_4d_gemm_forward, batched_rope_neox_backward, batched_rope_neox_forward,
     batched_softmax_forward, batched_to_interleaved_forward, batched_transpose_forward,
-    elementwise_mul_forward, expand_kv_heads, fused_residual_rmsnorm_forward, fused_swiglu_forward,
-    gemm_forward, interleaved_to_batched_forward, per_head_rmsnorm_forward, residual_add_forward,
-    rms_norm_forward, rope_neox_forward, scale_forward, silu_forward,
+    cast_f32_to_f16_gpu, elementwise_mul_forward, expand_kv_heads, fused_residual_rmsnorm_forward,
+    fused_swiglu_forward, gemm_f16_to_f32_forward, gemm_forward, interleaved_to_batched_forward,
+    per_head_rmsnorm_forward, residual_add_forward, rms_norm_forward, rope_neox_forward,
+    scale_forward, silu_forward,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::{adamw_step_cuda, gradient_clip_cuda, squared_sum_cuda};
@@ -134,6 +135,9 @@ pub(crate) struct CudaBlockScratch {
     swiglu_out: GpuBuffer<f32>,
     /// FFN down projection output
     ffn_out: GpuBuffer<f32>,
+    /// FP16 activation cast buffer for FP16 GEMM dispatch (PMAT-470)
+    /// Allocated lazily on first use when FP16_GEMM=1.
+    norm1_out_f16: Option<GpuBuffer<u16>>,
     // === Seq-dependent backward scratch (per-layer for activation reuse) ===
     /// Gradient accumulator for hidden states
     grad_hidden: GpuBuffer<f32>,
@@ -234,6 +238,7 @@ impl CudaBlockScratch {
             up_out: GpuBuffer::new(ctx, max_seq_len * intermediate_size)?,
             swiglu_out: GpuBuffer::new(ctx, max_seq_len * intermediate_size)?,
             ffn_out: GpuBuffer::new(ctx, max_seq_len * hidden_size)?,
+            norm1_out_f16: None, // Allocated on first FP16 GEMM use
             grad_hidden: GpuBuffer::new(ctx, max_seq_len * hidden_size)?,
             grad_swiglu: GpuBuffer::new(ctx, max_seq_len * intermediate_size)?,
             attn_q_batched: GpuBuffer::new(ctx, num_heads * max_seq_len * head_dim)?,
@@ -549,6 +554,7 @@ impl CudaTransformerBlock {
             up_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
             swiglu_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
             ffn_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            norm1_out_f16: None,
             // Seq-dependent backward scratch
             grad_hidden: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             grad_swiglu: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
@@ -2930,12 +2936,31 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === Q, K, V Projections ===
-        // Backend selection: NF4_FUSED_GEMM=1 uses fused dequant+GEMM (8x less BW, 100% GPU,
-        // but 6.5x slower due to naive PTX). Default: cuBLAS fp32 (197 tok/s, 7% GPU).
+        // Backend selection:
+        //   FP16_GEMM=1: fp16 tensor core GEMM (Tier 2 parity, 2x BW savings)
+        //   NF4_FUSED_GEMM=1: fused dequant+GEMM (8x less BW, 100% GPU, but naive PTX)
+        //   Default: cuBLAS fp32 (197 tok/s, 7% GPU, memory-BW bound)
         static USE_NF4_GEMM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let nf4_gemm = *USE_NF4_GEMM.get_or_init(|| std::env::var("NF4_FUSED_GEMM").as_deref() == Ok("1"));
+        static USE_FP16_GEMM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let fp16_gemm = *USE_FP16_GEMM.get_or_init(|| std::env::var("FP16_GEMM").as_deref() == Ok("1"));
 
-        if nf4_gemm {
+        // FP16 path: cast activation once, reuse for all projections
+        let act_n = (seq_len * hidden_size) as u32;
+        if fp16_gemm && self.w_q_fp16.is_some() {
+            // Lazy-allocate fp16 activation buffer
+            if scratch.norm1_out_f16.is_none() {
+                scratch.norm1_out_f16 = Some(GpuBuffer::new(&self.ctx, seq_len * hidden_size)?);
+            }
+            let f16_buf = scratch.norm1_out_f16.as_mut().unwrap();
+            cast_f32_to_f16_gpu(&scratch.norm1_out, f16_buf, act_n, stream)?;
+        }
+
+        if fp16_gemm && self.w_q_fp16.is_some() {
+            let f16_act = scratch.norm1_out_f16.as_ref().unwrap();
+            gemm_f16_to_f32_forward(f16_act, self.w_q_fp16.as_ref().unwrap(), &mut scratch.q,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(q_dim), stream)?;
+        } else if nf4_gemm {
             gemm_nf4_forward(&scratch.norm1_out, &self.w_q_nf4, &self.w_q_scales, &mut scratch.q,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(q_dim), stream)?;
         } else {
@@ -2957,7 +2982,13 @@ impl CudaNf4TransformerBlock {
             cuda_add_inplace(&mut scratch.q, &scratch.lora_temp, seq_len * q_dim, stream)?;
         }
 
-        if nf4_gemm {
+        if fp16_gemm && self.w_k_fp16.is_some() {
+            let f16_act = scratch.norm1_out_f16.as_ref().unwrap();
+            gemm_f16_to_f32_forward(f16_act, self.w_k_fp16.as_ref().unwrap(), &mut scratch.k,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+            gemm_f16_to_f32_forward(f16_act, self.w_v_fp16.as_ref().unwrap(), &mut scratch.v,
+                saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
+        } else if nf4_gemm {
             gemm_nf4_forward(&scratch.norm1_out, &self.w_k_nf4, &self.w_k_scales, &mut scratch.k,
                 saturating_u32(seq_len), saturating_u32(hidden_size), saturating_u32(kv_hidden_size), stream)?;
             gemm_nf4_forward(&scratch.norm1_out, &self.w_v_nf4, &self.w_v_scales, &mut scratch.v,
@@ -2987,6 +3018,7 @@ impl CudaNf4TransformerBlock {
         self.compute_attention_cuda(seq_len, stream, scratch)?;
 
         // === Output Projection ===
+        // O-proj input is attn_out, not norm1_out — skip FP16 cast for now (TODO: dedicated buffer)
         if nf4_gemm {
             gemm_nf4_forward(&scratch.attn_out, &self.w_o_nf4, &self.w_o_scales, &mut scratch.o_proj_out,
                 saturating_u32(seq_len), saturating_u32(q_dim), saturating_u32(hidden_size), stream)?;

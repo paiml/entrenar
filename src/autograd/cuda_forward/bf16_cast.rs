@@ -215,3 +215,48 @@ pub fn f32_slice_to_bf16(src: &[f32]) -> Vec<half::bf16> {
 pub fn bf16_slice_to_f32(src: &[half::bf16]) -> Vec<f32> {
     src.iter().map(|v| v.to_f32()).collect()
 }
+
+/// GPU f32 → f16 cast using trueno's CastF32ToF16Kernel (PTX cvt.rn.f16.f32).
+///
+/// Enables FP16 GEMM dispatch by casting fp32 activations to fp16.
+/// Overhead: ~0.02ms for 512×1536 elements at 256 GB/s — negligible vs GEMM savings.
+#[cfg(feature = "cuda")]
+pub fn cast_f32_to_f16_gpu(
+    src: &GpuBuffer<f32>,
+    dst: &mut GpuBuffer<u16>,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    use trueno_gpu::kernels::{CastF32ToF16Kernel, Kernel};
+
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = "cast_f32_to_f16";
+    let module = match cache.get_cached(key) {
+        Some(m) => m,
+        None => {
+            let kernel = CastF32ToF16Kernel;
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(key, &ptx)?
+        }
+    };
+
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
+
+    let src_ptr = src.as_ptr();
+    let dst_ptr = dst.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] =
+        [&src_ptr as *const _ as *mut _, &dst_ptr as *const _ as *mut _, &n as *const _ as *mut _];
+
+    unsafe {
+        stream
+            .launch_kernel(module, "cast_f32_to_f16", &config, &mut args)
+            .map_err(|e| CudaTensorError::KernelError(format!("f32→f16 cast failed: {e:?}")))?;
+    }
+
+    Ok(())
+}
