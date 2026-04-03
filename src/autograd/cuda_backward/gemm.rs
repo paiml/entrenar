@@ -197,7 +197,8 @@ pub fn gemm_backward_a_accumulate(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    // cuBLAS accumulate path (beta=1.0)
+    // cuBLAS accumulate path (beta=1.0) — this is the only path that matters
+    // in production since cuBLAS is always initialized for NF4 QLoRA training.
     if let Some(cublas) = cache.cublas() {
         return crate::autograd::cuda_forward::cublas_gemm_backward_a_accumulate(
             cublas,
@@ -210,15 +211,10 @@ pub fn gemm_backward_a_accumulate(
         );
     }
 
-    // Fallback: no cuBLAS, use separate compute + add
-    drop(cache);
-    let ctx = trueno_gpu::driver::CudaContext::current()
-        .map_err(|e| CudaTensorError::KernelError(format!("No CUDA context: {e:?}")))?;
-    let mut temp = GpuBuffer::<f32>::new(&ctx, (m * k) as usize)
-        .map_err(|e| CudaTensorError::AllocationFailed(format!("backward_a_accum temp: {e:?}")))?;
-    gemm_backward_a(grad_output, b, &mut temp, m, k, n, stream)?;
-    crate::transformer::cuda_block::cuda_add_inplace(grad_a, &temp, (m * k) as usize, stream)?;
-    Ok(())
+    // No cuBLAS = no accumulation support. NF4 training requires cuBLAS.
+    Err(CudaTensorError::KernelError(
+        "gemm_backward_a_accumulate requires cuBLAS (NF4 training always has it)".to_string(),
+    ))
 }
 
 /// FP16-aware backward A with accumulation (PMAT-484): grad_A += grad_C @ B^T
@@ -241,9 +237,7 @@ pub fn gemm_backward_a_fp16_dispatch_accumulate(
     // For fp32 path: use cuBLAS beta=1.0 directly
     if w_fp16.is_some() {
         // FP16: compute into temp, then accumulate
-        let ctx = trueno_gpu::driver::CudaContext::current()
-            .map_err(|e| CudaTensorError::KernelError(format!("No CUDA context: {e:?}")))?;
-        let mut temp = GpuBuffer::<f32>::new(&ctx, (m * k) as usize)
+        let mut temp = GpuBuffer::<f32>::new(_ctx, (m * k) as usize)
             .map_err(|e| CudaTensorError::AllocationFailed(format!("fp16 accum temp: {e:?}")))?;
         gemm_backward_a_fp16_dispatch(
             grad_output,
