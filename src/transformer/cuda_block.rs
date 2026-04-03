@@ -19,6 +19,25 @@
 // the stream before the buffer goes out of scope.
 #![allow(unsafe_code)]
 
+// PMAT-483/entrenar#328: Per-operation profiling indices for forward pass.
+// Must match StepProfiler OP_* constants in step_profiler.rs.
+#[cfg(feature = "cuda")]
+const OP_RMSNORM_ATTN: usize = 0;
+#[cfg(feature = "cuda")]
+const OP_QKV_GEMM: usize = 1;
+#[cfg(feature = "cuda")]
+const OP_ATTENTION: usize = 2;
+#[cfg(feature = "cuda")]
+const OP_O_PROJ: usize = 3;
+#[cfg(feature = "cuda")]
+const OP_RMSNORM_FFN: usize = 4;
+#[cfg(feature = "cuda")]
+const OP_GATE_UP_GEMM: usize = 5;
+#[cfg(feature = "cuda")]
+const OP_SILU: usize = 6;
+#[cfg(feature = "cuda")]
+const OP_DOWN_GEMM: usize = 7;
+
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 
@@ -290,6 +309,8 @@ impl CudaBlockScratch {
             },
             causal_mask_contiguous: GpuBuffer::from_host(ctx, &causal_mask_data)?,
             causal_mask_cached_seq_len: max_seq_len,
+            op_us: [0u64; 16],
+            op_profiling_enabled: false,
         })
     }
 
