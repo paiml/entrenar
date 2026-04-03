@@ -154,8 +154,9 @@ struct InstructGpuTrainingState {
     /// Captured on first forward at a given seq_len, replayed on subsequent forwards.
     /// Eliminates ~588 kernel launches per forward pass → single graph launch.
     forward_graph_exec: Option<trueno_gpu::driver::CudaGraphExec>,
-    /// Seq_len for which the graph was captured (invalidate on change)
     graph_cached_seq_len: usize,
+    /// PMAT-063: cuBLAS workspace buffer (must outlive CUDA graph)
+    cublas_workspace: Option<GpuBuffer<f32>>,
 }
 
 pub struct InstructPipeline {
@@ -822,11 +823,7 @@ impl InstructPipeline {
             }
         };
 
-        // 3. GPU GEMM backward: grad_hidden = grad_logits @ embed
-        //    KAIZEN-064: grad_logits already in logits_buf (in-place from fused kernel).
-        //    No upload needed — saves ~296MB H2D per step.
-        //    KAIZEN-065: grad_hidden stays GPU-resident in grad_hidden_buf — no D2H download.
-        //    KAIZEN-068: embed_original is GPU-resident — no per-step H2D upload (~1.45GB saved).
+        // 3. GPU GEMM backward: grad_hidden = grad_logits @ embed (KAIZEN-064/065/068)
         let hidden_size = self.model.config().hidden_size;
 
         let gemm_ok = (|| -> Option<()> {
@@ -850,25 +847,30 @@ impl InstructPipeline {
                 eprintln!("[CUDA] lm_head backward GEMM failed: {e}");
             })
             .ok()?;
-            // KAIZEN-065: No stream.synchronize() needed — GEMM and rms_norm_backward
-            // are on the same CUDA stream, so ordering is guaranteed.
-            // No trainer.download() needed — grad_hidden_buf is read directly by
-            // backward_nf4_gpu_blocks_gpu_resident.
             Some(())
         })();
 
         if gemm_ok.is_none() {
-            eprintln!("[CUDA] lm_head backward failed — returning loss without weight update");
-            return InstructStepResult {
-                loss: avg_loss,
-                num_response_tokens: num_loss_tokens,
-                perplexity: avg_loss.exp().min(1e6),
-            };
+            // PMAT-471: CPU fallback when GPU embeddings don't fit
+            let cpu_ok = (|| -> Option<()> {
+                let trainer = self.cuda_trainer.as_ref()?;
+                let training = self.gpu_training.as_mut()?;
+                let embed = self.model.embed_tokens.weight.data();
+                let embed = embed.as_slice().expect("contiguous embed");
+                super::gpu_backward_fallback::cpu_lmhead_backward(
+                    trainer, &training.logits_buf, &mut training.grad_hidden_buf,
+                    embed, seq_len, vocab_size, hidden_size, trainer.stream(),
+                )
+            })();
+            if cpu_ok.is_none() {
+                return InstructStepResult {
+                    loss: avg_loss, num_response_tokens: num_loss_tokens,
+                    perplexity: avg_loss.exp().min(1e6),
+                };
+            }
         }
 
-        // 4. GPU backward through NF4 blocks + LoRA optimizer (KAIZEN-065: GPU-resident path)
-        //    Gradient flows directly from grad_hidden_buf → rms_norm_backward → block loop.
-        //    Eliminates ~5MB D2H + ~5MB H2D + sync + Vec alloc per step.
+        // 4. GPU backward through NF4 blocks (KAIZEN-065: GPU-resident)
         if self.config.quantize_nf4 {
             self.backward_nf4_gpu_blocks_gpu_resident(seq_len);
         }
@@ -1791,6 +1793,11 @@ impl InstructPipeline {
 
         assert_eq!(blocks.len(), model.config.num_hidden_layers);
 
+        // PMAT-470: FP16 weight cast for tensor core GEMM
+        if std::env::var("FP16_GEMM").as_deref() == Ok("1") && quantize_nf4 {
+            super::gpu_backward_fallback::init_fp16_weights(&mut blocks, trainer.stream());
+        }
+
         // C-SCRATCH-001: Shared scratch for NF4
         let shared_scratch = if quantize_nf4 {
             match CudaBlockScratch::new(model_config, max_seq_len, &ctx, config.lora_rank) {
@@ -1852,14 +1859,7 @@ impl InstructPipeline {
         let grad_buf_b = trainer.zeros(buf_size).ok()?;
         let grad_final_norm_weight = trainer.zeros(hidden_size).ok()?;
 
-        // Upload embedding weights for GPU-resident lm_head GEMM.
-        // KAIZEN-068: Both layouts stored permanently on GPU. Eliminates ~1.45GB H2D upload/step.
-        // VRAM cost: ~1.45GB additional (151936 × 1536 × 4 bytes × 2 layouts).
-        //
-        // PMAT-420: On <=16GB VRAM, skip GPU embeddings — use CPU lm_head fallback instead.
-        // This keeps GPU for transformer blocks (where throughput matters) and does lm_head on CPU.
-        // On yoga (8GB): model=1.1GB + blocks=~4GB + embeddings=1.77GB = OOM.
-        // Without embeddings: model=1.1GB + blocks=~4GB = fits.
+        // Upload embeddings for GPU lm_head (KAIZEN-068). PMAT-420: skip on ≤16GB.
         let vocab_size = model_config.vocab_size;
         let embed_data = model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
@@ -1879,17 +1879,11 @@ impl InstructPipeline {
                 .upload(embed_slice)
                 .map_err(|e| eprintln!("[CUDA] embed_original upload failed: {e}"))
                 .ok()?;
-            // entrenar#317: skip transposed copy to save VRAM. Use CUBLAS_OP_T on orig instead.
-            let trans = trainer.zeros(1).ok()?;
+            let trans = trainer.zeros(1).ok()?; // entrenar#317: single layout, use CUBLAS_OP_T
             (orig, trans)
         } else {
-            eprintln!(
-                "[CUDA] Skipping GPU embeddings ({embed_mb}MB > {vram_available_mb}MB free). \
-                 Using CPU lm_head — GPU for transformer blocks only."
-            );
-            // Minimal 1-element buffers so struct construction succeeds.
-            // forward_logits_gpu_resident() will detect size mismatch and use CPU path.
-            let orig = trainer.zeros(1).ok()?;
+            eprintln!("[CUDA] Skipping GPU embeddings ({embed_mb}MB > {vram_available_mb}MB free)");
+            let orig = trainer.zeros(1).ok()?; // minimal buffer for struct init
             let trans = trainer.zeros(1).ok()?;
             (orig, trans)
         };
@@ -1939,6 +1933,7 @@ impl InstructPipeline {
             lm_head_hidden_buf,
             forward_graph_exec: None,
             graph_cached_seq_len: 0,
+            cublas_workspace: None,
         })
     }
 
@@ -2094,6 +2089,11 @@ impl InstructPipeline {
             // === Standard or first-capture forward ===
             let capturing = use_graph && training_state.graph_cached_seq_len != seq_len;
             if capturing {
+                // PMAT-063: Pre-allocate cuBLAS workspace before graph capture
+                if training_state.cublas_workspace.is_none() {
+                    training_state.cublas_workspace =
+                        super::gpu_backward_fallback::preallocate_cublas_workspace(trainer);
+                }
                 stream
                     .begin_capture(CaptureMode::ThreadLocal)
                     .map_err(|e| eprintln!("[CUDA] Graph capture begin failed: {e}"))

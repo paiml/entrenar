@@ -26,6 +26,7 @@ mod device;
 pub mod distributed;
 mod eval;
 pub mod gradient_server;
+pub mod gpu_backward_fallback;
 pub mod instruct_corpus;
 pub mod instruct_pipeline;
 pub mod instruct_trainer;

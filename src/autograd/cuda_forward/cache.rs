@@ -389,8 +389,17 @@ pub fn init_forward_kernel_cache(ctx: std::sync::Arc<CudaContext>) -> Result<()>
     FORWARD_KERNEL_CACHE.get_or_init(|| Mutex::new(ForwardKernelCache::new(ctx)));
     Ok(())
 }
-
-/// Bind cuBLAS handle in the forward cache to a stream (ALB-075).
+/// Pre-allocate cuBLAS workspace for CUDA graph capture (PMAT-063).
+#[cfg(feature = "cuda")]
+pub fn set_cublas_workspace(ptr: u64, size: usize) -> Result<()> {
+    let c = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let c = c.lock().map_err(|_| CudaTensorError::KernelError("lock".into()))?;
+    if let Some(h) = c.cublas() {
+        h.set_workspace(ptr, size).map_err(|e| CudaTensorError::KernelError(format!("{e}")))?;
+    }
+    Ok(())
+}
+/// Bind cuBLAS handle to a stream (ALB-075).
 #[cfg(feature = "cuda")]
 pub fn set_forward_cublas_stream(stream: &CudaStream) -> Result<()> {
     let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
@@ -400,13 +409,7 @@ pub fn set_forward_cublas_stream(stream: &CudaStream) -> Result<()> {
     cache.set_cublas_stream(stream)
 }
 
-/// Pre-warm forward kernels for a specific model configuration.
-///
-/// # Contract: C-PREWARM-001 (JIT Before Payload)
-///
-/// Must be called AFTER `init_forward_kernel_cache()` and BEFORE uploading
-/// transformer blocks to GPU. JIT-compiles all PTX modules that the forward
-/// pass will need, while VRAM is still free.
+/// Pre-warm forward kernels (C-PREWARM-001: JIT before block upload).
 #[cfg(feature = "cuda")]
 pub fn pre_warm_forward_kernels(
     hidden_size: usize,
@@ -416,10 +419,7 @@ pub fn pre_warm_forward_kernels(
     head_dim: usize,
     max_seq_len: usize,
 ) -> Result<()> {
-    // Also pre-warm backward kernels that live in the forward cache.
-    // trueno#200: On Blackwell, ANY kernel compiled during active GPU work
-    // triggers CUDA_ERROR_ILLEGAL_ADDRESS. All kernels must be compiled
-    // BEFORE the first GPU operation.
+    // trueno#200: Pre-warm backward kernels too (Blackwell JIT crash workaround)
     pre_warm_backward_kernels_in_forward_cache(num_heads, num_kv_heads, head_dim, max_seq_len)?;
     let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {

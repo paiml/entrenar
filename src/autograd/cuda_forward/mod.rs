@@ -47,6 +47,7 @@ pub use bf16_cast::{cast_bf16_to_f32_gpu, cast_f32_to_bf16_gpu, cast_f32_to_f16_
 pub(crate) use cache::set_forward_cublas_stream;
 pub use cache::{
     init_forward_kernel_cache, pre_warm_forward_kernels, pre_warm_lora_backward_kernels,
+    set_cublas_workspace,
 };
 pub use elementwise::{
     batched_to_interleaved_forward, batched_transpose_forward, elementwise_mul_forward,
