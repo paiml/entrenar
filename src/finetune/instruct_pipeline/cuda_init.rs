@@ -16,10 +16,10 @@ use crate::transformer::{
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 
+#[cfg(feature = "cuda")]
 impl InstructPipeline {
     /// Initialize CUDA acceleration: create trainer, upload blocks, init LoRA training.
     /// GPU-SHARE-002: Acquires VRAM guard; falls back to CPU if denied.
-    #[cfg(feature = "cuda")]
     pub(super) fn init_cuda(&mut self, model_config: &TransformerConfig) {
         // GPU-SHARE-002: Acquire VRAM reservation before allocating
         let budget_mb = Self::estimate_vram_mb(model_config, &self.config);
@@ -82,7 +82,6 @@ impl InstructPipeline {
     }
 
     /// Estimate VRAM usage (MB) for GPU training (GPU-SHARE-002 ledger reservation).
-    #[cfg(feature = "cuda")]
     fn estimate_vram_mb(model_config: &TransformerConfig, config: &InstructConfig) -> usize {
         if config.quantize_nf4 {
             let weight_elements =
@@ -98,7 +97,6 @@ impl InstructPipeline {
 
     /// Create `CudaTrainer` and upload all transformer layer weights to GPU.
     /// Returns `(None, None, None)` if CUDA is unavailable or any step fails.
-    #[cfg(feature = "cuda")]
     fn try_init_cuda(
         model: &Transformer,
         model_config: &TransformerConfig,
@@ -338,7 +336,6 @@ impl InstructPipeline {
     }
 
     /// Initialize GPU training state for NF4 QLoRA backward pass.
-    #[cfg(feature = "cuda")]
     pub(super) fn try_init_gpu_training(
         model: &Transformer,
         model_config: &TransformerConfig,
@@ -452,7 +449,6 @@ impl InstructPipeline {
     }
 
     /// Initialize NF4 LoRA training state: gradient workspace + per-layer optimizer states.
-    #[cfg(feature = "cuda")]
     fn try_init_nf4_lora_training(
         cuda_trainer: Option<&CudaTrainer>,
         cuda_blocks: Option<&Vec<CudaBlock>>,
