@@ -25,6 +25,7 @@ pub mod data_parallel;
 mod device;
 pub mod distributed;
 mod eval;
+mod fused_lora_clip;
 pub mod gpu_backward_fallback;
 pub mod gradient_server;
 pub mod instruct_corpus;

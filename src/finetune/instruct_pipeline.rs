@@ -188,6 +188,9 @@ pub struct InstructPipeline {
     /// Shared LoRA gradient workspace for NF4 QLoRA backward
     #[cfg(feature = "cuda")]
     cuda_lora_grad_workspace: Option<CudaLoraGradWorkspace>,
+    /// PMAT-477: Fused clip state — zero D2H sync gradient clipping
+    #[cfg(feature = "cuda")]
+    lora_fused_clip: Option<crate::autograd::cuda_optim::FusedClipState>,
     /// Per-layer LoRA optimizer states for NF4 QLoRA training
     #[cfg(feature = "cuda")]
     cuda_lora_optimizer_states: Option<Vec<GpuLoraOptimizerState>>,
@@ -259,6 +262,8 @@ impl InstructPipeline {
             gpu_training: None,
             #[cfg(feature = "cuda")]
             cuda_lora_grad_workspace: None,
+            #[cfg(feature = "cuda")]
+            lora_fused_clip: None,
             #[cfg(feature = "cuda")]
             cuda_lora_optimizer_states: None,
             #[cfg(feature = "cuda")]
@@ -374,6 +379,8 @@ impl InstructPipeline {
             #[cfg(feature = "cuda")]
             cuda_lora_grad_workspace: None,
             #[cfg(feature = "cuda")]
+            lora_fused_clip: None,
+            #[cfg(feature = "cuda")]
             cuda_lora_optimizer_states: None,
             #[cfg(feature = "cuda")]
             nf4_lora_step: 0,
@@ -473,6 +480,8 @@ impl InstructPipeline {
             gpu_training: None,
             #[cfg(feature = "cuda")]
             cuda_lora_grad_workspace: None,
+            #[cfg(feature = "cuda")]
+            lora_fused_clip: None,
             #[cfg(feature = "cuda")]
             cuda_lora_optimizer_states: None,
             #[cfg(feature = "cuda")]
@@ -1537,6 +1546,9 @@ impl InstructPipeline {
                 model_config,
                 &self.config,
             );
+            if let (Some(ref ws), Some(ref t)) = (&grad_ws, &self.cuda_trainer) {
+                self.lora_fused_clip = super::fused_lora_clip::init_lora_fused_clip(ws, t.context());
+            }
             self.cuda_lora_grad_workspace = grad_ws;
             self.cuda_lora_optimizer_states = opt_states;
         }
@@ -2338,9 +2350,15 @@ impl InstructPipeline {
                 .ok()?;
 
             // ENT-265: Clip NF4 LoRA gradients before optimizer step.
-            // Without this, NF4 dequant amplifies gradients causing divergence.
+            // PMAT-477: Fused clip (zero D2H sync) when available; sync fallback otherwise.
             if let Some(max_norm) = self.config.gradient_clip_norm {
-                grad_lora.clip_gradients(max_norm, stream);
+                if let Some(ref clip_state) = self.lora_fused_clip {
+                    super::fused_lora_clip::clip_lora_gradients_fused(
+                        grad_lora, max_norm, clip_state, stream,
+                    );
+                } else {
+                    grad_lora.clip_gradients(max_norm, stream);
+                }
             }
 
             // Immediately apply LoRA optimizer step
@@ -2604,55 +2622,6 @@ impl InstructPipeline {
         let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
         let logits = crate::autograd::ops::matmul::matmul_nt_compute(
             normed_slice,
-            lm_slice,
-            seq_len,
-            hidden_size,
-            vocab_size,
-        );
-        Some(logits)
-    }
-
-    #[cfg(feature = "cuda")]
-    fn forward_hidden_gpu_then_cpu_lmhead(&mut self, token_ids: &[u32]) -> Option<Vec<f32>> {
-        let seq_len = token_ids.len();
-        let hidden_size = self.model.config().hidden_size;
-
-        // Run GPU transformer forward (writes normed hidden to lm_head_hidden_buf)
-        let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
-            (Some(ref t), Some(ref mut b)) => (t, b),
-            _ => return None,
-        };
-        let mut training = self.gpu_training.take();
-        let result = Self::forward_cuda_training(
-            &self.model,
-            token_ids,
-            trainer,
-            blocks,
-            training.as_mut()?,
-            &mut self.shared_scratch,
-        );
-        let training_state = training.as_ref()?;
-
-        // Download normed hidden states from GPU
-        let stream = trainer.stream();
-        stream.synchronize().ok()?;
-        let mut hidden = vec![0.0f32; training_state.lm_head_hidden_buf.len()];
-        training_state.lm_head_hidden_buf.copy_to_host(&mut hidden).ok()?;
-        self.gpu_training = training;
-
-        if result.is_none() {
-            return None;
-        }
-
-        // CPU lm_head: use optimized matmul_nt_compute (SIMD via trueno)
-        // This is the same matmul used by model.forward() — not a naive loop.
-        let hidden_slice = &hidden[..seq_len * hidden_size];
-        let vocab_size = self.model.config().vocab_size;
-        let lm_weight = self.model.lm_head.as_ref().unwrap_or(&self.model.embed_tokens.weight);
-        let lm_data = lm_weight.data();
-        let lm_slice = lm_data.as_slice().expect("contiguous lm_head");
-        let logits = crate::autograd::ops::matmul::matmul_nt_compute(
-            hidden_slice,
             lm_slice,
             seq_len,
             hidden_size,
