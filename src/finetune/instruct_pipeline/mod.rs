@@ -35,6 +35,7 @@ mod tests_cov3b;
 use crate::lora::LoRALayer;
 use crate::optim::{clip_grad_norm_refs, AdamW, Optimizer};
 use crate::tokenizer::HfTokenizer;
+use crate::train::transformer_trainer::step_profiler::StepProfiler;
 use crate::transformer::{Transformer, TransformerConfig};
 use crate::Tensor;
 use std::path::{Path, PathBuf};
@@ -153,6 +154,12 @@ pub(super) struct InstructGpuTrainingState {
     graph_cached_seq_len: usize,
     /// PMAT-063: cuBLAS workspace buffer (must outlive CUDA graph)
     cublas_workspace: Option<GpuBuffer<f32>>,
+    /// PMAT-483: Per-layer forward timing (microseconds per layer per step)
+    profiler_layer_fwd_us: Vec<u64>,
+    /// PMAT-483: Per-layer backward timing (microseconds per layer per step)
+    profiler_layer_bwd_us: Vec<u64>,
+    /// PMAT-483: Temporary layer start timestamp
+    profiler_layer_start: Option<std::time::Instant>,
 }
 
 pub struct InstructPipeline {
@@ -168,6 +175,9 @@ pub struct InstructPipeline {
     tokenizer: Option<HfTokenizer>,
     /// Path to base model (for checkpoint provenance)
     model_dir: Option<PathBuf>,
+    /// PMAT-483: Per-step profiler for scientific training measurement.
+    /// Zero-overhead when disabled. Enable via --profile-interval N.
+    pub profiler: StepProfiler,
     /// CUDA trainer for GPU memory management
     #[cfg(feature = "cuda")]
     cuda_trainer: Option<CudaTrainer>,

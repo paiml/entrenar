@@ -426,6 +426,7 @@ impl InstructPipeline {
         let fwd_scratch_b = trainer.zeros(buf_size).ok()?;
         let lm_head_hidden_buf = trainer.zeros(buf_size).ok()?;
 
+        let num_layers = layer_inputs.len();
         Some(InstructGpuTrainingState {
             layer_inputs,
             final_norm_weight,
@@ -445,6 +446,9 @@ impl InstructPipeline {
             forward_graph_exec: None,
             graph_cached_seq_len: 0,
             cublas_workspace: None,
+            profiler_layer_fwd_us: vec![0u64; num_layers],
+            profiler_layer_bwd_us: vec![0u64; num_layers],
+            profiler_layer_start: None,
         })
     }
 

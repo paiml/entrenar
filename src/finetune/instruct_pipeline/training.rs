@@ -15,12 +15,14 @@ impl InstructPipeline {
     /// When CUDA NF4 blocks are available, dispatches to GPU forward pass
     /// with CPU loss computation and GPU backward/optimizer.
     pub fn train_step(&mut self, prompt_ids: &[u32], response_ids: &[u32]) -> InstructStepResult {
+        self.profiler.begin_step();
         let full_ids: Vec<u32> = prompt_ids.iter().chain(response_ids.iter()).copied().collect();
 
         let prompt_len = prompt_ids.len();
         let response_len = response_ids.len();
 
         if response_len == 0 || full_ids.len() < 2 {
+            self.profiler.finish_step();
             return InstructStepResult { loss: 0.0, num_response_tokens: 0, perplexity: 1.0 };
         }
 
@@ -42,7 +44,9 @@ impl InstructPipeline {
         // forward (fresh buffers, saves inputs) replaces the NaN-prone training forward.
         #[cfg(feature = "cuda")]
         if self.cuda_blocks.is_some() {
-            return self.cuda_train_step(&full_ids, prompt_len, seq_len, vocab_size);
+            let result = self.cuda_train_step(&full_ids, prompt_len, seq_len, vocab_size);
+            self.profiler.finish_step();
+            return result;
         }
 
         // ── wgpu GPU path (§26 WgpuTrainingPipeline) ─────────────────
@@ -147,7 +151,9 @@ impl InstructPipeline {
         }
 
         // 1. GPU forward → logits stay GPU-resident in training.logits_buf (KAIZEN-064)
+        self.profiler.begin(StepProfiler::FORWARD);
         if !self.forward_logits_gpu_resident(full_ids) {
+            self.profiler.end(StepProfiler::FORWARD);
             eprintln!("[CUDA] GPU forward failed, falling back to CPU for this step");
             return self.cuda_train_step_cpu_loss(
                 full_ids,
@@ -158,6 +164,7 @@ impl InstructPipeline {
                 vocab_size,
             );
         }
+        self.profiler.end(StepProfiler::FORWARD);
 
         // 2. Fused GPU causal cross-entropy loss + softmax backward (KAIZEN-064)
         let targets: Vec<u32> = (0..seq_len)
@@ -166,6 +173,7 @@ impl InstructPipeline {
 
         let scale = 1.0 / num_loss_tokens as f32;
 
+        self.profiler.begin(StepProfiler::LOSS);
         let avg_loss = (|| -> Option<f32> {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
@@ -182,6 +190,7 @@ impl InstructPipeline {
             )
             .ok()
         })();
+        self.profiler.end(StepProfiler::LOSS);
 
         let avg_loss = match avg_loss {
             Some(l) if l.is_finite() => {
@@ -210,6 +219,7 @@ impl InstructPipeline {
         };
 
         // 3. GPU GEMM backward: grad_hidden = grad_logits @ embed (KAIZEN-064/065/068)
+        self.profiler.begin(StepProfiler::LM_BWD);
         let hidden_size = self.model.config().hidden_size;
 
         let gemm_ok = (|| -> Option<()> {
@@ -232,6 +242,8 @@ impl InstructPipeline {
             .ok()?;
             Some(())
         })();
+
+        self.profiler.end(StepProfiler::LM_BWD);
 
         if gemm_ok.is_none() {
             // PMAT-471: CPU fallback when GPU embeddings don't fit
@@ -261,8 +273,18 @@ impl InstructPipeline {
         }
 
         // 4. GPU backward through NF4 blocks (KAIZEN-065: GPU-resident)
+        self.profiler.begin(StepProfiler::BLK_BWD);
         if self.config.quantize_nf4 {
             self.backward_nf4_gpu_blocks_gpu_resident(seq_len);
+        }
+        self.profiler.end(StepProfiler::BLK_BWD);
+
+        // PMAT-483: Feed per-layer timing from training state to profiler
+        if let Some(ref training) = self.gpu_training {
+            self.profiler.record_layer_times(
+                &training.profiler_layer_fwd_us,
+                &training.profiler_layer_bwd_us,
+            );
         }
 
         InstructStepResult {

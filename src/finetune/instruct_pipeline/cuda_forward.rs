@@ -124,6 +124,9 @@ impl InstructPipeline {
                     .map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}"))
                     .ok()?;
 
+                // PMAT-483: Per-layer forward profiling
+                training_state.profiler_layer_start = Some(std::time::Instant::now());
+
                 if let Err(e) =
                     block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut())
                 {
@@ -136,6 +139,12 @@ impl InstructPipeline {
                     }
                     return None;
                 }
+
+                // PMAT-483: Record per-layer forward time
+                if let Some(start) = training_state.profiler_layer_start.take() {
+                    training_state.profiler_layer_fwd_us[i] = start.elapsed().as_micros() as u64;
+                }
+
                 input_is_a = !input_is_a;
             }
 

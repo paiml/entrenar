@@ -351,6 +351,95 @@ impl StepProfiler {
         self.step_count
     }
 
+    /// PMAT-483: Emit structured JSON profiling report to stderr.
+    /// Parseable by canary scripts for scientific analysis.
+    pub fn print_json_report(&self) {
+        if self.step_count == 0 {
+            return;
+        }
+
+        let total_us = self.total_wall.as_micros() as f64;
+        let avg_step_ms = total_us / self.step_count as f64 / 1000.0;
+
+        let mut accounted_us = 0u128;
+        let mut phases = Vec::new();
+        for i in 0..NUM_PHASES {
+            let t = self.totals[i];
+            accounted_us += t.as_micros();
+            let ms = t.as_micros() as f64 / 1000.0;
+            let pct = if total_us > 0.0 { t.as_micros() as f64 / total_us * 100.0 } else { 0.0 };
+            let avg = ms / self.step_count as f64;
+            phases.push(format!(
+                "\"{}\":{{\"total_ms\":{:.1},\"pct\":{:.1},\"avg_ms\":{:.2}}}",
+                PHASE_NAMES[i], ms, pct, avg
+            ));
+        }
+
+        let wall_coverage = if total_us > 0.0 { accounted_us as f64 / total_us } else { 0.0 };
+
+        let mut layers_json = Vec::new();
+        for i in 0..self.num_layers {
+            let fwd_ms = self.layer_fwd_totals[i].as_micros() as f64 / 1000.0;
+            let bwd_ms = self.layer_bwd_totals[i].as_micros() as f64 / 1000.0;
+            layers_json
+                .push(format!("{{\"layer\":{i},\"fwd_ms\":{fwd_ms:.1},\"bwd_ms\":{bwd_ms:.1}}}"));
+        }
+
+        // Classify bottleneck based on phase distribution
+        let forward_pct = if total_us > 0.0 {
+            self.totals[FORWARD].as_micros() as f64 / total_us * 100.0
+        } else {
+            0.0
+        };
+        let transfer_pct = if total_us > 0.0 {
+            (self.totals[H2D].as_micros() + self.totals[GRAD_H2D].as_micros()) as f64 / total_us
+                * 100.0
+        } else {
+            0.0
+        };
+        let bottleneck = if transfer_pct > 30.0 {
+            "transfer"
+        } else if forward_pct < 20.0 {
+            "launch"
+        } else {
+            "memory_bw"
+        };
+
+        eprintln!(
+            "{{\"_profiler\":\"step_profiler_v1\",\"steps\":{},\"avg_step_ms\":{:.2},\"wall_coverage\":{:.3},\"bottleneck\":\"{}\",\"phases\":{{{}}},\"per_layer\":[{}]}}",
+            self.step_count,
+            avg_step_ms,
+            wall_coverage,
+            bottleneck,
+            phases.join(","),
+            layers_json.join(","),
+        );
+    }
+
+    /// PMAT-483: Feed per-layer timing data from InstructGpuTrainingState.
+    /// Call once per step after forward+backward complete.
+    pub fn record_layer_times(&mut self, fwd_us: &[u64], bwd_us: &[u64]) {
+        if !self.enabled {
+            return;
+        }
+        for (i, &us) in fwd_us.iter().enumerate() {
+            if i < MAX_LAYERS && us > 0 {
+                self.layer_fwd_totals[i] += std::time::Duration::from_micros(us);
+                if i >= self.num_layers {
+                    self.num_layers = i + 1;
+                }
+            }
+        }
+        for (i, &us) in bwd_us.iter().enumerate() {
+            if i < MAX_LAYERS && us > 0 {
+                self.layer_bwd_totals[i] += std::time::Duration::from_micros(us);
+                if i >= self.num_layers {
+                    self.num_layers = i + 1;
+                }
+            }
+        }
+    }
+
     // Phase constants for external callers
     pub const EMBED: usize = EMBED;
     pub const H2D: usize = H2D;

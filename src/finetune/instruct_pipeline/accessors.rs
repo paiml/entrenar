@@ -162,4 +162,11 @@ impl InstructPipeline {
     pub fn tokenizer(&self) -> Option<&HfTokenizer> {
         self.tokenizer.as_ref()
     }
+
+    /// PMAT-483: Enable the per-step profiler with the given report interval.
+    /// When enabled, profiler measures per-phase and per-layer timing.
+    /// Call `profiler.print_report()` or `profiler.print_json_report()` to get results.
+    pub fn enable_profiler(&mut self, report_interval: usize) {
+        self.profiler = StepProfiler::new(true, report_interval);
+    }
 }

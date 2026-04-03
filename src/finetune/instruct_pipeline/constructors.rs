@@ -26,6 +26,7 @@ impl InstructPipeline {
             optimizer,
             tokenizer: None,
             model_dir: None,
+            profiler: StepProfiler::disabled(),
             #[cfg(feature = "cuda")]
             cuda_trainer: None,
             #[cfg(feature = "cuda")]
@@ -142,6 +143,7 @@ impl InstructPipeline {
             optimizer,
             tokenizer,
             model_dir: Some(model_dir.to_path_buf()),
+            profiler: StepProfiler::disabled(),
             #[cfg(feature = "cuda")]
             cuda_trainer: None,
             #[cfg(feature = "cuda")]
@@ -244,6 +246,7 @@ impl InstructPipeline {
             optimizer,
             tokenizer,
             model_dir: Some(apr_path.to_path_buf()),
+            profiler: StepProfiler::disabled(),
             #[cfg(feature = "cuda")]
             cuda_trainer: None,
             #[cfg(feature = "cuda")]

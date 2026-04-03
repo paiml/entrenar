@@ -261,6 +261,12 @@ impl InstructTrainer {
             }
         }
 
+        // PMAT-483: Print profiler report at end of training (text + JSON)
+        if self.pipeline.profiler.is_enabled() {
+            self.pipeline.profiler.print_report();
+            self.pipeline.profiler.print_json_report();
+        }
+
         InstructTrainResult {
             epoch_metrics,
             best_epoch,

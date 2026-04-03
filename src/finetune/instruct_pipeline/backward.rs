@@ -140,6 +140,9 @@ impl InstructPipeline {
                 }
             };
 
+            // PMAT-483: Per-layer backward profiling
+            let layer_bwd_start = std::time::Instant::now();
+
             // SAFETY: output_scratch_ptr points to a disjoint field of training_state.
             blocks[layer_idx]
                 .backward_nf4(
@@ -180,6 +183,12 @@ impl InstructPipeline {
                     grad_lora,
                 )
                 .ok()?;
+
+            // PMAT-483: Record per-layer backward time (includes backward + clip + optimizer)
+            if layer_idx < training_state.profiler_layer_bwd_us.len() {
+                training_state.profiler_layer_bwd_us[layer_idx] =
+                    layer_bwd_start.elapsed().as_micros() as u64;
+            }
 
             grad_output_is_a = !grad_output_is_a;
         }
