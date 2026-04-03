@@ -1,3 +1,4 @@
+#[cfg(feature = "cuda")]
 use super::*;
 
 #[cfg(feature = "cuda")]

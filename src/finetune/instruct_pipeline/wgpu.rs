@@ -1,5 +1,6 @@
 //! WGPU GPU acceleration: `try_init_wgpu`, `wgpu_train_step`.
 
+#[cfg(feature = "gpu")]
 use super::*;
 
 #[cfg(feature = "gpu")]
