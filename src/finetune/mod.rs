@@ -15,6 +15,7 @@
 //! - Dettmers et al. (2023) "QLoRA: Efficient Finetuning of Quantized LLMs"
 //! - Popper (1959) "The Logic of Scientific Discovery"
 
+mod backward_graph;
 pub mod classification;
 pub mod classify_eval_report;
 pub mod classify_pipeline;
