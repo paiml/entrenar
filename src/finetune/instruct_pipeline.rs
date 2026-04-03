@@ -42,7 +42,7 @@ use crate::transformer::{
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 #[cfg(feature = "cuda")]
-use trueno_gpu::driver::GpuBuffer;
+use trueno_gpu::driver::{CaptureMode, GpuBuffer};
 
 /// Configuration for instruction fine-tuning.
 #[derive(Debug, Clone)]
@@ -150,6 +150,12 @@ struct InstructGpuTrainingState {
     /// KAIZEN-062: Pre-allocated lm_head hidden input buffer [max_seq_len * hidden_size].
     /// Eliminates per-forward cuMemAlloc/cuMemFree in forward_logits_gpu.
     lm_head_hidden_buf: GpuBuffer<f32>,
+    /// PMAT-464: Cached CUDA graph for forward pass replay.
+    /// Captured on first forward at a given seq_len, replayed on subsequent forwards.
+    /// Eliminates ~588 kernel launches per forward pass → single graph launch.
+    forward_graph_exec: Option<trueno_gpu::driver::CudaGraphExec>,
+    /// Seq_len for which the graph was captured (invalidate on change)
+    graph_cached_seq_len: usize,
 }
 
 pub struct InstructPipeline {
@@ -1931,6 +1937,8 @@ impl InstructPipeline {
             fwd_scratch_a,
             fwd_scratch_b,
             lm_head_hidden_buf,
+            forward_graph_exec: None,
+            graph_cached_seq_len: 0,
         })
     }
 
@@ -2050,41 +2058,100 @@ impl InstructPipeline {
         ] {
             b.zero_async(stream).ok();
         }
-        for (i, block) in cuda_blocks.iter_mut().enumerate() {
-            // SAFETY: scratch_a_ptr and scratch_b_ptr point to disjoint struct fields.
-            // Only one is written (output) while the other is read (input) per iteration.
-            let (gpu_input, gpu_output) = unsafe {
-                if input_is_a {
-                    (&*scratch_a_ptr, &mut *scratch_b_ptr)
-                } else {
-                    (&*scratch_b_ptr, &mut *scratch_a_ptr)
-                }
-            };
+        // PMAT-464: CUDA graph capture/replay for forward pass.
+        // CUDA_GRAPH=1 env enables graph mode. First forward at a given seq_len
+        // captures the layer loop; subsequent forwards replay with single launch.
+        static USE_CUDA_GRAPH: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let use_graph =
+            *USE_CUDA_GRAPH.get_or_init(|| std::env::var("CUDA_GRAPH").as_deref() == Ok("1"));
 
-            // Save input for backward pass
-            // PMAT-420: Re-allocate layer_input at seq_len if needed (was max_seq_len)
-            if training_state.layer_inputs[i].len() != gpu_input.len() {
+        // Pre-allocate layer_inputs before capture (host-side branches not capturable)
+        for (i, block_) in cuda_blocks.iter().enumerate() {
+            let _ = block_;
+            let expected_len = seq_len * hidden_size;
+            if training_state.layer_inputs[i].len() != expected_len {
                 training_state.layer_inputs[i] = trainer
-                    .zeros(gpu_input.len())
-                    .map_err(|e| eprintln!("[CUDA] layer_input realloc failed L{i}: {e}"))
+                    .zeros(expected_len)
+                    .map_err(|e| eprintln!("[CUDA] layer_input prealloc L{i}: {e}"))
                     .ok()?;
             }
-            training_state.layer_inputs[i]
-                .copy_from_buffer(gpu_input)
-                .map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}"))
-                .ok()?;
+        }
 
-            if let Err(e) =
-                block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut())
-            {
-                eprintln!(
-                    "[CUDA] Layer {i} forward failed: {e} (seq_len={seq_len} in={} out={} hidden={hidden_size})",
-                    gpu_input.len(),
-                    gpu_output.len(),
-                );
-                return None;
+        if use_graph
+            && training_state.graph_cached_seq_len == seq_len
+            && training_state.forward_graph_exec.is_some()
+        {
+            // === GRAPH REPLAY — single launch replaces ~588 kernel launches ===
+            let exec = training_state.forward_graph_exec.as_ref().unwrap();
+            exec.launch(stream.raw())
+                .map_err(|e| eprintln!("[CUDA] Graph replay failed: {e}"))
+                .ok()?;
+            // Advance ping-pong state to match what capture recorded
+            for _ in 0..cuda_blocks.len() {
+                input_is_a = !input_is_a;
             }
-            input_is_a = !input_is_a;
+        } else {
+            // === Standard or first-capture forward ===
+            let capturing = use_graph && training_state.graph_cached_seq_len != seq_len;
+            if capturing {
+                stream
+                    .begin_capture(CaptureMode::ThreadLocal)
+                    .map_err(|e| eprintln!("[CUDA] Graph capture begin failed: {e}"))
+                    .ok()?;
+            }
+
+            for (i, block) in cuda_blocks.iter_mut().enumerate() {
+                let (gpu_input, gpu_output) = unsafe {
+                    if input_is_a {
+                        (&*scratch_a_ptr, &mut *scratch_b_ptr)
+                    } else {
+                        (&*scratch_b_ptr, &mut *scratch_a_ptr)
+                    }
+                };
+
+                // Save input for backward (D2D copy — capturable)
+                training_state.layer_inputs[i]
+                    .copy_from_buffer(gpu_input)
+                    .map_err(|e| eprintln!("[CUDA] layer_input copy L{i}: {e}"))
+                    .ok()?;
+
+                if let Err(e) =
+                    block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut())
+                {
+                    eprintln!(
+                        "[CUDA] Layer {i} forward failed: {e} (seq_len={seq_len} in={} out={} hidden={hidden_size})",
+                        gpu_input.len(),
+                        gpu_output.len(),
+                    );
+                    if capturing {
+                        // Abort capture — can't end_capture with error
+                        let _ = stream.end_capture();
+                    }
+                    return None;
+                }
+                input_is_a = !input_is_a;
+            }
+
+            if capturing {
+                match stream.end_capture() {
+                    Ok(graph) => match graph.instantiate() {
+                        Ok(exec) => {
+                            eprintln!(
+                                "[CUDA] Graph captured: {} layers, seq_len={seq_len}",
+                                cuda_blocks.len()
+                            );
+                            training_state.forward_graph_exec = Some(exec);
+                            training_state.graph_cached_seq_len = seq_len;
+                        }
+                        Err(e) => {
+                            eprintln!("[CUDA] Graph instantiate failed: {e} — using non-graph path")
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("[CUDA] Graph end_capture failed: {e} — using non-graph path")
+                    }
+                }
+            }
         }
 
         // After ping-pong: result is in the buffer that would be "input" for the next iteration
