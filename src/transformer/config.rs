@@ -173,6 +173,10 @@ impl TransformerConfig {
         }
     }
 
+    /// Qwen2.5-Coder-1.5B-Instruct: 28 layers, 12 heads, 2 KV heads, hidden=1536
+    #[rustfmt::skip]
+    pub fn qwen2_1_5b() -> Self { Self { hidden_size: 1536, num_attention_heads: 12, intermediate_size: 8960, num_hidden_layers: 28, vocab_size: 151936, ..Self::qwen2_0_5b() } }
+
     /// Qwen2.5-Coder 7B configuration (GH-371)
     ///
     /// Qwen2.5-Coder-7B-Instruct: 28 layers, 28 heads, 4 KV heads, hidden=3584
@@ -321,6 +325,7 @@ impl TransformerConfig {
         match size {
             "codebert" | "codebert-base" | "125M" => Ok(Self::codebert()),
             "0.5B" | "500M" | "qwen2-0.5b" => Ok(Self::qwen2_0_5b()),
+            "1.5B" | "qwen2.5-1.5b" | "qwen2-1.5b" => Ok(Self::qwen2_1_5b()),
             "7B" | "qwen2.5-7b" => Ok(Self::qwen2_7b()),
             "4B" | "qwen3-4b" | "qwen3" => Ok(Self::qwen3_4b()),
             "9B" | "qwen3.5-9b" | "qwen3_5" | "qwen3.5" => Ok(Self::qwen3_5_9b()),
@@ -1402,32 +1407,16 @@ mod tests {
 
     #[test]
     fn test_kv_dim() {
-        let config = TransformerConfig::qwen3_4b();
-        // num_kv_heads=8, head_dim=128 → kv_dim=1024
-        assert_eq!(config.kv_dim(), 1024);
-
-        let config = TransformerConfig::llama2_7b();
-        // num_kv_heads=32, head_dim=128 → kv_dim=4096
-        assert_eq!(config.kv_dim(), 4096);
+        assert_eq!(TransformerConfig::qwen3_4b().kv_dim(), 1024);
+        assert_eq!(TransformerConfig::llama2_7b().kv_dim(), 4096);
     }
 
     #[test]
-    fn test_per_layer_scratch_linear_coeff_positive() {
+    fn test_per_layer_scratch_coefficients() {
         let config = TransformerConfig::tiny();
         assert!(config.per_layer_scratch_linear_coeff() > 0);
-    }
-
-    #[test]
-    fn test_per_layer_scratch_quadratic_coeff() {
-        let config = TransformerConfig::tiny();
         let (n_quad, n_hd_linear) = config.per_layer_scratch_quadratic_coeff();
-        assert!(n_quad > 0);
-        assert!(n_hd_linear > 0);
-    }
-
-    #[test]
-    fn test_per_layer_grad_weight_elements_positive() {
-        let config = TransformerConfig::tiny();
+        assert!(n_quad > 0 && n_hd_linear > 0);
         assert!(config.per_layer_grad_weight_elements() > 0);
     }
 }
