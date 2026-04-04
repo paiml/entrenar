@@ -38,6 +38,24 @@ const OP_SILU: usize = 6;
 #[cfg(feature = "cuda")]
 const OP_DOWN_GEMM: usize = 7;
 
+// PMAT-483: Per-operation profiling indices for backward pass.
+#[cfg(feature = "cuda")]
+const OP_LORA_FWD: usize = 8;
+#[cfg(feature = "cuda")]
+const OP_DOWN_BWD: usize = 9;
+#[cfg(feature = "cuda")]
+const OP_SWIGLU_BWD: usize = 10;
+#[cfg(feature = "cuda")]
+const OP_GATE_UP_BWD: usize = 11;
+#[cfg(feature = "cuda")]
+const OP_ATTN_BWD: usize = 12;
+#[cfg(feature = "cuda")]
+const OP_QKV_BWD: usize = 13;
+#[cfg(feature = "cuda")]
+const OP_NORM_BWD: usize = 14;
+#[cfg(feature = "cuda")]
+const OP_LORA_BWD: usize = 15;
+
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 
