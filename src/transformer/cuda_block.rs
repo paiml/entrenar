@@ -3792,6 +3792,7 @@ impl CudaNf4TransformerBlock {
             *USE_NF4_TC_BWD.get_or_init(|| std::env::var("NF4_TC_BWD_GEMM").as_deref() == Ok("1"));
 
         // Step 1: grad_swiglu[S,I] = grad_output[S,H] @ W_down^T (PMAT-472: fp16 dispatch)
+        let _t = scratch.op_begin(); // OP_DOWN_BWD timing
         if nf4_tc_bwd {
             // NF4 TC backward: fused dequant+WMMA, no separate dequant kernel
             crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
@@ -3818,9 +3819,12 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
+        scratch.op_end(_t, OP_DOWN_BWD);
+
         // Step 2: SwiGLU backward: swiglu = silu(gate) * up
         // d_gate = d_swiglu * up * silu'(gate)
         // d_up   = d_swiglu * silu(gate)
+        let _t = scratch.op_begin(); // OP_SWIGLU_BWD timing
 
         // temp1 = d_swiglu * up_out → store in swiglu_out (reuse)
         elementwise_mul_forward(
@@ -3853,9 +3857,12 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
+        scratch.op_end(_t, OP_SWIGLU_BWD);
+
         // Step 3: gate/up backward (PMAT-472: fp16 dispatch, PMAT-481: TC dispatch)
-        // PMAT-484: Fused backward — use cuBLAS beta=1.0 accumulate to eliminate
-        // the separate cuda_add_inplace kernel launch (3 launches → 2).
+        let _t = scratch.op_begin(); // OP_GATE_UP_BWD timing
+                                     // PMAT-484: Fused backward — use cuBLAS beta=1.0 accumulate to eliminate
+                                     // the separate cuda_add_inplace kernel launch (3 launches → 2).
         static USE_FUSED_BWD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let fused_bwd = *USE_FUSED_BWD
             .get_or_init(|| std::env::var("NF4_FUSED_BWD_GEMM").as_deref() == Ok("1"));
@@ -3949,6 +3956,7 @@ impl CudaNf4TransformerBlock {
                 stream,
             )?;
         }
+        scratch.op_end(_t, OP_GATE_UP_BWD);
 
         Ok(())
     }
@@ -3980,8 +3988,7 @@ impl CudaNf4TransformerBlock {
         let kvh = saturating_u32(kv_hidden_size);
 
         // Step 1: O projection backward
-        // Forward: o_proj[S,H] = attn_out[S,qd] @ W_o[qd,H]  (m=S, k=qd, n=H)
-        // O-proj backward (PMAT-472: fp16 dispatch)
+        let _t = scratch.op_begin(); // OP_ATTN_BWD timing (O-proj + attention mechanism)
         gemm_backward_a_fp16_dispatch(
             grad_residual1,
             self.w_o_fp16.as_ref(),
@@ -4035,7 +4042,10 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
-        // Q backward (PMAT-472: fp16 dispatch)
+        scratch.op_end(_t, OP_ATTN_BWD);
+
+        // Q/K/V backward (PMAT-472: fp16 dispatch)
+        let _t = scratch.op_begin(); // OP_QKV_BWD timing
         gemm_backward_a_fp16_dispatch(
             &scratch.q,
             self.w_q_fp16.as_ref(),
@@ -4216,9 +4226,9 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
+        scratch.op_end(_t, OP_QKV_BWD);
+
         // Step 6: Accumulated grad_norm1 is in scratch.o_proj_out → move to scratch.grad_hidden
-        // for norm backward in the caller
-        // SAFETY: D2D copy between same-sized GPU buffers
         unsafe {
             scratch.grad_hidden.copy_from_buffer_async(&scratch.o_proj_out, stream).map_err(
                 |e| {
