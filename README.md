@@ -374,6 +374,10 @@ Contributions welcome! Please follow the PAIML quality standards:
 
 Minimum Supported Rust Version: **1.87**
 
+## Cookbook
+
+See [entrenar-cookbook](https://github.com/paiml/entrenar-cookbook) for examples and recipes.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
