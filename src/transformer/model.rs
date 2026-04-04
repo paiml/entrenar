@@ -158,13 +158,27 @@ impl Transformer {
             Error::ConfigError(format!("Failed to open APR file '{}': {e}", apr_path.display()))
         })?;
 
-        // Build weight map from APR tensors — same key convention as SafeTensors
+        // Build weight map from APR tensors — map GGUF names to HF convention (PMAT-489)
+        let is_gguf_names = reader.tensors.iter().any(|t| t.name == "token_embd.weight");
+        if is_gguf_names {
+            eprintln!(
+                "[PMAT-489] Detected GGUF tensor names in APR file, mapping to HF convention"
+            );
+        }
         let mut weights = HashMap::new();
         for desc in &reader.tensors {
             let data = reader.read_tensor_as_f32(&desc.name).map_err(|e| {
                 Error::ConfigError(format!("Failed to read tensor '{}': {e}", desc.name))
             })?;
-            weights.insert(desc.name.clone(), Tensor::from_vec(data, false));
+            let mapped_name = if is_gguf_names {
+                super::weights::mapping::map_weight_name(
+                    &desc.name,
+                    super::weights::Architecture::Gguf,
+                )
+            } else {
+                desc.name.clone()
+            };
+            weights.insert(mapped_name, Tensor::from_vec(data, false));
         }
 
         // Same validation pipeline as from_safetensors

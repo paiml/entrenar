@@ -51,6 +51,57 @@ fn map_roberta_weight_name(name: &str) -> String {
     name.to_string()
 }
 
+/// Map GGUF tensor names to standard LLaMA/HF convention.
+///
+/// GGUF uses short names like `token_embd.weight`, `blk.0.attn_q.weight`.
+/// The training pipeline expects HF-style names like `model.embed_tokens.weight`.
+fn map_gguf_weight_name(name: &str) -> String {
+    // Embeddings
+    if name == "token_embd.weight" {
+        return "model.embed_tokens.weight".to_string();
+    }
+    if name == "output_norm.weight" {
+        return "model.norm.weight".to_string();
+    }
+    if name == "output_norm.bias" {
+        return "model.norm.bias".to_string();
+    }
+    if name == "output.weight" {
+        return "lm_head.weight".to_string();
+    }
+
+    // Layer tensors: blk.{N}.{component}.weight
+    if let Some(rest) = name.strip_prefix("blk.") {
+        if let Some((num, layer_rest)) = rest.split_once('.') {
+            let mapped = match layer_rest {
+                // Attention
+                "attn_q.weight" => "self_attn.q_proj.weight",
+                "attn_k.weight" => "self_attn.k_proj.weight",
+                "attn_v.weight" => "self_attn.v_proj.weight",
+                "attn_output.weight" => "self_attn.o_proj.weight",
+                "attn_q.bias" => "self_attn.q_proj.bias",
+                "attn_k.bias" => "self_attn.k_proj.bias",
+                "attn_v.bias" => "self_attn.v_proj.bias",
+                "attn_output.bias" => "self_attn.o_proj.bias",
+                // Norms
+                "attn_norm.weight" => "input_layernorm.weight",
+                "attn_norm.bias" => "input_layernorm.bias",
+                "ffn_norm.weight" => "post_attention_layernorm.weight",
+                "ffn_norm.bias" => "post_attention_layernorm.bias",
+                // FFN (Qwen2/LLaMA style)
+                "ffn_gate.weight" => "mlp.gate_proj.weight",
+                "ffn_up.weight" => "mlp.up_proj.weight",
+                "ffn_down.weight" => "mlp.down_proj.weight",
+                other => other,
+            };
+            return format!("model.layers.{num}.{mapped}");
+        }
+    }
+
+    // Pass through anything else
+    name.to_string()
+}
+
 /// Map weight name from source architecture to standard LLaMA convention
 ///
 /// Standard names expected by `Transformer::from_params`:
@@ -86,6 +137,7 @@ pub(crate) fn map_weight_name(name: &str, arch: Architecture) -> String {
             name.to_string()
         }
         Architecture::RoBERTa => map_roberta_weight_name(name),
+        Architecture::Gguf => map_gguf_weight_name(name),
         Architecture::Auto => {
             // Should not reach here after detection
             name.to_string()

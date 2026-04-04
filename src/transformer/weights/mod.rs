@@ -12,7 +12,7 @@
 
 mod convert;
 mod detect;
-mod mapping;
+pub(crate) mod mapping;
 
 #[cfg(test)]
 mod tests;
@@ -39,6 +39,8 @@ pub enum Architecture {
     Mistral,
     /// RoBERTa / CodeBERT encoder models (ENC-006)
     RoBERTa,
+    /// GGUF tensor names (token_embd, blk.N.attn_q, etc.)
+    Gguf,
     /// Auto-detect from weight names
     Auto,
 }

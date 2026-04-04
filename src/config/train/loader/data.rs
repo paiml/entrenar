@@ -233,7 +233,12 @@ fn try_load_apr(
         });
 
     // Load weight tensors (skip __training__.* namespace)
+    // Detect GGUF tensor names and map to HF convention (PMAT-489)
     let mut weights = HashMap::new();
+    let is_gguf_names = reader.tensors.iter().any(|t| t.name == "token_embd.weight");
+    if is_gguf_names {
+        eprintln!("[PMAT-489] Detected GGUF tensor names in APR file, mapping to HF convention");
+    }
     for desc in &reader.tensors {
         let tensor_name = &desc.name;
         if tensor_name.starts_with("__training__") {
@@ -241,7 +246,13 @@ fn try_load_apr(
         }
         match reader.read_tensor_as_f32(tensor_name) {
             Ok(data) => {
-                weights.insert(tensor_name.clone(), crate::Tensor::from_vec(data, false));
+                let mapped_name = if is_gguf_names {
+                    use crate::transformer::weights::{Architecture, mapping::map_weight_name};
+                    map_weight_name(tensor_name, Architecture::Gguf)
+                } else {
+                    tensor_name.clone()
+                };
+                weights.insert(mapped_name, crate::Tensor::from_vec(data, false));
             }
             Err(e) => {
                 eprintln!("Warning: Failed to read APR tensor '{tensor_name}': {e}");
