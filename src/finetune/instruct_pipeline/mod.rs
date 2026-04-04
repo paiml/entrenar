@@ -152,6 +152,8 @@ pub(super) struct InstructGpuTrainingState {
     /// PMAT-464: Cached CUDA graph for forward pass replay.
     forward_graph_exec: Option<trueno_gpu::driver::CudaGraphExec>,
     graph_cached_seq_len: usize,
+    /// PMAT-488: Cached CUDA graph for backward pass replay.
+    backward_graph_state: Option<super::backward_graph::BackwardGraphState>,
     /// PMAT-063: cuBLAS workspace buffer (must outlive CUDA graph)
     cublas_workspace: Option<GpuBuffer<f32>>,
     /// PMAT-483: Per-layer forward timing (microseconds per layer per step)

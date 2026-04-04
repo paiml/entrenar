@@ -448,6 +448,7 @@ impl InstructPipeline {
             lm_head_hidden_buf,
             forward_graph_exec: None,
             graph_cached_seq_len: 0,
+            backward_graph_state: None,
             cublas_workspace: None,
             profiler_layer_fwd_us: vec![0u64; num_layers],
             profiler_layer_bwd_us: vec![0u64; num_layers],
