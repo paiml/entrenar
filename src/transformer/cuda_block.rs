@@ -3987,19 +3987,36 @@ impl CudaNf4TransformerBlock {
         let qd = saturating_u32(q_dim);
         let kvh = saturating_u32(kv_hidden_size);
 
-        // Step 1: O projection backward
+        // Step 1: O projection backward (PMAT-481: TC dispatch)
+        static USE_NF4_TC_BWD_O: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let nf4_tc_bwd_o = *USE_NF4_TC_BWD_O
+            .get_or_init(|| std::env::var("NF4_TC_BWD_GEMM").as_deref() == Ok("1"));
+
         let _t = scratch.op_begin(); // OP_ATTN_BWD timing (O-proj + attention mechanism)
-        gemm_backward_a_fp16_dispatch(
-            grad_residual1,
-            self.w_o_fp16.as_ref(),
-            &self.w_o_fp32,
-            &mut scratch.attn_out,
-            s,
-            qd,
-            h,
-            stream,
-            &self.ctx,
-        )?;
+        if nf4_tc_bwd_o {
+            crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
+                grad_residual1,
+                &self.w_o_nf4,
+                &self.w_o_scales,
+                &mut scratch.attn_out,
+                s,
+                h,  // N = hidden_size (grad_residual1 cols)
+                qd, // K = q_dim (output cols = W_o rows)
+                stream,
+            )?;
+        } else {
+            gemm_backward_a_fp16_dispatch(
+                grad_residual1,
+                self.w_o_fp16.as_ref(),
+                &self.w_o_fp32,
+                &mut scratch.attn_out,
+                s,
+                qd,
+                h,
+                stream,
+                &self.ctx,
+            )?;
+        }
 
         // Step 2: Attention mechanism backward
         // This is complex (softmax backward, batched GEMMs) — reuse the fp32 attention backward
