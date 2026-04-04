@@ -31,6 +31,9 @@ impl MergeEngine {
     ///
     /// For each LoRA target module:
     /// W_merged = W_base + (scale * alpha / rank) * (B @ A)
+    ///
+    /// A is [d_in, rank], B is [rank, d_out] (or transposed depending on convention).
+    /// The merge computes the outer product B×A and adds it to W_base.
     pub fn merge(
         &self,
         base_weights: &[f32],
@@ -40,19 +43,69 @@ impl MergeEngine {
         rank: u32,
     ) -> Vec<f32> {
         let scale_factor = self.scale * alpha / rank as f32;
+        let r = rank as usize;
 
-        // Simplified merge: W_merged = W_base + scale * (B @ A)
-        // In real implementation, would do proper matrix multiplication
-        base_weights
-            .iter()
-            .enumerate()
-            .map(|(i, &w)| {
-                // Simplified: just add scaled A and B values
-                let a_val = lora_a.get(i % lora_a.len()).copied().unwrap_or(0.0);
-                let b_val = lora_b.get(i % lora_b.len()).copied().unwrap_or(0.0);
-                w + scale_factor * a_val * b_val
-            })
-            .collect()
+        // Infer matrix dimensions from flat arrays and rank
+        // A: [d_in, r] stored row-major → lora_a.len() = d_in * r
+        // B: [r, d_out] stored row-major → lora_b.len() = r * d_out
+        let d_in = lora_a.len() / r;
+        let d_out = lora_b.len() / r;
+
+        // W_base is [d_out, d_in] stored row-major (standard weight layout)
+        // W_merged = W_base + scale * B^T @ A^T
+        // where B^T is [d_out, r] and A^T is [r, d_in]
+        // Result: [d_out, d_in] — same shape as W_base
+        let mut result = base_weights.to_vec();
+
+        if d_out * d_in != base_weights.len() {
+            // Dimensions don't match — try transposed interpretation
+            // A: [r, d_in], B: [d_out, r]
+            let d_in_alt = lora_a.len() / r;
+            let d_out_alt = lora_b.len() / r;
+            if d_out_alt * d_in_alt == base_weights.len() {
+                // B[d_out, r] @ A[r, d_in] = [d_out, d_in]
+                for row in 0..d_out_alt {
+                    for col in 0..d_in_alt {
+                        let mut sum = 0.0f32;
+                        for k in 0..r {
+                            sum += lora_b[row * r + k] * lora_a[k * d_in_alt + col];
+                        }
+                        result[row * d_in_alt + col] += scale_factor * sum;
+                    }
+                }
+                return result;
+            }
+            // Fall through — dimensions incompatible, return base unchanged
+            eprintln!(
+                "[WARN] LoRA merge dimension mismatch: base={}, A={}x{}, B={}x{}",
+                base_weights.len(),
+                d_in,
+                r,
+                r,
+                d_out
+            );
+            return result;
+        }
+
+        // Standard: A[d_in, r], B[r, d_out]
+        // Compute B @ A = [r, d_out]^T @ [d_in, r]^T ...
+        // Actually: W += scale * (lora_b^T @ lora_a^T) where result is [d_out, d_in]
+        // lora_b as [r, d_out]: lora_b^T is [d_out, r]
+        // lora_a as [d_in, r]: lora_a^T is [r, d_in]
+        // [d_out, r] @ [r, d_in] = [d_out, d_in] ✓
+        for row in 0..d_out {
+            for col in 0..d_in {
+                let mut sum = 0.0f32;
+                for k in 0..r {
+                    // B^T[row, k] = B[k, row] = lora_b[k * d_out + row]
+                    // A^T[k, col] = A[col, k] = lora_a[col * r + k]
+                    sum += lora_b[k * d_out + row] * lora_a[col * r + k];
+                }
+                result[row * d_in + col] += scale_factor * sum;
+            }
+        }
+
+        result
     }
 
     /// Merge multiple adapters with different scales.
