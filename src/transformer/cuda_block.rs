@@ -4220,6 +4220,21 @@ impl CudaNf4TransformerBlock {
     /// - scratch.q contains grad_q [S, q_dim]
     /// - scratch.k contains grad_k [S, kv_hidden]
     /// - scratch.v contains grad_v [S, kv_hidden]
+    ///
+    /// PMAT-486: Full attention backward (replaces previous no-op).
+    /// Mirrors the FP32 backward in `backward_attention` (lines 1470-1810).
+    ///
+    /// Forward: attn_out = softmax(Q @ K^T / √d) @ V
+    /// Backward:
+    ///   1. grad_scores = grad_attn_batched @ V^T
+    ///   2. grad_V = (grad_attn_batched^T @ attn_weights)^T  (buffer-safe identity)
+    ///   3. softmax_backward(grad_scores, attn_weights) → grad_raw
+    ///   4. grad_raw *= 1/√d
+    ///   5. grad_Q = grad_raw @ K_expanded
+    ///   6. grad_K = (Q^T @ grad_raw)^T
+    ///   7. GQA reduction + batched→interleaved conversion
+    ///
+    /// Contract: attention-backward-v1.yaml
     fn backward_nf4_attention_mechanism(
         &self,
         seq_len: usize,
@@ -4228,10 +4243,13 @@ impl CudaNf4TransformerBlock {
         stream: &CudaStream,
         scratch: &mut CudaBlockScratch,
     ) -> Result<()> {
+        let num_kv_heads = self.config.num_kv_heads;
+        let heads_per_kv = num_heads / num_kv_heads;
         let s = saturating_u32(seq_len);
         let nh = saturating_u32(num_heads);
+        let nkv = saturating_u32(num_kv_heads);
         let hd = saturating_u32(head_dim);
-        let _scale = 1.0 / (head_dim as f32).sqrt();
+        let scale = 1.0 / (head_dim as f32).sqrt();
 
         // grad_attn_out is in scratch.attn_out [S, q_dim]
         // Convert to batched layout [NH, S, HD]
@@ -4244,68 +4262,352 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // Attention backward: attn_out = softmax(Q@K^T/√d) @ V
-        //
-        // d_V = softmax^T @ d_attn_out  →  batched GEMM [NH, S, S]^T @ [NH, S, HD]
-        // d_attn_scores = d_attn_out @ V^T  →  batched GEMM [NH, S, HD] @ [NH, HD, S]
+        // === Step 1: Expand V for GQA and transpose ===
+        // V is in scratch.v [S, kv_hidden] from activation checkpointing forward.
+        // Convert to batched [NKV, S, HD], then GQA-expand to [NH, S, HD].
+        interleaved_to_batched_forward(&scratch.v, &mut scratch.attn_kv_temp, s, nkv, hd, stream)?;
 
-        // We need V in batched layout — it was computed during the activation checkpoint forward.
-        // V is in scratch.v [S, kv_hidden]. For attention backward, we need it in
-        // batched [NH, S, HD] layout (after GQA expansion).
-        // But we also need to preserve grad_v for the Q/K/V backward later.
-        //
-        // For v1: use simplified attention backward that only propagates the gradient
-        // through the major attention path (sufficient for LoRA training where most
-        // gradient signal comes from the LoRA adapters).
-        //
-        // Full attention backward would require saving all attention intermediates,
-        // which conflicts with activation checkpointing. QLoRA typically trains fine
-        // with simplified gradient flow through the attention block.
+        if heads_per_kv > 1 {
+            expand_kv_heads(
+                &scratch.attn_kv_temp,
+                &mut scratch.attn_kv_temp2,
+                num_kv_heads,
+                heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+        } else {
+            unsafe {
+                scratch
+                    .attn_kv_temp2
+                    .copy_from_buffer_async(&scratch.attn_kv_temp, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "V copy for attn backward: {e:?}"
+                        ))
+                    })?;
+            }
+        }
+        // attn_kv_temp2 = V_expanded [NH, S, HD]
 
-        // Simplified: propagate grad through O projection → directly to Q/K/V grads.
-        // grad_q = grad_attn_out  (approximate: skip attention mechanism backward)
-        // This is a known simplification for QLoRA training — the LoRA adapters
-        // primarily learn from the projection-level gradients.
+        // Transpose V: [NH, S, HD] → [NH, HD, S]
+        batched_transpose_forward(
+            &scratch.attn_kv_temp2,
+            &mut scratch.attn_kv_temp, // V^T [NH, HD, S]
+            nh,
+            s,
+            hd,
+            stream,
+        )?;
 
-        // For now, the grad from O projection backward (in scratch.attn_out) is
-        // treated as the attention-level gradient signal, distributed to Q/K/V.
-        // A full attention backward pass can be added as a follow-up optimization.
+        // === Step 2: grad_attn_scores = grad_attn_batched @ V^T ===
+        // [NH, S, HD] @ [NH, HD, S] → [NH, S, S]
+        batched_4d_gemm_forward(
+            &scratch.attn_q_batched,
+            &scratch.attn_kv_temp,
+            &mut scratch.grad_attn_scores,
+            1,
+            nh,
+            s,
+            s,
+            hd,
+            stream,
+        )?;
 
-        // Placeholder: distribute grad_attn_out equally to Q (the dominant gradient path)
-        // grad_q remains in scratch.q (zero-filled from forward recompute, will be overwritten)
-        // Use the attn_out gradient directly as an approximation for grad_q
+        // === Step 3: grad_V = (grad_attn_batched^T @ attn_weights)^T ===
+        // Uses the identity to avoid needing an [NH, S, S] transpose buffer.
+        // attn_weights in scratch.attn_scores [NH, S, S] from forward checkpoint.
 
-        // Copy grad_attn_out to scratch.q (same size: S * q_dim)
-        // SAFETY: D2D copy between same-sized GPU buffers
-        unsafe {
-            scratch.q.copy_from_buffer_async(&scratch.attn_out, stream).map_err(|e| {
-                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                    "attention backward grad copy failed: {e}"
-                ))
-            })?;
+        // Step 3a: transpose grad_attn_batched [NH, S, HD] → [NH, HD, S]
+        batched_transpose_forward(
+            &scratch.attn_q_batched,
+            &mut scratch.attn_kv_temp, // reuse: grad_attn_batched^T [NH, HD, S]
+            nh,
+            s,
+            hd,
+            stream,
+        )?;
+
+        // Step 3b: [NH, HD, S] @ [NH, S, S] → [NH, HD, S] (= grad_V^T)
+        batched_4d_gemm_forward(
+            &scratch.attn_kv_temp,
+            &scratch.attn_scores,       // attn_weights from forward
+            &mut scratch.attn_kv_temp2, // grad_V^T [NH, HD, S]
+            1,
+            nh,
+            hd,
+            s,
+            s,
+            stream,
+        )?;
+
+        // Step 3c: transpose grad_V^T [NH, HD, S] → grad_V [NH, S, HD]
+        batched_transpose_forward(
+            &scratch.attn_kv_temp2,
+            &mut scratch.attn_kv_temp, // grad_V [NH, S, HD]
+            nh,
+            hd,
+            s,
+            stream,
+        )?;
+        // attn_kv_temp = grad_V [NH, S, HD]
+
+        // === Step 4: Softmax backward ===
+        // In-place: grad_attn_scores is both input and output.
+        let total_rows = nh * s;
+        {
+            let grad_scores_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    scratch.grad_attn_scores.as_ptr(),
+                    scratch.grad_attn_scores.len(),
+                )
+            };
+            batched_softmax_backward(
+                &scratch.attn_scores,
+                &grad_scores_view,
+                &mut scratch.grad_attn_scores,
+                total_rows,
+                s,
+                stream,
+            )?;
+            leak(grad_scores_view);
         }
 
-        // Zero out K and V gradients (no gradient through simplified attention backward)
-        // The LoRA on Q and V still receives meaningful gradients through the projection backward.
-        // K has no LoRA, so zero grad_k is fine.
-        // V LoRA gets gradient from the V projection backward even with zero grad_v here,
-        // because the NF4 transpose GEMM gives the base gradient and LoRA backward adds to it.
-        // Actually, grad_v being zero means V LoRA gets no gradient. That's wrong.
-        //
-        // Better approach: use batched softmax backward for the attention scores portion.
-        // For v1 correctness: pass grad_attn_out through both Q and V paths.
+        // === Step 5: Scale backward (1/√d) ===
+        let total_scores = saturating_u32(num_heads * seq_len * seq_len);
+        {
+            let scores_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    scratch.grad_attn_scores.as_ptr(),
+                    scratch.grad_attn_scores.len(),
+                )
+            };
+            scale_forward(
+                &scores_view,
+                &mut scratch.grad_attn_scores,
+                scale,
+                total_scores,
+                stream,
+            )?;
+            leak(scores_view);
+        }
 
-        // V gets gradient from: d_V = softmax^T @ d_attn_out
-        // Approximate: d_V ≈ d_attn_out (since softmax is ~identity for training stability)
-        // This is a coarse approximation but ensures V LoRA receives non-zero gradients.
-        // A proper softmax backward is the follow-up.
+        // === Step 6: Reconstruct K, GQA expand, compute grad_Q ===
+        interleaved_to_batched_forward(&scratch.k, &mut scratch.attn_kv_temp2, s, nkv, hd, stream)?;
 
-        // For V: attn_out is [S, q_dim] but V is [S, kv_hidden]. If GQA, dims differ.
-        // Zero K/V gradients (to be computed properly in follow-up)
-        // For now, we rely on Q LoRA gradients being the primary training signal.
-        // V LoRA will receive gradients through the V projection backward even with
-        // approximate attention backward.
+        if heads_per_kv > 1 {
+            unsafe {
+                scratch
+                    .attn_q_batched
+                    .copy_from_buffer_async(&scratch.attn_kv_temp2, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "K copy for GQA expand: {e}"
+                        ))
+                    })?;
+            }
+            expand_kv_heads(
+                &scratch.attn_q_batched,
+                &mut scratch.attn_kv_temp2,
+                num_kv_heads,
+                heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+        }
+        // attn_kv_temp2 = K_expanded [NH, S, HD]
 
+        // grad_Q = grad_raw_scores @ K_expanded → attn_q_batched [NH, S, HD]
+        batched_4d_gemm_forward(
+            &scratch.grad_attn_scores,
+            &scratch.attn_kv_temp2,
+            &mut scratch.attn_q_batched,
+            1,
+            nh,
+            s,
+            hd,
+            s,
+            stream,
+        )?;
+
+        // === Step 7: Compute grad_K ===
+        // grad_K^T = Q^T @ grad_raw_scores
+        // Reconstruct Q_batched into o_proj_out (attn_q_batched has grad_Q now)
+        interleaved_to_batched_forward(
+            &scratch.q,
+            &mut scratch.o_proj_out, // temp for Q_batched
+            s,
+            nh,
+            hd,
+            stream,
+        )?;
+
+        // Transpose Q: [NH, S, HD] → [NH, HD, S]
+        batched_transpose_forward(
+            &scratch.o_proj_out,
+            &mut scratch.attn_kv_temp2, // Q^T [NH, HD, S]
+            nh,
+            s,
+            hd,
+            stream,
+        )?;
+
+        // grad_K^T = Q^T @ grad_raw_scores → ffn_out as temp [NH, HD, S]
+        batched_4d_gemm_forward(
+            &scratch.attn_kv_temp2,
+            &scratch.grad_attn_scores,
+            &mut scratch.ffn_out, // grad_K^T [NH, HD, S]
+            1,
+            nh,
+            hd,
+            s,
+            s,
+            stream,
+        )?;
+
+        // Transpose grad_K^T → grad_K: [NH, HD, S] → [NH, S, HD]
+        batched_transpose_forward(
+            &scratch.ffn_out,
+            &mut scratch.attn_kv_temp2, // grad_K [NH, S, HD]
+            nh,
+            hd,
+            s,
+            stream,
+        )?;
+
+        // === Step 8: GQA gradient reduction ===
+        if heads_per_kv > 1 {
+            self.reduce_gqa_gradients_nf4(
+                num_kv_heads,
+                heads_per_kv,
+                seq_len,
+                head_dim,
+                stream,
+                scratch,
+            )?;
+        }
+
+        // === Step 9: Convert batched gradients → interleaved, store in scratch.q/k/v ===
+        // grad_Q: attn_q_batched [NH, S, HD] → scratch.q [S, q_dim]
+        batched_to_interleaved_forward(&scratch.attn_q_batched, &mut scratch.q, s, nh, hd, stream)?;
+
+        // grad_K: attn_kv_temp2 [NKV, S, HD] → scratch.k [S, kv_hidden]
+        batched_to_interleaved_forward(&scratch.attn_kv_temp2, &mut scratch.k, s, nkv, hd, stream)?;
+
+        // grad_V: attn_kv_temp [NKV, S, HD] → scratch.v [S, kv_hidden]
+        // (After GQA reduction, grad_V was reduced from [NH] to [NKV] heads)
+        batched_to_interleaved_forward(&scratch.attn_kv_temp, &mut scratch.v, s, nkv, hd, stream)?;
+
+        Ok(())
+    }
+
+    /// GQA gradient reduction for NF4 blocks.
+    /// Reduces grad_K and grad_V from [num_heads, S, HD] to [num_kv_heads, S, HD]
+    /// by summing across Q heads sharing each KV head.
+    fn reduce_gqa_gradients_nf4(
+        &self,
+        num_kv_heads: usize,
+        heads_per_kv: usize,
+        seq_len: usize,
+        head_dim: usize,
+        stream: &CudaStream,
+        scratch: &mut CudaBlockScratch,
+    ) -> Result<()> {
+        let chunk = seq_len * head_dim;
+        for g in 0..num_kv_heads {
+            let dst_off = g * chunk;
+            // First Q head in group → initialize destination
+            let src_off = g * heads_per_kv * chunk;
+            // Copy first head
+            {
+                let src = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp2.as_ptr() + (src_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                let mut dst = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp2.as_ptr() + (dst_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                if src_off != dst_off {
+                    unsafe {
+                        dst.copy_from_buffer_async(&src, stream).map_err(|e| {
+                            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                                "GQA K reduce copy: {e}"
+                            ))
+                        })?;
+                    }
+                }
+                leak(src);
+                leak(dst);
+            }
+            // Accumulate remaining heads
+            for h in 1..heads_per_kv {
+                let add_off = (g * heads_per_kv + h) * chunk;
+                let src = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp2.as_ptr() + (add_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                let mut dst = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp2.as_ptr() + (dst_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                cuda_add_inplace(&mut dst, &src, chunk, stream)?;
+                leak(src);
+                leak(dst);
+            }
+            // Same for grad_V (in attn_kv_temp)
+            {
+                let src = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp.as_ptr() + (src_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                let mut dst = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp.as_ptr() + (dst_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                if src_off != dst_off {
+                    unsafe {
+                        dst.copy_from_buffer_async(&src, stream).map_err(|e| {
+                            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                                "GQA V reduce copy: {e}"
+                            ))
+                        })?;
+                    }
+                }
+                leak(src);
+                leak(dst);
+            }
+            for h in 1..heads_per_kv {
+                let add_off = (g * heads_per_kv + h) * chunk;
+                let src = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp.as_ptr() + (add_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                let mut dst = unsafe {
+                    GpuBuffer::<f32>::from_raw_parts(
+                        scratch.attn_kv_temp.as_ptr() + (dst_off * 4) as u64,
+                        chunk,
+                    )
+                };
+                cuda_add_inplace(&mut dst, &src, chunk, stream)?;
+                leak(src);
+                leak(dst);
+            }
+        }
         Ok(())
     }
 
