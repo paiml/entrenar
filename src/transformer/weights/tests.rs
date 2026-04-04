@@ -701,3 +701,181 @@ fn test_detect_architecture_roberta() {
     let result = load_safetensors_weights(&file_path, Architecture::Auto);
     assert!(result.is_ok());
 }
+
+// PMAT-489: GGUF tensor name mapping tests
+// Contract: map_weight_name(gguf_name, Architecture::Gguf) must return HF-convention name
+// for all tensor types used in Qwen2/LLaMA decoder models.
+
+#[test]
+fn test_gguf_map_embedding() {
+    assert_eq!(
+        map_weight_name("token_embd.weight", Architecture::Gguf),
+        "model.embed_tokens.weight"
+    );
+}
+
+#[test]
+fn test_gguf_map_output_norm() {
+    assert_eq!(map_weight_name("output_norm.weight", Architecture::Gguf), "model.norm.weight");
+    assert_eq!(map_weight_name("output_norm.bias", Architecture::Gguf), "model.norm.bias");
+}
+
+#[test]
+fn test_gguf_map_lm_head() {
+    assert_eq!(map_weight_name("output.weight", Architecture::Gguf), "lm_head.weight");
+}
+
+#[test]
+fn test_gguf_map_attention_projections() {
+    for layer in [0, 1, 27] {
+        assert_eq!(
+            map_weight_name(&format!("blk.{layer}.attn_q.weight"), Architecture::Gguf),
+            format!("model.layers.{layer}.self_attn.q_proj.weight")
+        );
+        assert_eq!(
+            map_weight_name(&format!("blk.{layer}.attn_k.weight"), Architecture::Gguf),
+            format!("model.layers.{layer}.self_attn.k_proj.weight")
+        );
+        assert_eq!(
+            map_weight_name(&format!("blk.{layer}.attn_v.weight"), Architecture::Gguf),
+            format!("model.layers.{layer}.self_attn.v_proj.weight")
+        );
+        assert_eq!(
+            map_weight_name(&format!("blk.{layer}.attn_output.weight"), Architecture::Gguf),
+            format!("model.layers.{layer}.self_attn.o_proj.weight")
+        );
+    }
+}
+
+#[test]
+fn test_gguf_map_attention_biases() {
+    assert_eq!(
+        map_weight_name("blk.0.attn_q.bias", Architecture::Gguf),
+        "model.layers.0.self_attn.q_proj.bias"
+    );
+    assert_eq!(
+        map_weight_name("blk.0.attn_k.bias", Architecture::Gguf),
+        "model.layers.0.self_attn.k_proj.bias"
+    );
+    assert_eq!(
+        map_weight_name("blk.0.attn_v.bias", Architecture::Gguf),
+        "model.layers.0.self_attn.v_proj.bias"
+    );
+    assert_eq!(
+        map_weight_name("blk.0.attn_output.bias", Architecture::Gguf),
+        "model.layers.0.self_attn.o_proj.bias"
+    );
+}
+
+#[test]
+fn test_gguf_map_ffn_projections() {
+    for layer in [0, 14, 27] {
+        assert_eq!(
+            map_weight_name(&format!("blk.{layer}.ffn_gate.weight"), Architecture::Gguf),
+            format!("model.layers.{layer}.mlp.gate_proj.weight")
+        );
+        assert_eq!(
+            map_weight_name(&format!("blk.{layer}.ffn_up.weight"), Architecture::Gguf),
+            format!("model.layers.{layer}.mlp.up_proj.weight")
+        );
+        assert_eq!(
+            map_weight_name(&format!("blk.{layer}.ffn_down.weight"), Architecture::Gguf),
+            format!("model.layers.{layer}.mlp.down_proj.weight")
+        );
+    }
+}
+
+#[test]
+fn test_gguf_map_layer_norms() {
+    assert_eq!(
+        map_weight_name("blk.0.attn_norm.weight", Architecture::Gguf),
+        "model.layers.0.input_layernorm.weight"
+    );
+    assert_eq!(
+        map_weight_name("blk.0.attn_norm.bias", Architecture::Gguf),
+        "model.layers.0.input_layernorm.bias"
+    );
+    assert_eq!(
+        map_weight_name("blk.0.ffn_norm.weight", Architecture::Gguf),
+        "model.layers.0.post_attention_layernorm.weight"
+    );
+    assert_eq!(
+        map_weight_name("blk.0.ffn_norm.bias", Architecture::Gguf),
+        "model.layers.0.post_attention_layernorm.bias"
+    );
+}
+
+#[test]
+fn test_gguf_map_unknown_passthrough() {
+    // Unknown tensor names should pass through unchanged
+    assert_eq!(
+        map_weight_name("some_unknown_tensor.weight", Architecture::Gguf),
+        "some_unknown_tensor.weight"
+    );
+    // Unknown layer suffix should pass through with model.layers prefix
+    assert_eq!(
+        map_weight_name("blk.0.custom_ext.weight", Architecture::Gguf),
+        "model.layers.0.custom_ext.weight"
+    );
+}
+
+#[test]
+fn test_gguf_map_all_28_layers_qwen2_1_5b() {
+    // Qwen2.5-Coder-1.5B has 28 layers — verify mapping for boundary layers
+    for layer in [0, 13, 27] {
+        let q = map_weight_name(&format!("blk.{layer}.attn_q.weight"), Architecture::Gguf);
+        assert!(q.starts_with("model.layers."), "layer {layer} q_proj");
+        assert!(q.ends_with(".self_attn.q_proj.weight"), "layer {layer} q_proj suffix");
+    }
+}
+
+#[test]
+fn test_gguf_map_completeness_for_training() {
+    // Training pipeline requires ALL these names from from_params().
+    // Verify the complete set for one layer + non-layer tensors.
+    let required_hf_names = [
+        "model.embed_tokens.weight",
+        "model.norm.weight",
+        "lm_head.weight",
+        "model.layers.0.input_layernorm.weight",
+        "model.layers.0.self_attn.q_proj.weight",
+        "model.layers.0.self_attn.k_proj.weight",
+        "model.layers.0.self_attn.v_proj.weight",
+        "model.layers.0.self_attn.o_proj.weight",
+        "model.layers.0.post_attention_layernorm.weight",
+        "model.layers.0.mlp.gate_proj.weight",
+        "model.layers.0.mlp.up_proj.weight",
+        "model.layers.0.mlp.down_proj.weight",
+    ];
+
+    let gguf_names = [
+        "token_embd.weight",
+        "output_norm.weight",
+        "output.weight",
+        "blk.0.attn_norm.weight",
+        "blk.0.attn_q.weight",
+        "blk.0.attn_k.weight",
+        "blk.0.attn_v.weight",
+        "blk.0.attn_output.weight",
+        "blk.0.ffn_norm.weight",
+        "blk.0.ffn_gate.weight",
+        "blk.0.ffn_up.weight",
+        "blk.0.ffn_down.weight",
+    ];
+
+    for (gguf, expected_hf) in gguf_names.iter().zip(required_hf_names.iter()) {
+        let mapped = map_weight_name(gguf, Architecture::Gguf);
+        assert_eq!(
+            &mapped, expected_hf,
+            "GGUF '{gguf}' should map to '{expected_hf}', got '{mapped}'"
+        );
+    }
+}
+
+#[test]
+fn test_gguf_architecture_debug_and_equality() {
+    assert_eq!(format!("{:?}", Architecture::Gguf), "Gguf");
+    assert_ne!(Architecture::Gguf, Architecture::Auto);
+    assert_ne!(Architecture::Gguf, Architecture::Llama);
+    assert_eq!(Architecture::Gguf, Architecture::Gguf);
+}
