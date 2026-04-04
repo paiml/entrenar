@@ -3724,7 +3724,7 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === Step 2: Post-attn norm backward ===
-        // grad_residual1 = rms_norm_backward(grad_from_ffn, residual1, post_attn_norm_weight)
+        let _t = scratch.op_begin(); // OP_NORM_BWD timing (both norms)
         rms_norm_backward(
             &scratch.residual1,
             &self.post_attn_norm_weight,
@@ -3762,7 +3762,7 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // Skip double residual accumulation — LoRA-only training doesn't need it.
+        scratch.op_end(_t, OP_NORM_BWD);
 
         Ok(())
     }
