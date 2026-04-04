@@ -3,6 +3,7 @@
 
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use provable_contracts_macros::{ensures, requires};
 
 impl InstructPipeline {
     /// Create a new pipeline with random weights.
@@ -184,6 +185,10 @@ impl InstructPipeline {
     ///
     /// # Errors
     /// Returns error if APR file cannot be loaded or weights are invalid.
+    /// CONTRACT L5: apr_tokenizer_embedding (model-format-conversion-v1.yaml)
+    /// APR files are self-contained — tokenizer is extracted from embedded metadata.
+    /// Sibling .tokenizer.json is a legacy fallback only.
+    #[requires(apr_path.exists())]
     pub fn from_apr(
         apr_path: &Path,
         model_config: &TransformerConfig,
@@ -200,40 +205,53 @@ impl InstructPipeline {
 
         let optimizer = AdamW::default_params(instruct_config.learning_rate);
 
-        // Sibling tokenizer: {stem}.tokenizer.json next to the .apr file
-        // CONTRACT: Training requires a BPE tokenizer — byte-fallback is not acceptable.
+        // Tokenizer resolution: APR is an embedded format — extract from metadata first.
+        // Fallback 1: Sibling {stem}.tokenizer.json next to the .apr file
+        // Fallback 2: Error — training requires a BPE tokenizer.
         let tokenizer = {
-            let sibling = apr_path.file_stem().and_then(|stem| {
-                apr_path
-                    .parent()
-                    .map(|p| p.join(format!("{}.tokenizer.json", stem.to_str().unwrap_or(""))))
-            });
+            // PRIMARY: Extract embedded tokenizer from APR metadata
+            let embedded = Self::extract_embedded_tokenizer(apr_path);
 
-            match sibling {
-                Some(ref path) if path.exists() => {
-                    let tok = HfTokenizer::from_file(path).map_err(|e| {
-                        crate::Error::ConfigError(format!(
-                            "Failed to load tokenizer from '{}': {e}. \
-                             Training requires a BPE tokenizer — byte-level \
-                             fallback is not supported.",
+            if let Some(tok) = embedded {
+                eprintln!(
+                    "[tokenizer] Loaded embedded BPE tokenizer from APR metadata (vocab_size={})",
+                    tok.vocab_size(),
+                );
+                Some(tok)
+            } else {
+                // FALLBACK: Sibling tokenizer.json file
+                let sibling = apr_path.file_stem().and_then(|stem| {
+                    apr_path
+                        .parent()
+                        .map(|p| p.join(format!("{}.tokenizer.json", stem.to_str().unwrap_or(""))))
+                });
+
+                match sibling {
+                    Some(ref path) if path.exists() => {
+                        let tok = HfTokenizer::from_file(path).map_err(|e| {
+                            crate::Error::ConfigError(format!(
+                                "Failed to load tokenizer from '{}': {e}. \
+                                 Training requires a BPE tokenizer.",
+                                path.display(),
+                            ))
+                        })?;
+                        eprintln!(
+                            "[tokenizer] Loaded BPE tokenizer from sibling {} (vocab_size={})",
                             path.display(),
-                        ))
-                    })?;
-                    eprintln!(
-                        "[tokenizer] Loaded BPE tokenizer from {} (vocab_size={})",
-                        path.display(),
-                        tok.vocab_size(),
-                    );
-                    Some(tok)
-                }
-                _ => {
-                    return Err(crate::Error::ConfigError(format!(
-                        "No sibling tokenizer found for '{}'. Expected \
-                         '{}.tokenizer.json' next to the .apr file. Training \
-                         requires a BPE tokenizer.",
-                        apr_path.display(),
-                        apr_path.file_stem().unwrap_or_default().to_str().unwrap_or(""),
-                    )));
+                            tok.vocab_size(),
+                        );
+                        Some(tok)
+                    }
+                    _ => {
+                        return Err(crate::Error::ConfigError(format!(
+                            "No tokenizer found for '{}'. APR metadata has no embedded \
+                             tokenizer, and no sibling '{}.tokenizer.json' found. \
+                             Re-import with `apr import` to embed the tokenizer, or \
+                             place a tokenizer.json file next to the .apr file.",
+                            apr_path.display(),
+                            apr_path.file_stem().unwrap_or_default().to_str().unwrap_or(""),
+                        )));
+                    }
                 }
             }
         };
@@ -277,6 +295,62 @@ impl InstructPipeline {
         }
 
         Ok(pipeline)
+    }
+
+    /// Extract BPE tokenizer from APR file's embedded metadata.
+    ///
+    /// CONTRACT: apr_tokenizer_embedding (model-format-conversion-v1.yaml, PMAT-154)
+    /// APR files store tokenizer vocabulary and merges in the metadata section.
+    /// This reconstructs a HuggingFace-compatible tokenizer.json from those fields.
+    ///
+    /// Returns None if the APR file lacks embedded tokenizer data (pre-PMAT-154 files).
+    // CONTRACT L5: If tokenizer is extracted, it must have non-zero vocab
+    #[ensures(ret.as_ref().map_or(true, |t| t.vocab_size() > 0))]
+    fn extract_embedded_tokenizer(apr_path: &Path) -> Option<HfTokenizer> {
+        use aprender::serialization::apr::AprReader;
+
+        let reader = AprReader::open(apr_path).ok()?;
+
+        // Extract vocabulary: tokenizer.vocabulary is an array of token strings
+        let vocab_array = reader.metadata.get("tokenizer.vocabulary")?;
+        let vocab: Vec<&str> = vocab_array.as_array()?.iter().filter_map(|v| v.as_str()).collect();
+
+        if vocab.is_empty() {
+            return None;
+        }
+
+        // Extract merges: tokenizer.merges is an array of "token1 token2" strings
+        let merges: Vec<&str> = reader
+            .metadata
+            .get("tokenizer.merges")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+
+        // Reconstruct HuggingFace tokenizer.json format
+        // Format: {"model": {"type": "BPE", "vocab": {"token": id, ...}, "merges": [...]}, "added_tokens": []}
+        let mut vocab_map = serde_json::Map::new();
+        for (id, token) in vocab.iter().enumerate() {
+            vocab_map.insert(
+                (*token).to_string(),
+                serde_json::Value::Number(serde_json::Number::from(id)),
+            );
+        }
+
+        let merges_json: Vec<serde_json::Value> =
+            merges.iter().map(|m| serde_json::Value::String((*m).to_string())).collect();
+
+        let tokenizer_json = serde_json::json!({
+            "model": {
+                "type": "BPE",
+                "vocab": vocab_map,
+                "merges": merges_json,
+            },
+            "added_tokens": [],
+        });
+
+        let json_str = serde_json::to_string(&tokenizer_json).ok()?;
+        HfTokenizer::from_json(&json_str).ok()
     }
 
     /// Build LoRA layers for Q and V projections (same pattern as ClassifyPipeline).
