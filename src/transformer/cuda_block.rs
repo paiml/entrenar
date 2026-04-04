@@ -4044,19 +4044,37 @@ impl CudaNf4TransformerBlock {
 
         scratch.op_end(_t, OP_ATTN_BWD);
 
-        // Q/K/V backward (PMAT-472: fp16 dispatch)
+        // Q/K/V backward (PMAT-472: fp16 dispatch, PMAT-481: TC dispatch)
+        static USE_NF4_TC_BWD_ATTN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let nf4_tc_bwd = *USE_NF4_TC_BWD_ATTN
+            .get_or_init(|| std::env::var("NF4_TC_BWD_GEMM").as_deref() == Ok("1"));
+
         let _t = scratch.op_begin(); // OP_QKV_BWD timing
-        gemm_backward_a_fp16_dispatch(
-            &scratch.q,
-            self.w_q_fp16.as_ref(),
-            &self.w_q_fp32,
-            &mut scratch.o_proj_out,
-            s,
-            h,
-            qd,
-            stream,
-            &self.ctx,
-        )?;
+        if nf4_tc_bwd {
+            // PMAT-481: NF4 tensor core backward for Q projection
+            crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
+                &scratch.q,
+                &self.w_q_nf4,
+                &self.w_q_scales,
+                &mut scratch.o_proj_out,
+                s,
+                qd, // N = q_dim (grad_q cols)
+                h,  // K = hidden_size (output cols)
+                stream,
+            )?;
+        } else {
+            gemm_backward_a_fp16_dispatch(
+                &scratch.q,
+                self.w_q_fp16.as_ref(),
+                &self.w_q_fp32,
+                &mut scratch.o_proj_out,
+                s,
+                h,
+                qd,
+                stream,
+                &self.ctx,
+            )?;
+        }
 
         // LoRA Q backward: compute grad_A_q, grad_B_q, and add to grad_norm1
         if let (Some(a_q), Some(b_q)) = (&self.lora_a_q, &self.lora_b_q) {
@@ -4117,11 +4135,46 @@ impl CudaNf4TransformerBlock {
             )?;
         }
 
-        // K+V backward (PMAT-484: fused accumulate eliminates 2 add_inplace launches)
+        // K+V backward (PMAT-484: fused, PMAT-481: TC dispatch)
         static USE_FUSED_BWD_ATTN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let fused_bwd = *USE_FUSED_BWD_ATTN
             .get_or_init(|| std::env::var("NF4_FUSED_BWD_GEMM").as_deref() == Ok("1"));
-        if fused_bwd {
+
+        if nf4_tc_bwd {
+            // PMAT-481: NF4 tensor core backward for K and V projections
+            crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
+                &scratch.k,
+                &self.w_k_nf4,
+                &self.w_k_scales,
+                &mut scratch.ffn_out,
+                s,
+                kvh, // N = kv_hidden (grad_k cols)
+                h,   // K = hidden_size (output cols)
+                stream,
+            )?;
+            cuda_add_inplace(
+                &mut scratch.o_proj_out,
+                &scratch.ffn_out,
+                seq_len * hidden_size,
+                stream,
+            )?;
+            crate::autograd::cuda_forward::gemm_nf4_tc_backward_a(
+                &scratch.v,
+                &self.w_v_nf4,
+                &self.w_v_scales,
+                &mut scratch.ffn_out,
+                s,
+                kvh, // N = kv_hidden
+                h,   // K = hidden_size
+                stream,
+            )?;
+            cuda_add_inplace(
+                &mut scratch.o_proj_out,
+                &scratch.ffn_out,
+                seq_len * hidden_size,
+                stream,
+            )?;
+        } else if fused_bwd {
             // Fused: K and V backward accumulate directly into o_proj_out
             gemm_backward_a_fp16_dispatch_accumulate(
                 &scratch.k,
