@@ -94,26 +94,6 @@ pub struct WgpuInstructPipeline {
     normed_buf: wgpu::Buffer,
     /// RMSNorm epsilon
     eps: f32,
-    /// PMAT-492: Pre-allocated scratch buffers for LoRA backward.
-    /// Eliminates ~1200 GPU buffer allocations per step (7 proj × 28 layers × 6 bufs).
-    lora_scratch: Option<LoraBackwardScratch>,
-}
-
-/// Pre-allocated GPU scratch buffers for LoRA backward pass.
-/// Sized for the largest projection dimension, reused across all layers.
-#[cfg(feature = "gpu")]
-struct LoraBackwardScratch {
-    /// [seq_len, rank] — for XA, XA^T, d_XA
-    xa: wgpu::Buffer,
-    xa_t: wgpu::Buffer,
-    d_xa: wgpu::Buffer,
-    /// [rank, max_out_dim] — for dB, B^T
-    db: wgpu::Buffer,
-    bt: wgpu::Buffer,
-    /// [max_in_dim, rank] — for dA
-    da: wgpu::Buffer,
-    /// [seq_len, max_in_dim] — for X^T
-    xt: wgpu::Buffer,
 }
 
 #[cfg(feature = "gpu")]
@@ -480,41 +460,7 @@ impl WgpuInstructPipeline {
             output_norm_gpu: output_norm_gpu_buf,
             normed_buf: normed_buf_alloc,
             eps,
-            lora_scratch: None, // initialized on first train_step
         }
-    }
-
-    /// PMAT-492: Pre-allocate scratch buffers for LoRA backward.
-    /// Sizes based on max projection dimensions across all layers.
-    fn init_lora_scratch(&mut self, seq_len: usize) {
-        if self.lora_scratch.is_some() {
-            return;
-        }
-        let rank = self.lora_rank;
-        // Find max in_dim and out_dim across all projections
-        let mut max_out = 0usize;
-        let mut max_in = 0usize;
-        for layer in &self.lora {
-            for proj in &layer.projections {
-                max_out = max_out.max(proj.out_dim as usize);
-                max_in = max_in.max(proj.in_dim as usize);
-            }
-        }
-        if max_out == 0 || max_in == 0 {
-            return;
-        }
-        eprintln!(
-            "[PMAT-492] Pre-allocating LoRA backward scratch: seq={seq_len} rank={rank} max_in={max_in} max_out={max_out}"
-        );
-        self.lora_scratch = Some(LoraBackwardScratch {
-            xa: self.trainer.zeros(seq_len * rank),
-            xa_t: self.trainer.zeros(seq_len * rank),
-            d_xa: self.trainer.zeros(seq_len * rank),
-            db: self.trainer.zeros(rank * max_out),
-            bt: self.trainer.zeros(rank * max_out),
-            da: self.trainer.zeros(max_in * rank),
-            xt: self.trainer.zeros(seq_len * max_in),
-        });
     }
 
     /// LoRA addmm: output += (input @ A) @ B * scale. One GPU dispatch.
@@ -1044,10 +990,6 @@ impl WgpuInstructPipeline {
         //   dL/dA = (α/r) * X^T @ (G @ B^T)  [in, rank]
         // Contract: adamw-kernel-v1/weight_update
         // Contract: lora-gradient-flow-v1 — B_norm > 0 after step 1
-        //
-        // PMAT-492: Uses pre-allocated scratch buffers instead of per-iteration
-        // self.trainer.zeros() calls. Eliminates ~1200 GPU buffer allocations/step.
-        self.init_lora_scratch(seq_len);
         self.lora_step += 1;
         let lr = 2e-4_f32; // standard QLoRA lr (Dettmers et al.)
         let s = seq_len as u32;
@@ -1079,101 +1021,37 @@ impl WgpuInstructPipeline {
                 // dB = scale * XA^T @ G,  dA = scale * X^T @ (G @ B^T)
                 let scale = self.lora_scale;
 
-                if let Some(ref scratch) = self.lora_scratch {
-                    // PMAT-492: Reuse pre-allocated scratch buffers
-                    // Step 1: XA = X @ A  [seq, rank]
-                    self.trainer.matmul_forward(
-                        input_buf,
-                        &proj.a,
-                        &scratch.xa,
-                        s,
-                        proj.in_dim,
-                        rank,
-                    );
+                // Step 1: XA = X @ A  [seq, rank]
+                let xa = self.trainer.zeros((s * rank) as usize);
+                self.trainer.matmul_forward(input_buf, &proj.a, &xa, s, proj.in_dim, rank);
 
-                    // Step 2: dB = (scale * XA)^T @ G
-                    self.dispatch_transpose(&scratch.xa, &scratch.xa_t, s, rank, scale);
-                    self.trainer.matmul_forward(
-                        &scratch.xa_t,
-                        grad_buf,
-                        &scratch.db,
-                        rank,
-                        s,
-                        proj.out_dim,
-                    );
+                // Step 2: dB = (scale * XA)^T @ G — GPU transpose + GEMM
+                let xa_t = self.trainer.zeros((s * rank) as usize);
+                self.dispatch_transpose(&xa, &xa_t, s, rank, scale);
+                let db = self.trainer.zeros((rank * proj.out_dim) as usize);
+                self.trainer.matmul_forward(&xa_t, grad_buf, &db, rank, s, proj.out_dim);
 
-                    // Step 3: dA (skip if B=0 — first step optimization)
-                    if self.lora_step > 1 {
-                        self.dispatch_transpose(&proj.b, &scratch.bt, rank, proj.out_dim, 1.0);
-                        self.trainer.matmul_forward(
-                            grad_buf,
-                            &scratch.bt,
-                            &scratch.d_xa,
-                            s,
-                            proj.out_dim,
-                            rank,
-                        );
-                        self.dispatch_transpose(input_buf, &scratch.xt, s, proj.in_dim, scale);
-                        self.trainer.matmul_forward(
-                            &scratch.xt,
-                            &scratch.d_xa,
-                            &scratch.da,
-                            proj.in_dim,
-                            s,
-                            rank,
-                        );
-                    }
-                    // else: da stays zero from init (first step skip)
-
-                    // AdamW step: update A and B
-                    self.trainer.adamw_step(
-                        &proj.a,
-                        &scratch.da,
-                        &proj.m_a,
-                        &proj.v_a,
-                        lr,
-                        0.9,
-                        0.999,
-                        1e-8,
-                        0.01,
-                    );
-                    self.trainer.adamw_step(
-                        &proj.b,
-                        &scratch.db,
-                        &proj.m_b,
-                        &proj.v_b,
-                        lr,
-                        0.9,
-                        0.999,
-                        1e-8,
-                        0.01,
-                    );
+                // Step 3: dA (skip if B=0 — first step optimization)
+                let da = if self.lora_step <= 1 {
+                    self.trainer.zeros((proj.in_dim * rank) as usize)
                 } else {
-                    // Fallback: allocate per-iteration (no scratch available)
-                    let xa = self.trainer.zeros((s * rank) as usize);
-                    self.trainer.matmul_forward(input_buf, &proj.a, &xa, s, proj.in_dim, rank);
-                    let xa_t = self.trainer.zeros((s * rank) as usize);
-                    self.dispatch_transpose(&xa, &xa_t, s, rank, scale);
-                    let db = self.trainer.zeros((rank * proj.out_dim) as usize);
-                    self.trainer.matmul_forward(&xa_t, grad_buf, &db, rank, s, proj.out_dim);
-                    let da = if self.lora_step <= 1 {
-                        self.trainer.zeros((proj.in_dim * rank) as usize)
-                    } else {
-                        let bt = self.trainer.zeros((rank * proj.out_dim) as usize);
-                        self.dispatch_transpose(&proj.b, &bt, rank, proj.out_dim, 1.0);
-                        let d_xa = self.trainer.zeros((s * rank) as usize);
-                        self.trainer.matmul_forward(grad_buf, &bt, &d_xa, s, proj.out_dim, rank);
-                        let xt = self.trainer.zeros((s * proj.in_dim) as usize);
-                        self.dispatch_transpose(input_buf, &xt, s, proj.in_dim, scale);
-                        let da_buf = self.trainer.zeros((proj.in_dim * rank) as usize);
-                        self.trainer.matmul_forward(&xt, &d_xa, &da_buf, proj.in_dim, s, rank);
-                        da_buf
-                    };
-                    self.trainer
-                        .adamw_step(&proj.a, &da, &proj.m_a, &proj.v_a, lr, 0.9, 0.999, 1e-8, 0.01);
-                    self.trainer
-                        .adamw_step(&proj.b, &db, &proj.m_b, &proj.v_b, lr, 0.9, 0.999, 1e-8, 0.01);
-                }
+                    let bt = self.trainer.zeros((rank * proj.out_dim) as usize);
+                    self.dispatch_transpose(&proj.b, &bt, rank, proj.out_dim, 1.0);
+                    let d_xa = self.trainer.zeros((s * rank) as usize);
+                    self.trainer.matmul_forward(grad_buf, &bt, &d_xa, s, proj.out_dim, rank);
+                    let xt = self.trainer.zeros((s * proj.in_dim) as usize);
+                    self.dispatch_transpose(input_buf, &xt, s, proj.in_dim, scale);
+                    let da_buf = self.trainer.zeros((proj.in_dim * rank) as usize);
+                    self.trainer.matmul_forward(&xt, &d_xa, &da_buf, proj.in_dim, s, rank);
+                    da_buf
+                };
+
+                // AdamW step: update A and B
+                // Contract: adamw-kernel-v1/weight_update
+                self.trainer
+                    .adamw_step(&proj.a, &da, &proj.m_a, &proj.v_a, lr, 0.9, 0.999, 1e-8, 0.01);
+                self.trainer
+                    .adamw_step(&proj.b, &db, &proj.m_b, &proj.v_b, lr, 0.9, 0.999, 1e-8, 0.01);
             }
         }
 
