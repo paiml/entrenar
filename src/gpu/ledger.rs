@@ -373,7 +373,10 @@ fn read_ledger(file: &File) -> Result<LedgerData, GpuError> {
     if reader.read_to_string(&mut contents).is_err() || contents.trim().is_empty() {
         return Ok(LedgerData::default());
     }
-    serde_json::from_str(&contents).map_err(|e| GpuError::LedgerCorrupt(format!("JSON parse: {e}")))
+    // Graceful recovery: if ledger is corrupted (e.g., concurrent write race),
+    // treat as empty rather than failing — lost reservations are self-healing
+    // since processes re-register on next operation.
+    serde_json::from_str(&contents).or_else(|_| Ok(LedgerData::default()))
 }
 
 /// Atomic write: write to temp file, fsync, rename over ledger.
