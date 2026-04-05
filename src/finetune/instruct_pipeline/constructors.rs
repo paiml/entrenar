@@ -305,7 +305,7 @@ impl InstructPipeline {
     ///
     /// Returns None if the APR file lacks embedded tokenizer data (pre-PMAT-154 files).
     // CONTRACT L5: If tokenizer is extracted, it must have non-zero vocab
-    #[ensures(ret.as_ref().map_or(true, |t| t.vocab_size() > 0))]
+    #[ensures(ret.as_ref().is_none_or(|t| t.vocab_size() > 0))]
     fn extract_embedded_tokenizer(apr_path: &Path) -> Option<HfTokenizer> {
         use aprender::serialization::apr::AprReader;
 

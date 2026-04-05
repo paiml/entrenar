@@ -270,15 +270,17 @@ fn test_cov3_from_pretrained_no_tokenizer() {
 }
 
 #[test]
+#[should_panic(expected = "Pre-condition violated")]
 fn test_cov3_from_apr_missing_file() {
+    // The #[requires(apr_path.exists())] contract on from_apr triggers a
+    // debug_assert! panic when the file does not exist (debug builds only).
     let model_config = TransformerConfig::tiny();
     let instruct_config = InstructConfig::default();
-    let result = InstructPipeline::from_apr(
+    let _result = InstructPipeline::from_apr(
         Path::new("/tmp/nonexistent_model.apr"),
         &model_config,
         instruct_config,
     );
-    assert!(result.is_err());
 }
 
 #[test]
