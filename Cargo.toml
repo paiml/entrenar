@@ -143,10 +143,11 @@ crate-type = ["rlib"]
 workspace = true
 
 [features]
-default = []  # Lean default: CB-081 compliance (≤250 prod deps)
+default = ["tui"]  # TUI IPC writer always available (state types used unconditionally)
 cpu-fallback = []  # Explicit opt-in for CPU-only builds (CI without GPU)
 gguf = []  # Placeholder for future GGUF support via Realizar
 monitor = ["trueno-db"]  # Training monitoring with persistence
+tui = ["dep:presentar-terminal"]  # TUI dashboard (PMAT-507: gated due to presentar API drift)
 wasm = ["wasm-bindgen", "getrandom", "js-sys"]  # WASM bindings for browser dashboard
 citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG-based fix suggestions
 server = ["axum", "tower", "tower-http", "tokio"]  # REST/HTTP API server
@@ -163,17 +164,17 @@ hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard
 
 [dependencies]
 # Contract macros for pre/post-condition enforcement (zero cost in release)
-provable-contracts-macros = { path = "../provable-contracts/crates/provable-contracts-macros" }
+provable-contracts-macros = { version = "0.2" }
 # Core PAIML stack
 ndarray = "0.16"
-trueno = { version = "0.17", path = "../trueno", features = ["parallel"] }  # SIMD-accelerated compute
-trueno-gpu = { version = "0.4", path = "../trueno/trueno-gpu", optional = true }  # CUDA compute
-realizar = { version = "0.8", path = "../realizar", optional = true }  # CUDA inference engine
-aprender = { version = "0.27", path = "../aprender" }  # ML interpret module + .apr format + tokenizers
-trueno-viz = { version = "0.2", path = "../trueno-viz", features = ["terminal"] }  # Terminal visualization
-presentar-terminal = { version = "0.3.5", path = "../presentar" }  # Sovereign TUI framework
+trueno = { version = "0.17", features = ["parallel"] }  # SIMD-accelerated compute
+trueno-gpu = { version = "0.4", optional = true }  # CUDA compute
+realizar = { version = "0.8", optional = true }  # CUDA inference engine
+aprender = { version = "0.27" }  # ML interpret module + .apr format + tokenizers
+trueno-viz = { version = "0.2", features = ["terminal"] }  # Terminal visualization
+presentar-terminal = { version = "0.3.5", optional = true }  # Sovereign TUI framework (gated by "tui" feature)
 presentar-core = "0.3.4"  # Presentar core traits (crates.io — path removed, presentar restructured)
-trueno-db = { version = "0.3.16", path = "../trueno-db", optional = true }  # Time-series storage
+trueno-db = { version = "0.3.16", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
 renacer = { version = "0.9", optional = true }  # Distributed tracing
 wasm-bindgen = { version = "0.2", optional = true }  # WASM bindings
@@ -232,7 +233,7 @@ parquet = { version = "57", default-features = false }  # For ALB-007 Parquet wr
 insta = { version = "1.42", features = ["json", "yaml"] }  # Snapshot testing for PMAT QA
 dirs = "5.0"  # Cache directory detection for examples
 jugar-probar = "1.0"  # TUI snapshot testing (ENT-140)
-provable-contracts = { path = "../provable-contracts/crates/provable-contracts" }  # Contract trait enforcement (Section 23)
+provable-contracts = { version = "0.2" }  # Contract trait enforcement (Section 23)
 
 [[bench]]
 name = "monitor_bench"
@@ -442,7 +443,4 @@ replace = "## [{{version}}] - {{date}}"
 [workspace.dependencies]
 
 
-[patch.crates-io]
-trueno = { path = "../trueno" }
-trueno-gpu = { path = "../trueno/trueno-gpu" }
 

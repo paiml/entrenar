@@ -183,8 +183,11 @@ impl WgslCrossEntropy {
         loss_start: u32,
         loss_end: u32,
     ) -> f32 {
+        // PMAT-498 fix: (1) add buffer label (wgpu rejects unlabeled buffers on map_async),
+        // (2) poll before copy to ensure CE forward kernel completed (loss buffer has data).
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).ok();
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
+            label: Some("ce_loss_readback"),
             size: u64::from(seq_len) * 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,

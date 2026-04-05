@@ -276,7 +276,7 @@ impl WgpuTrainer {
     /// Upload host data to GPU buffer
     pub fn upload(&self, data: &[f32]) -> wgpu::Buffer {
         let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
+            label: Some("upload_data"),
             size: (data.len() * 4) as u64,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
@@ -295,8 +295,9 @@ impl WgpuTrainer {
     /// Download GPU buffer to host
     pub fn download(&self, buffer: &wgpu::Buffer) -> Vec<f32> {
         let size = buffer.size();
+        // PMAT-498: label required — wgpu rejects unlabeled buffers on map_async
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
+            label: Some("download_staging"),
             size,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
