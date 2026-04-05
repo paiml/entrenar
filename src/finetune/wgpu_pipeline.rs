@@ -378,12 +378,18 @@ impl WgpuInstructPipeline {
             ("down_proj", inter, h),
         ];
 
+        // PMAT-497 FIX: Forward pass only applies LoRA to Q/K/V via QkvLoRA.
+        // Backward MUST match — training o/gate/up/down produces spurious gradients
+        // that corrupt convergence (loss > random from step 1).
+        // When full 7-projection LoRA forward is implemented, this can be "all".
         let _use_all = true; // Always create all 7 for QkvLoRA forward
         let proj_dims: Vec<(&str, usize, usize)> = all_proj_dims.to_vec();
         let num_targets = proj_dims.len();
+        let qkv_only = vec!["q_proj".to_string(), "k_proj".to_string(), "v_proj".to_string()];
         let lora_target_set: Vec<String> =
             if lora_targets.is_empty() || lora_targets.contains(&"all") {
-                all_proj_dims.iter().map(|(n, _, _)| n.to_string()).collect()
+                // Forward only applies QkvLoRA (Q/K/V) — backward must match
+                qkv_only
             } else {
                 lora_targets.iter().map(std::string::ToString::to_string).collect()
             };
