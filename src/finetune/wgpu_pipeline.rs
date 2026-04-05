@@ -78,6 +78,7 @@ pub struct WgpuInstructPipeline {
     lora_rank: usize,
     lora_scale: f32,              // alpha / rank
     lora_step: u32,               // optimizer step counter
+    learning_rate: f32,           // PMAT-497: was hardcoded, now from config
     lora_target_set: Vec<String>, // which projections to train
     /// Config
     num_layers: usize,
@@ -127,6 +128,7 @@ impl WgpuInstructPipeline {
         lora_alpha: f32,
         lora_targets: &[&str],
         eps: f32,
+        learning_rate: f32,
     ) -> Self {
         let ce = WgslCrossEntropy::new(trainer.device_ref().clone(), trainer.queue_ref().clone());
 
@@ -456,6 +458,7 @@ impl WgpuInstructPipeline {
             lora_rank: r,
             lora_scale: scale,
             lora_step: 0,
+            learning_rate,
             lora_target_set: lora_target_set,
             num_layers,
             hidden_dim,
@@ -997,7 +1000,9 @@ impl WgpuInstructPipeline {
         // Contract: adamw-kernel-v1/weight_update
         // Contract: lora-gradient-flow-v1 — B_norm > 0 after step 1
         self.lora_step += 1;
-        let lr = 2e-4_f32; // standard QLoRA lr (Dettmers et al.)
+        // PMAT-497: Was hardcoded to 2e-4, ignoring user's --learning-rate.
+        // Use the learning rate from InstructConfig passed during construction.
+        let lr = self.learning_rate;
         let s = seq_len as u32;
         let rank = self.lora_rank as u32;
 
