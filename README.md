@@ -1,73 +1,77 @@
-<div align="center">
-
-<p align="center">
-  <img src=".github/entrenar-hero.svg" alt="entrenar" width="800">
-</p>
-
 <h1 align="center">entrenar</h1>
 
 <p align="center">
-  <b>Production-grade neural network training in pure Rust</b>
+  <strong>Training Framework for the Sovereign AI Stack</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/paiml/entrenar/actions/workflows/ci.yml"><img src="https://github.com/paiml/entrenar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://crates.io/crates/entrenar"><img src="https://img.shields.io/crates/v/entrenar.svg" alt="Crates.io"></a>
-  <a href="https://docs.rs/entrenar"><img src="https://docs.rs/entrenar/badge.svg" alt="Documentation"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-7527%2B%20passing-brightgreen" alt="Tests"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/coverage-96%25-brightgreen" alt="Coverage"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/TDG-A%2B%20(96.8)-brightgreen" alt="TDG Score"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
+  <a href="https://crates.io/crates/entrenar">
+    <img src="https://img.shields.io/crates/v/entrenar.svg" alt="crates.io">
+  </a>
+  <a href="https://docs.rs/entrenar">
+    <img src="https://docs.rs/entrenar/badge.svg" alt="docs.rs">
+  </a>
+  <a href="https://github.com/paiml/entrenar/actions">
+    <img src="https://github.com/paiml/entrenar/actions/workflows/ci.yml/badge.svg"
+         alt="CI">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
+  </a>
+  <a href="https://blog.rust-lang.org/2025/05/15/Rust-1.87.0.html">
+    <img src="https://img.shields.io/badge/rust-1.87%2B-orange.svg" alt="Rust 1.87+">
+  </a>
 </p>
 
-</div>
+A pure Rust training framework providing autograd, LoRA/QLoRA
+fine-tuning, quantization (Int4/Int8), model merging, knowledge
+distillation, and Compiler-in-the-Loop (CITL) training. Built on
+[trueno](https://crates.io/crates/trueno) for SIMD-accelerated compute
+and [aprender](https://crates.io/crates/aprender) for ML algorithms.
+
+---
+
+[Features](#features) | [Installation](#installation) | [Usage](#usage) | [Architecture](#architecture) | [Quality](#quality) | [Sovereign Stack](#sovereign-ai-stack) | [Documentation](#documentation) | [License](#license)
 
 ---
 
 ## Table of Contents
 
-- [What is Entrenar?](#what-is-entrenar)
+- [What is entrenar?](#what-is-entrenar)
 - [Installation](#installation)
-- [Getting Started](#getting-started)
+- [Usage](#usage)
 - [Features](#features)
-- [Usages](#usages)
 - [Architecture](#architecture)
+- [Quality](#quality)
+- [Sovereign AI Stack](#sovereign-ai-stack)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
+- [License](#license)
 
----
+## What is entrenar?
 
-## What is Entrenar?
+**Entrenar** (Spanish: "to train") is a production-grade neural network
+training library in pure Rust. It provides everything needed to train,
+fine-tune, quantize, merge, and distill models -- with no Python
+dependency.
 
-**Entrenar** (Spanish: "to train") provides everything needed to train neural networks in Rust:
+Core capabilities:
 
-- **Autograd Engine** - Tape-based automatic differentiation
-- **Optimizers** - SGD, Adam, AdamW with schedulers and gradient clipping
-- **LoRA/QLoRA** - Parameter-efficient fine-tuning (4-bit quantized), PEFT-compatible adapter export, NF4 gradient clipping
-- **Quantization** - QAT, PTQ, GGUF-compatible Q4_0/Q8_0, NF4 training with cuBLAS backward
-- **Model Merging** - TIES, DARE, SLERP algorithms
-- **Knowledge Distillation** - Multi-teacher, progressive layer-wise
-- **Training Loop** - Callbacks, checkpoints, early stopping
-- **Monitoring** - Real-time metrics, drift detection, Andon alerts
-- **Explainability** - Feature attribution via SHAP, Integrated Gradients
-- **GPU Training** - WGPU backend for AMD/Intel/cross-platform GPU training, CUDA/cuBLAS for NVIDIA
+- **Autograd Engine** -- Tape-based reverse-mode automatic differentiation
+- **Optimizers** -- SGD, Adam, AdamW with cosine scheduling and gradient clipping
+- **LoRA / QLoRA** -- Parameter-efficient fine-tuning with 4-bit quantized base weights
+- **Quantization** -- QAT, PTQ, GGUF-compatible Q4_0/Q8_0, NF4 training
+- **Model Merging** -- TIES, DARE, SLERP algorithms
+- **Knowledge Distillation** -- Multi-teacher, progressive layer-wise
+- **CITL** -- Compiler-in-the-Loop training for transpiler optimization
+- **GPU Training** -- WGPU backend (AMD/Intel/cross-platform), CUDA/cuBLAS (NVIDIA)
+- **Monitoring** -- Real-time metrics, drift detection, Andon alerts
 
-Part of the [PAIML Stack](https://github.com/paiml), built on [trueno](https://crates.io/crates/trueno) for
-SIMD-accelerated operations.
+Part of the [PAIML Sovereign AI Stack](https://github.com/paiml).
 
 ## Installation
 
-```bash
-# From crates.io
-cargo install entrenar
-
-# From source
-git clone https://github.com/paiml/entrenar
-cd entrenar
-cargo install --path .
-```
-
-## Getting Started
+### Library
 
 Add to your `Cargo.toml`:
 
@@ -76,33 +80,81 @@ Add to your `Cargo.toml`:
 entrenar = "0.7"
 ```
 
-For GPU-accelerated training (AMD, Intel, or other WGPU-compatible GPUs):
+### CLI
 
 ```bash
-cargo build --features gpu
+cargo install entrenar
 ```
+
+### From source
+
+```bash
+git clone https://github.com/paiml/entrenar
+cd entrenar
+cargo install --path .
+```
+
+## Usage
 
 ### Basic Training
 
 ```rust
-use entrenar::train::{Trainer, TrainConfig, Batch, MSELoss, EarlyStopping};
+use entrenar::train::{Trainer, TrainConfig, MSELoss, EarlyStopping};
 use entrenar::optim::Adam;
 use entrenar::Tensor;
 
-fn main() {
-    // Model parameters
-    let params = vec![Tensor::zeros(784 * 128, true)];
-    let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+let params = vec![Tensor::zeros(784 * 128, true)];
+let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
 
-    // Create trainer with callbacks
-    let mut trainer = Trainer::new(params, Box::new(optimizer), TrainConfig::default());
-    trainer.set_loss(Box::new(MSELoss));
-    trainer.add_callback(EarlyStopping::new(5, 0.001));
+let mut trainer = Trainer::new(params, Box::new(optimizer), TrainConfig::default());
+trainer.set_loss(Box::new(MSELoss));
+trainer.add_callback(EarlyStopping::new(5, 0.001));
 
-    // Train
-    let result = trainer.train(100, || batches.clone(), |x| model.forward(x));
-    println!("Final loss: {:.4}", result.final_loss);
-}
+let result = trainer.train(100, || batches.clone(), |x| model.forward(x));
+println!("Final loss: {:.4}", result.final_loss);
+```
+
+### Autograd
+
+```rust
+use entrenar::autograd::{matmul, softmax, layer_norm, attention};
+
+let y = matmul(&x, &w);
+let s = softmax(&logits);
+let n = layer_norm(&x, &gamma, &beta);
+let a = attention(&q, &k, &v);
+```
+
+### LoRA / QLoRA Fine-Tuning
+
+```rust
+use entrenar::lora::{LoRALayer, QLoRALayer};
+
+// Standard LoRA
+let lora = LoRALayer::new(4096, 4096, 16, 32.0);
+
+// QLoRA: 4-bit base + FP16 adapters (7B model: 28GB -> 3.5GB)
+let qlora = QLoRALayer::new(base_weights, 16, 32.0);
+```
+
+### Quantization
+
+```rust
+use entrenar::quant::{FakeQuantize, PTQCalibrator, GGUFQuantizer};
+
+let fq = FakeQuantize::new(8, true);            // QAT with STE
+let calibrator = PTQCalibrator::percentile(0.999); // Post-training
+let quantizer = GGUFQuantizer::q4_0();           // GGUF export
+```
+
+### Model Merging
+
+```rust
+use entrenar::merge::{TiesMerge, DareMerge, SlerpMerge};
+
+let merged = TiesMerge::new(0.2).merge(&models, &weights);
+let merged = DareMerge::new(0.9).merge(&base, &finetuned);
+let merged = SlerpMerge::new().merge(&a, &b, 0.5);
 ```
 
 ### Declarative Configuration
@@ -129,261 +181,155 @@ training:
 entrenar train train.yaml
 ```
 
-## Features
-
-### Autograd
-
-Tape-based automatic differentiation with verified gradients:
-
-```rust
-use entrenar::autograd::{matmul, softmax, layer_norm, attention};
-
-let y = matmul(&x, &w);                    // Matrix multiplication
-let s = softmax(&logits);                  // Softmax activation
-let n = layer_norm(&x, &gamma, &beta);     // Layer normalization
-let a = attention(&q, &k, &v);             // Scaled dot-product attention
-```
-
-### Optimizers
-
-```rust
-use entrenar::optim::{SGD, Adam, AdamW, CosineScheduler};
-
-let sgd = SGD::new(0.01, 0.9);
-let adam = Adam::new(0.001, 0.9, 0.999, 1e-8);
-let adamw = AdamW::new(0.001, 0.9, 0.999, 1e-8, 0.01);
-
-// Learning rate scheduling
-let scheduler = CosineScheduler::new(0.001, 0.0001, 100);
-```
-
-### LoRA / QLoRA
-
-Parameter-efficient fine-tuning with up to 99.75% parameter reduction:
-
-```rust
-use entrenar::lora::{LoRALayer, QLoRALayer, LoRAConfig};
-
-// Standard LoRA
-let lora = LoRALayer::new(4096, 4096, 16, 32.0);
-
-// QLoRA: 4-bit base + FP16 adapters
-// 7B model: 28GB -> 3.5GB memory
-let qlora = QLoRALayer::new(base_weights, 16, 32.0);
-```
-
-### Quantization
-
-```rust
-use entrenar::quant::{FakeQuantize, PTQCalibrator, GGUFQuantizer};
-
-// QAT with straight-through estimator
-let fq = FakeQuantize::new(8, true);
-
-// Post-training quantization
-let calibrator = PTQCalibrator::percentile(0.999);
-
-// GGUF export (llama.cpp compatible)
-let quantizer = GGUFQuantizer::q4_0();
-```
-
-### Model Merging
-
-```rust
-use entrenar::merge::{TiesMerge, DareMerge, SlerpMerge};
-
-// TIES: Trim + Sign Election
-let merged = TiesMerge::new(0.2).merge(&models, &weights);
-
-// DARE: Dropout + Rescale
-let merged = DareMerge::new(0.9).merge(&base, &finetuned);
-
-// SLERP: Spherical interpolation
-let merged = SlerpMerge::new().merge(&a, &b, 0.5);
-```
-
-### Knowledge Distillation
-
-```rust
-use entrenar::distill::{DistillationLoss, EnsembleDistiller};
-
-// Temperature-scaled KD loss
-let kd = DistillationLoss::new(4.0, 0.7);
-let loss = kd.compute(&student, &teacher, &labels);
-
-// Multi-teacher ensemble
-let ensemble = EnsembleDistiller::weighted(&[0.5, 0.3, 0.2]);
-```
-
-### Training Callbacks
-
-```rust
-use entrenar::train::{
-    EarlyStopping, CheckpointCallback, ProgressCallback,
-    MonitorCallback, ExplainabilityCallback, ExplainMethod,
-};
-
-trainer.add_callback(EarlyStopping::new(5, 0.001));
-trainer.add_callback(CheckpointCallback::new("./checkpoints"));
-trainer.add_callback(ProgressCallback::new(10));
-trainer.add_callback(MonitorCallback::new());  // NaN/Inf detection
-
-// Feature importance tracking
-trainer.add_callback(
-    ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
-        .with_top_k(10)
-);
-```
-
-### Real-Time Monitoring
-
-Toyota Way-inspired quality monitoring:
-
-```rust
-use entrenar::monitor::{MetricsCollector, DriftDetector, AndonSystem};
-
-let mut collector = MetricsCollector::new();
-let mut drift = DriftDetector::new(10);
-let mut andon = AndonSystem::new();
-
-// Automatic drift detection and Andon alerts
-if let DriftStatus::Drift(z) = drift.check(loss) {
-    andon.warning(format!("Loss drift: z={:.2}", z));
-}
-```
-
-## Usages
-
-### Running Examples
-
-```bash
-# Training Examples
-cargo run --example training_loop      # Basic training loop
-cargo run --example train_from_yaml    # YAML-based declarative training
-cargo run --example mnist_train        # MNIST classification (CPU)
-cargo run --example mnist_train_gpu    # MNIST classification (GPU/CUDA)
-
-# Model Operations
-cargo run --example distillation       # Knowledge distillation
-cargo run --example hf_distillation    # HuggingFace model distillation
-cargo run --example merge_models       # Model merging (TIES/DARE/SLERP)
-cargo run --example model_io           # Save/load SafeTensors models
-cargo run --example pruning_pipeline   # Model pruning workflow
-
-# Monitoring & Analysis
-cargo run --example explainability     # Feature attribution (SHAP)
-cargo run --example monitoring         # Real-time training metrics
-cargo run --example inference_monitor  # Inference latency tracking
-cargo run --example drift_simulation   # Drift detection simulation
-cargo run --example calibration_check  # P-value calibration
-
-# CLI Tools
-cargo run --example cli_bench          # Latency benchmarking
-cargo run --example cli_audit          # Bias detection
-cargo run --example cli_monitor        # Drift detection (PSI)
-cargo run --example cli_inspect        # Model inspection
-
-# Classification Fine-Tuning
-cargo run --example shell_safety_classify  # Shell Safety Classifier (5-class LoRA)
-cargo run --example classify_tune_demo     # Classification hyperparameter tuning (TPE/ASHA)
-
-# Advanced
-cargo run --example citl               # Compiler-in-the-loop training
-cargo run --example research           # Research artifact management
-cargo run --example sovereign          # Sovereign deployment
-cargo run --example cuda_backend       # CUDA backend configuration
-```
-
 ### CLI Commands
 
 ```bash
-# Training
 entrenar train config.yaml --epochs 10
-
-# Model operations
 entrenar quantize model.safetensors --bits 4 --output model_q4.json
 entrenar merge model1.safetensors model2.safetensors --method ties
-
-# Benchmarking & Monitoring
 entrenar bench config.yaml --warmup 5 --iterations 100
 entrenar inspect model.safetensors -v
 entrenar audit predictions.parquet --type bias --threshold 0.8
 entrenar monitor data.parquet --threshold 0.2
-
-# Shell completions
-entrenar completion bash > ~/.local/share/bash-completion/completions/entrenar
 ```
+
+## Features
+
+### Autograd Engine
+
+Tape-based reverse-mode automatic differentiation with verified
+gradients. Supports matmul, softmax, layer normalization, and scaled
+dot-product attention. All gradients validated against finite-difference
+reference implementations.
+
+### LoRA / QLoRA Fine-Tuning
+
+Parameter-efficient fine-tuning with up to 99.75% parameter reduction.
+QLoRA combines 4-bit NF4 quantized base weights with FP16 low-rank
+adapters, reducing 7B model memory from 28GB to 3.5GB. PEFT-compatible
+adapter export for interoperability with HuggingFace tooling.
+
+### Quantization
+
+Three quantization strategies: Quantization-Aware Training (QAT) with
+straight-through estimator, Post-Training Quantization (PTQ) with
+percentile calibration, and GGUF-compatible Q4_0/Q8_0 export for
+llama.cpp interoperability. NF4 training with cuBLAS backward pass
+support.
+
+### Model Merging
+
+Three model merging algorithms for combining fine-tuned checkpoints:
+TIES (Trim, Elect Sign, Merge) for multi-model consolidation, DARE
+(Dropout And Rescale) for parameter-efficient merging, and SLERP
+(Spherical Linear Interpolation) for smooth two-model blending.
+
+### Knowledge Distillation
+
+Temperature-scaled KD loss with configurable alpha weighting between
+hard and soft targets. Multi-teacher ensemble distillation with
+weighted aggregation. Progressive layer-wise distillation for
+large-to-small model transfer.
+
+### CITL (Compiler-in-the-Loop)
+
+Training loop that incorporates compiler feedback for transpiler
+optimization. Uses RAG-based fix suggestions via trueno-rag to
+guide training toward compilable outputs. Designed for the
+depyler/bashrs/decy transpilation stack.
+
+### GPU Training
+
+WGPU backend for cross-platform GPU training (AMD, Intel, Apple
+Silicon). NVIDIA CUDA/cuBLAS backend for dedicated GPU acceleration.
+NVML integration for real-time GPU monitoring. VRAM ledger with
+file-based locking for multi-process coordination.
+
+### Monitoring
+
+Toyota Way-inspired quality monitoring with real-time metrics
+collection, drift detection (z-score based), and Andon alert system
+for automatic anomaly notification. NaN/Inf detection, gradient
+explosion guards, and loss divergence tracking.
+
+### Feature Flags
+
+| Flag | Purpose |
+|------|---------|
+| `gpu` | GPU-accelerated training via wgpu |
+| `cuda` | NVIDIA CUDA/cuBLAS training |
+| `citl` | Compiler-in-the-Loop with trueno-rag |
+| `monitor` | Training monitoring with trueno-db persistence |
+| `server` | REST/HTTP API server via axum |
+| `parquet` | Parquet batch loading via alimentar |
+| `hub` | HuggingFace Hub model fetching |
+| `wasm` | Browser-compatible WASM build |
+| `tracing` | Renacer distributed tracing integration |
+| `nvml` | Real GPU monitoring via NVIDIA NVML |
 
 ## Architecture
 
 ```
 entrenar/
-├── autograd/     Tape-based automatic differentiation
-├── optim/        SGD, Adam, AdamW, schedulers
-├── lora/         LoRA, QLoRA fine-tuning
-├── quant/        QAT, PTQ, GGUF quantization
-├── merge/        TIES, DARE, SLERP merging
-├── distill/      Knowledge distillation
-├── finetune/     ClassifyPipeline, ClassifyTrainer, evaluation
-├── eval/         Classification metrics, drift detection, Andon
-├── train/        Trainer, callbacks, metrics, WGPU transformer trainer
-├── monitor/      Real-time monitoring, Andon
-├── config/       Declarative YAML config
-└── io/           Model persistence
+  autograd/     Tape-based automatic differentiation
+  optim/        SGD, Adam, AdamW, schedulers
+  lora/         LoRA, QLoRA fine-tuning
+  quant/        QAT, PTQ, GGUF quantization
+  merge/        TIES, DARE, SLERP merging
+  distill/      Knowledge distillation
+  finetune/     ClassifyPipeline, ClassifyTrainer, evaluation
+  eval/         Classification metrics, drift detection, Andon
+  train/        Trainer, callbacks, metrics, WGPU transformer trainer
+  monitor/      Real-time monitoring, Andon alerts
+  config/       Declarative YAML configuration
+  io/           Model persistence (SafeTensors, APR)
 ```
 
 ## Quality
 
 | Metric | Value |
 |--------|-------|
-| Tests | 7,449+ passing (7,527 with CUDA on Blackwell) |
-| Coverage | 96% (entrenar files) |
+| Tests | 7,527+ passing |
+| Coverage | 96% |
 | TDG Score | A+ (96.8/100) |
 | Critical Defects | 0 |
 | Property Tests | 200K+ iterations |
-| Gradient Checking | Finite difference validated |
+| Gradient Checking | Finite-difference validated |
 | Mutation Testing | >80% kill rate |
+| MSRV | 1.87 |
 
-## PAIML Stack
+## Sovereign AI Stack
 
-| Library | Purpose | Version |
-|---------|---------|---------|
-| [trueno](https://crates.io/crates/trueno) | SIMD tensor operations | 0.16.0 |
-| **entrenar** | Training & optimization | 0.7.6 |
-| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.27.5 |
-| [realizar](https://crates.io/crates/realizar) | GGUF inference | 0.8.0 |
+| Crate | Purpose | Version |
+|-------|---------|---------|
+| [trueno](https://crates.io/crates/trueno) | SIMD/GPU compute primitives | 0.16.x |
+| [aprender](https://crates.io/crates/aprender) | ML algorithms, APR v2 format | 0.27.x |
+| **entrenar** | **Training and optimization** | **0.7.x** |
+| [realizar](https://crates.io/crates/realizar) | Inference engine (APR/GGUF/SafeTensors) | 0.8.x |
+| [repartir](https://crates.io/crates/repartir) | Distributed compute (CPU/GPU/Remote) | 2.0.x |
+| [whisper-apr](https://crates.io/crates/whisper-apr) | Pure Rust Whisper ASR | 0.2.x |
+| [simular](https://crates.io/crates/simular) | Simulation engine | 0.3.x |
+| [batuta](https://crates.io/crates/batuta) | Stack orchestration | 0.7.x |
 
 ## Documentation
 
-- [API Reference](https://docs.rs/entrenar)
-- [Book](book/) - Comprehensive guide
-- [Roadmap](roadmap.yaml) - 53/53 tickets complete
+- [API Reference](https://docs.rs/entrenar) -- Generated from source
+- [Book](book/) -- Comprehensive guide with examples
+- [Examples](examples/) -- Runnable training, merging, and monitoring examples
 
 ## Contributing
 
-Contributions welcome! Please follow the PAIML quality standards:
-
 1. Fork the repository
-2. Create a feature branch
-3. Ensure all tests pass: `cargo test`
-4. Run quality checks: `cargo clippy -- -D warnings && cargo fmt --check`
+2. Create your changes on the `master` branch
+3. Run quality gates: `make lint && make test`
+4. Run coverage: `make coverage`
 5. Submit a pull request
-
-
-## MSRV
-
-Minimum Supported Rust Version: **1.87**
 
 ## Cookbook
 
-See [entrenar-cookbook](https://github.com/paiml/entrenar-cookbook) for examples and recipes.
+See [entrenar-cookbook](https://github.com/paiml/entrenar-cookbook) for
+examples and recipes.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-  <sub>Built with Extreme TDD | Part of <a href="https://github.com/paiml">PAIML</a></sub>
-</div>
+MIT
