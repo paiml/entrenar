@@ -1153,10 +1153,16 @@ impl WgpuInstructPipeline {
             }
 
             // PMAT-510/511: Propagate gradient backward through this layer's base weights.
-            // Cache transposed+scaled weights on first step (base weights are frozen).
-            // Eliminates 56 transpose dispatches/step → just 56 GEMMs + 28 adds.
+            // Cache transposed weights on first step (base weights are frozen).
+            //
+            // PMAT-511 FIX v2: Residual mixing ratio alpha=0.1.
+            // Previous 1/sqrt(dim) scale was too aggressive (0.018% → effectively zero).
+            // Alpha=0.1 means: grad_ffn contributes 10% per layer relative to unscaled backward.
+            // Growth bound: (1 + 0.1*k)^28 where k = ||W_down^T @ W_gate^T||/||I|| ~ O(1).
+            // This gives per-layer directional diversity without exponential explosion.
+            // Alpha is folded into the first transpose for zero runtime cost.
             if self.bwd_weight_cache.is_empty() {
-                // Build cache on first backward pass
+                let alpha = 0.1_f32; // Residual mixing ratio
                 for li in 0..self.num_layers {
                     let pf = format!("layer.{li}");
                     let dk = format!("{pf}.down_proj");
@@ -1166,20 +1172,19 @@ impl WgpuInstructPipeline {
                     {
                         let nf: u64 = wd.size() / 4;
                         let it: u32 = (nf / u64::from(h)) as u32;
-                        let sd = 1.0 / (h as f32).sqrt();
-                        let sg = 1.0 / (it as f32).sqrt();
+                        // Fold alpha into first transpose: W_down_t = alpha * W_down^T
                         let wdt = self.trainer.zeros((h * it) as usize);
-                        self.dispatch_transpose(wd, &wdt, it, h, sd);
+                        self.dispatch_transpose(wd, &wdt, it, h, alpha);
+                        // Second transpose unscaled
                         let wgt = self.trainer.zeros((it * h) as usize);
-                        self.dispatch_transpose(wg, &wgt, h, it, sg);
+                        self.dispatch_transpose(wg, &wgt, h, it, 1.0);
                         self.bwd_weight_cache.push((wdt, wgt));
                     } else {
-                        // Missing weights — push empty buffers
                         self.bwd_weight_cache.push((self.trainer.zeros(0), self.trainer.zeros(0)));
                     }
                 }
                 eprintln!(
-                    "[PMAT-511] Cached {} transposed backward weight pairs",
+                    "[PMAT-511] Cached {} backward weight pairs (alpha={alpha})",
                     self.bwd_weight_cache.len()
                 );
             }
