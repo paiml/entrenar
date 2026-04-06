@@ -794,6 +794,12 @@ impl WgpuInstructPipeline {
             let h_norm: f32 = hidden.iter().map(|x| x * x).sum::<f32>().sqrt();
             let h_mean: f32 = hidden.iter().sum::<f32>() / hidden.len() as f32;
             eprintln!("[DIAG-509] embed: norm={h_norm:.4}, mean={h_mean:.6}, len={}, seq={seq_len}", hidden.len());
+            // Dump first 5 values of token 264's embedding (compare vs PyTorch)
+            let tok264_offset = 264 * self.hidden_dim;
+            if tok264_offset + 5 < self.embed_weights.len() {
+                let tok264: Vec<f32> = self.embed_weights[tok264_offset..tok264_offset+5].to_vec();
+                eprintln!("[DIAG-509] embed[264,:5]={tok264:?} (PyTorch: [-0.0295, 0.0035, 0.0193, 0.0020, 0.0049])");
+            }
         }
 
         // 2. GPU forward through 28 transformer layers with LoRA contribution
