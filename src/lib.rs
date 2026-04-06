@@ -56,6 +56,7 @@ macro_rules! contract_post_embedding_lookup {
 macro_rules! contract_pre_data_read { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
 macro_rules! contract_pre_data_mut { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
 macro_rules! contract_pre_transpose_tracked { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
+#[allow(unused_macros)]
 macro_rules! contract_pre_with_resident_weights { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
 
 pub mod aprender_compat;
