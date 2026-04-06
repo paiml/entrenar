@@ -924,6 +924,25 @@ impl WgpuInstructPipeline {
 
         let t3 = std::time::Instant::now();
 
+        // PMAT-509: Diagnostic — check logits after lm_head on first step
+        if self.lora_step == 0 {
+            let logits_data = self.trainer.download(&self.logits_buf);
+            let l_norm: f32 = logits_data.iter().take(self.vocab_size).map(|x| x * x).sum::<f32>().sqrt();
+            let l_max = logits_data.iter().take(self.vocab_size).cloned().fold(f32::NEG_INFINITY, f32::max);
+            let l_min = logits_data.iter().take(self.vocab_size).cloned().fold(f32::INFINITY, f32::min);
+            let nan_count = logits_data.iter().take(self.vocab_size).filter(|x| x.is_nan()).count();
+            // Check if logits are all zero (would indicate lm_head failed)
+            let zero_count = logits_data.iter().take(self.vocab_size).filter(|x| **x == 0.0).count();
+            eprintln!("[DIAG-509] logits[0]: norm={l_norm:.4}, min={l_min:.4}, max={l_max:.4}, nan={nan_count}, zeros={zero_count}/{}", self.vocab_size);
+            // Check argmax of first position
+            let argmax = logits_data.iter().take(self.vocab_size)
+                .enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(i, v)| (i, *v));
+            let target = labels[0];
+            let target_logit = if (target as usize) < self.vocab_size { logits_data[target as usize] } else { f32::NAN };
+            eprintln!("[DIAG-509] pos0: argmax={argmax:?}, target={target}, target_logit={target_logit:.4}, loss_range=[{loss_start},{loss_end})");
+        }
+
         // Fused CE on full logits_buf (assembled via GPU scatter, no CPU download)
         self.trainer.queue_ref().write_buffer(&self.labels_buf, 0, bytemuck::cast_slice(&labels));
 
