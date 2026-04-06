@@ -95,10 +95,6 @@ pub struct WgpuInstructPipeline {
     normed_buf: wgpu::Buffer,
     /// RMSNorm epsilon
     eps: f32,
-    /// PMAT-511: Cached transposed+scaled base weights for backward gradient propagation.
-    /// (W_down^T * scale_down, W_gate^T * scale_gate) per layer.
-    /// Computed once at first training step since base weights are frozen.
-    bwd_weight_cache: Vec<(wgpu::Buffer, wgpu::Buffer)>,
 }
 
 #[cfg(feature = "gpu")]
@@ -473,7 +469,6 @@ impl WgpuInstructPipeline {
             output_norm_gpu: output_norm_gpu_buf,
             normed_buf: normed_buf_alloc,
             eps,
-            bwd_weight_cache: Vec::new(),
         }
     }
 
@@ -1152,63 +1147,11 @@ impl WgpuInstructPipeline {
                     .adamw_step(&proj.b, &db, &proj.m_b, &proj.v_b, lr, 0.9, 0.999, 1e-8, 0.01);
             }
 
-            // PMAT-510/511: Propagate gradient backward through this layer's base weights.
-            // Cache transposed weights on first step (base weights are frozen).
-            //
-            // PMAT-511 FIX v2: Residual mixing ratio alpha=0.1.
-            // Previous 1/sqrt(dim) scale was too aggressive (0.018% → effectively zero).
-            // Alpha=0.1 means: grad_ffn contributes 10% per layer relative to unscaled backward.
-            // Growth bound: (1 + 0.1*k)^28 where k = ||W_down^T @ W_gate^T||/||I|| ~ O(1).
-            // This gives per-layer directional diversity without exponential explosion.
-            // Alpha is folded into the first transpose for zero runtime cost.
-            if self.bwd_weight_cache.is_empty() {
-                let alpha = 0.1_f32; // Residual mixing ratio
-                for li in 0..self.num_layers {
-                    let pf = format!("layer.{li}");
-                    let dk = format!("{pf}.down_proj");
-                    let gk = format!("{pf}.gate_proj");
-                    if let (Some(wd), Some(wg)) =
-                        (self.fwd.weight_buffer(&dk), self.fwd.weight_buffer(&gk))
-                    {
-                        let nf: u64 = wd.size() / 4;
-                        let it: u32 = (nf / u64::from(h)) as u32;
-                        // Fold alpha into first transpose: W_down_t = alpha * W_down^T
-                        let wdt = self.trainer.zeros((h * it) as usize);
-                        self.dispatch_transpose(wd, &wdt, it, h, alpha);
-                        // Second transpose unscaled
-                        let wgt = self.trainer.zeros((it * h) as usize);
-                        self.dispatch_transpose(wg, &wgt, h, it, 1.0);
-                        self.bwd_weight_cache.push((wdt, wgt));
-                    } else {
-                        self.bwd_weight_cache.push((self.trainer.zeros(0), self.trainer.zeros(0)));
-                    }
-                }
-                eprintln!(
-                    "[PMAT-511] Cached {} backward weight pairs (alpha={alpha})",
-                    self.bwd_weight_cache.len()
-                );
-            }
-
-            if layer_idx < self.bwd_weight_cache.len() {
-                let (ref w_down_t, ref w_gate_t) = self.bwd_weight_cache[layer_idx];
-                if w_down_t.size() > 0 {
-                    let n_floats: u64 = w_down_t.size() / 4;
-                    let inter: u32 = (n_floats / u64::from(h)) as u32;
-
-                    // grad_silu = grad @ W_down^T_scaled  [seq, inter]
-                    let grad_silu = self.trainer.zeros((s * inter) as usize);
-                    self.trainer.matmul_forward(&grad_buf, w_down_t, &grad_silu, s, h, inter);
-
-                    // grad_ffn = grad_silu @ W_gate^T_scaled  [seq, hidden]
-                    let grad_ffn = self.trainer.zeros((s * h) as usize);
-                    self.trainer.matmul_forward(&grad_silu, w_gate_t, &grad_ffn, s, inter, h);
-
-                    // grad_input = grad + grad_ffn (residual)
-                    let grad_next = self.trainer.zeros((s * h) as usize);
-                    self.fwd.gpu_residual_add(&grad_buf, &grad_ffn, &grad_next, s * h);
-                    grad_buf = grad_next;
-                }
-            }
+            // PMAT-511 REVERTED: Per-layer backward through W_down^T @ W_gate^T was a dead end.
+            // Without SiLU backward derivative, the simplified FFN backward injects WRONG-DIRECTION
+            // gradient that makes training WORSE (3.63→17.77 vs 2.97→16.11 without).
+            // Path B (cuBLAS hybrid via --gpu-backend cuda) replaces this entirely.
+            // The CUDA backward path in backward.rs has proper per-layer backward with cuBLAS.
         }
 
         let t5 = std::time::Instant::now();
