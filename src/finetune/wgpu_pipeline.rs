@@ -878,6 +878,16 @@ impl WgpuInstructPipeline {
 
             // LoRA addmm for Q/K/V now happens INLINE in encode_forward_layer_training
             // (before attention consumes Q/K/V buffers)
+
+            // PMAT-509: Diagnostic — check hidden after layers 0, 1, 27
+            if self.lora_step == 0 && (layer_idx == 0 || layer_idx == 1 || layer_idx == self.num_layers - 1) {
+                let n_floats = seq_len * self.hidden_dim;
+                let h = self.fwd.download_hidden(n_floats);
+                let norm: f32 = h.iter().map(|x| x * x).sum::<f32>().sqrt();
+                let nan_c = h.iter().filter(|x| x.is_nan()).count();
+                let first5: Vec<f32> = h.iter().take(5).copied().collect();
+                eprintln!("[DIAG-509] after layer {layer_idx}: norm={norm:.4}, nan={nan_c}, first5={first5:?}");
+            }
         }
 
         let t2 = std::time::Instant::now();
