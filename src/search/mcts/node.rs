@@ -46,6 +46,7 @@ impl Default for NodeStats {
 impl NodeStats {
     /// Update statistics with a new reward
     pub fn update(&mut self, reward: Reward) {
+        contract_pre_update!();
         self.visits += 1;
         self.total_reward += reward;
         self.mean_reward = self.total_reward / self.visits as f64;

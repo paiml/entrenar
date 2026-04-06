@@ -379,6 +379,7 @@ impl BatchResult {
     /// Returns 0.0 for an empty batch (total == 0).
     #[must_use]
     pub fn accuracy(&self) -> f32 {
+        contract_pre_accuracy!();
         self.correct as f32 / self.total.max(1) as f32
     }
 }

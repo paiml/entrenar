@@ -25,6 +25,7 @@ impl Batch {
     /// Get maximum sequence length
     #[must_use]
     pub fn max_seq_len(&self) -> usize {
+        contract_pre_seq_len_from_data!();
         self.input_ids.ncols()
     }
 }

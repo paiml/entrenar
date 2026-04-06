@@ -25,6 +25,7 @@ use super::metrics::MultiClassMetrics;
 /// assert_eq!(cm.get(0, 1), 1);  // True 0, predicted 1
 /// ```
 pub fn confusion_matrix(y_pred: &[usize], y_true: &[usize]) -> ConfusionMatrix {
+    contract_pre_confusion_matrix!();
     ConfusionMatrix::from_predictions(y_pred, y_true)
 }
 

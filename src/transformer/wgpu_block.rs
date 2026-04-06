@@ -118,6 +118,7 @@ impl WgpuForwardPass {
     /// - **Postcondition**: All FFN weights GPU-resident, zero H2D transfers during forward
     /// - **Invariant**: Weights are frozen (read-only) -- LoRA adapters remain CPU-resident
     pub fn with_resident_weights(model: &Transformer) -> Result<Self, String> {
+        contract_pre_with_resident_weights!();
         let device = GpuDevice::new()?;
         let config = model.config.clone();
         let num_layers = config.num_hidden_layers;

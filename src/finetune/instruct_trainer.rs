@@ -402,6 +402,7 @@ impl InstructTrainer {
         epoch: usize,
         metrics: &InstructEpochMetrics,
     ) -> crate::Result<()> {
+        contract_pre_save_checkpoint!();
         // Sync GPU LoRA weights to CPU before saving
         #[cfg(feature = "cuda")]
         self.pipeline.sync_lora_to_cpu();

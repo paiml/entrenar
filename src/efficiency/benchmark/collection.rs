@@ -137,6 +137,7 @@ impl CostPerformanceBenchmark {
 
     /// Get statistics summary
     pub fn statistics(&self) -> BenchmarkStatistics {
+        contract_pre_statistics!();
         if self.entries.is_empty() {
             return BenchmarkStatistics::default();
         }

@@ -528,6 +528,7 @@ impl MultiHeadAttention {
         lora_rank: usize,
         lora_scale: f32,
     ) -> Tensor {
+        contract_pre_lora_forward!();
         let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;

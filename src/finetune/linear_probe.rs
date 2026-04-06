@@ -116,6 +116,7 @@ impl LinearProbe {
 
     /// Predict class index (argmax of logits).
     pub fn predict(&self, embedding: &Tensor) -> usize {
+        contract_pre_predict!();
         let logits = self.forward(embedding);
         let data = logits.data();
         let slice = data.as_slice().expect("contiguous");

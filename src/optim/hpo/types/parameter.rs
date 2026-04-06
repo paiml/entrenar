@@ -53,6 +53,7 @@ pub enum ParameterDomain {
 impl ParameterDomain {
     /// Sample a random value from this domain
     pub fn sample<R: Rng>(&self, rng: &mut R) -> ParameterValue {
+        contract_pre_sample!();
         match self {
             ParameterDomain::Continuous { low, high, log_scale } => {
                 let value = if *log_scale {

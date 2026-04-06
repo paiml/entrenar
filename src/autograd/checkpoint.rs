@@ -98,6 +98,7 @@ impl CheckpointedSegment {
 
     /// Get the output (returns None if not computed yet)
     pub fn output(&self) -> Option<Tensor> {
+        contract_pre_output!();
         self.output.borrow().clone()
     }
 
@@ -502,6 +503,7 @@ impl PolicyCheckpointManager {
 
     /// Get total bytes used by saved activations
     pub fn total_bytes(&self) -> usize {
+        contract_pre_total_bytes!();
         self.total_bytes_saved
     }
 

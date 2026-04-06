@@ -43,6 +43,7 @@ impl SlidingWindowBaseline {
 
     /// Update baseline with new value
     pub fn update(&mut self, value: f64) {
+        contract_pre_update!();
         if value.is_nan() || value.is_infinite() {
             return;
         }

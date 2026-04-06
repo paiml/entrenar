@@ -109,6 +109,7 @@ impl ConfusionMatrix {
 
     /// Calculate accuracy
     pub fn accuracy(&self) -> f64 {
+        contract_pre_accuracy!();
         let total = self.total();
         if total == 0 {
             return 0.0;

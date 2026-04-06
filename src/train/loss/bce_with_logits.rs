@@ -47,6 +47,7 @@ pub struct BCEWithLogitsLoss;
 impl BCEWithLogitsLoss {
     /// Compute element-wise sigmoid: σ(x) = 1 / (1 + exp(-x))
     pub(crate) fn sigmoid(x: &Array1<f32>) -> Array1<f32> {
+        contract_pre_sigmoid!();
         x.mapv(|v| {
             // Numerically stable sigmoid
             if v >= 0.0 {

@@ -823,6 +823,7 @@ impl ClassifyTrainer {
         epoch: usize,
         metrics: &EpochMetrics,
     ) -> crate::Result<()> {
+        contract_pre_save_checkpoint!();
         // Sync GPU weights to CPU before saving (no-op if GPU training inactive)
         #[cfg(feature = "cuda")]
         self.pipeline.sync_weights_to_cpu();

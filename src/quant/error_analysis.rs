@@ -33,6 +33,7 @@ pub struct QuantErrorStats {
 impl QuantErrorStats {
     /// Root Mean Squared Error
     pub fn rmse(&self) -> f32 {
+        contract_pre_rmse!();
         self.mse.sqrt()
     }
 }

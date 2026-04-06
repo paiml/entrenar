@@ -56,6 +56,7 @@ impl InstructPipeline {
     /// Get current learning rate.
     #[must_use]
     pub fn learning_rate(&self) -> f32 {
+        contract_pre_learning_rate_scaling!();
         self.optimizer.lr()
     }
 

@@ -16,6 +16,7 @@
 /// # Returns
 /// 0.0 if there are no relevant documents or k is 0.
 pub fn ndcg_at_k(relevance_scores: &[f64], k: usize) -> f64 {
+    contract_pre_ndcg_at_k!();
     if k == 0 || relevance_scores.is_empty() {
         return 0.0;
     }

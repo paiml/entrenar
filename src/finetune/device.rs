@@ -21,6 +21,7 @@ impl ComputeDevice {
     /// Priority: CUDA (if ≥6GB) > wgpu (if available) > CPU
     #[must_use]
     pub fn auto_detect() -> Self {
+        contract_pre_device_dispatch!();
         if Self::cuda_available() {
             if let Some(info) = DeviceInfo::cuda_info(0) {
                 if info.memory_gb >= 6.0 {

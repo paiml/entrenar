@@ -18,6 +18,7 @@ impl LatentCode {
 
     /// Sample from standard normal distribution using Box-Muller transform
     pub fn sample<R: Rng>(rng: &mut R, dim: usize) -> Self {
+        contract_pre_sample!();
         let vector: Vec<f32> = (0..dim)
             .map(|_| {
                 // Box-Muller transform for standard normal

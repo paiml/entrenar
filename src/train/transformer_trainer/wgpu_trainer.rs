@@ -352,6 +352,7 @@ impl WgpuModelState {
 
     /// Load LoRA checkpoint (delegates to wgpu_checkpoint)
     pub fn load_checkpoint(&mut self, path: &std::path::Path) -> Result<(u32, f32), String> {
+        contract_pre_load_checkpoint!();
         super::wgpu_checkpoint::load_lora_checkpoint(
             &mut self.lora,
             self.num_layers,
@@ -549,6 +550,7 @@ impl WgpuTransformerTrainer {
         target_ids: &[u32],   // [seq_len] — target token IDs
         model: &mut WgpuModelState,
     ) -> Result<(f32, f32), String> {
+        contract_pre_gpu_forward!();
         let s = target_ids.len() as u32;
         let h = model.hidden_size as u32;
         let i = model.intermediate_size as u32;

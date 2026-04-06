@@ -69,6 +69,7 @@ impl RingAllReduceWorker {
     ///
     /// Returns `Err` on TCP I/O failure.
     pub fn allreduce(&mut self, data: &mut [f32]) -> Result<(), String> {
+        contract_pre_gradient_allreduce!();
         let n = self.world_size;
         let d = data.len();
 
