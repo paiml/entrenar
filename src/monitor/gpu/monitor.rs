@@ -82,6 +82,7 @@ impl GpuMonitor {
     /// Sample current GPU metrics
     #[cfg(feature = "nvml")]
     pub fn sample(&self) -> Vec<GpuMetrics> {
+        contract_pre_sample!();
         if self.mock_mode {
             return self.mock_metrics.clone();
         }

@@ -93,6 +93,7 @@ impl GradScaler {
     ///
     /// Call this after each optimizer step. Pass `true` if gradients were valid.
     pub fn update(&mut self, grads_valid: bool) {
+        contract_pre_update!();
         if !self.dynamic {
             return;
         }

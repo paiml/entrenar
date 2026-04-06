@@ -77,6 +77,7 @@ pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
 /// - **Postcondition**: Returns tensor with shape (cols, rows), backward chain connected
 /// - **Invariant**: `original.grad()` receives the correctly transposed gradient
 pub fn transpose_tracked(tensor: &Tensor, rows: usize, cols: usize) -> Tensor {
+    contract_pre_transpose_tracked!();
     let data = tensor.data();
     let slice = data.as_slice().expect("transpose_tracked: tensor must be contiguous");
     let transposed_data = transpose(slice, rows, cols);

@@ -52,6 +52,12 @@ macro_rules! contract_post_embedding_lookup {
     }};
 }
 
+// Fallback macros for binding equations not yet in generated_contracts.rs
+macro_rules! contract_pre_data_read { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
+macro_rules! contract_pre_data_mut { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
+macro_rules! contract_pre_transpose_tracked { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
+macro_rules! contract_pre_with_resident_weights { () => {{}}; ($($x:expr),+ $(,)?) => {{ $(let _ = &$x;)+ }}; }
+
 pub mod aprender_compat;
 pub mod autograd;
 #[cfg(feature = "citl")]

@@ -1101,6 +1101,7 @@ impl CudaTransformerTrainer {
         hidden_size: usize,
         vocab_size: usize,
     ) -> Option<()> {
+        contract_pre_gpu_forward!();
         let stream = self.cuda_trainer.stream();
 
         // Embedding lookup (CPU)

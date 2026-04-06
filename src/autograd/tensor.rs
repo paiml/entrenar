@@ -51,6 +51,7 @@ impl Tensor {
 
     /// Get reference to data
     pub fn data(&self) -> &Array1<f32> {
+        contract_pre_data_read!();
         &self.data
     }
 
@@ -61,6 +62,7 @@ impl Tensor {
     /// (e.g. backward ops holding clones), clones the data first so
     /// mutations don't affect other holders.
     pub fn data_mut(&mut self) -> &mut Array1<f32> {
+        contract_pre_data_mut!();
         Rc::make_mut(&mut self.data)
     }
 

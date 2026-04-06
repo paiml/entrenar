@@ -36,6 +36,7 @@ impl LayerActivationStats {
     ///
     /// Panics if activation dimensions don't match.
     pub fn update(&mut self, activations: &[Vec<f32>]) {
+        contract_pre_update!();
         if activations.is_empty() {
             return;
         }

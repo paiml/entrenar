@@ -295,6 +295,7 @@ impl MlpProbe {
 
     /// Predict class index.
     pub fn predict(&self, emb: &[f32]) -> usize {
+        contract_pre_predict!();
         let (_, logits) = self.forward(emb);
         logits
             .iter()
