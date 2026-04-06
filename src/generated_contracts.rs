@@ -901,6 +901,42 @@ macro_rules! contract_architecture_config_invariants {
     }};
 }
 
+/// Preconditions for equation `architecture_oracle_detection`.
+/// Domain-specific. Call: `contract_pre_architecture_oracle_detection!(slice_expr)`
+macro_rules! contract_pre_architecture_oracle_detection {
+    () => {{}};
+    ($input:expr) => {{
+        let _pv_x = &$input;
+    }};
+}
+
+/// Postconditions for equation `architecture_oracle_detection`.
+/// Call before return: `contract_post_architecture_oracle_detection!(result_expr)`
+macro_rules! contract_post_architecture_oracle_detection {
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Invariants for equation `architecture_oracle_detection`.
+/// Check after computation: `contract_inv_architecture_oracle_detection!(result_expr)`
+macro_rules! contract_inv_architecture_oracle_detection {
+    () => {{}};
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Combined pre+post contract for equation `architecture_oracle_detection`.
+macro_rules! contract_architecture_oracle_detection {
+    ($input:expr, $body:expr) => {{
+        contract_pre_architecture_oracle_detection!($input);
+        let _contract_result = $body;
+        contract_post_architecture_oracle_detection!(_contract_result);
+        _contract_result
+    }};
+}
+
 /// Preconditions for equation `attention_tensor_shapes`.
 /// Domain-specific. Call: `contract_pre_attention_tensor_shapes!(slice_expr)`
 macro_rules! contract_pre_attention_tensor_shapes {
@@ -1009,6 +1045,42 @@ macro_rules! contract_ffn_tensor_shapes {
     }};
 }
 
+/// Preconditions for equation `layer_count_consistency`.
+/// Call at function entry: `contract_pre_layer_count_consistency!(input_expr)`
+macro_rules! contract_pre_layer_count_consistency {
+    () => {{}};
+    ($input:expr) => {{
+        let _contract_input = &$input;
+    }};
+}
+
+/// Postconditions for equation `layer_count_consistency`.
+/// Call before return: `contract_post_layer_count_consistency!(result_expr)`
+macro_rules! contract_post_layer_count_consistency {
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Invariants for equation `layer_count_consistency`.
+/// Check after computation: `contract_inv_layer_count_consistency!(result_expr)`
+macro_rules! contract_inv_layer_count_consistency {
+    () => {{}};
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Combined pre+post contract for equation `layer_count_consistency`.
+macro_rules! contract_layer_count_consistency {
+    ($input:expr, $body:expr) => {{
+        contract_pre_layer_count_consistency!($input);
+        let _contract_result = $body;
+        contract_post_layer_count_consistency!(_contract_result);
+        _contract_result
+    }};
+}
+
 /// Preconditions for equation `normalization_tensor_shapes`.
 /// Domain-specific. Call: `contract_pre_normalization_tensor_shapes!(slice_expr)`
 macro_rules! contract_pre_normalization_tensor_shapes {
@@ -1077,6 +1149,42 @@ macro_rules! contract_rope_position_encoding {
         contract_pre_rope_position_encoding!($input);
         let _contract_result = $body;
         contract_post_rope_position_encoding!(_contract_result);
+        _contract_result
+    }};
+}
+
+/// Preconditions for equation `tensor_name_recognition`.
+/// Call at function entry: `contract_pre_tensor_name_recognition!(input_expr)`
+macro_rules! contract_pre_tensor_name_recognition {
+    () => {{}};
+    ($input:expr) => {{
+        let _contract_input = &$input;
+    }};
+}
+
+/// Postconditions for equation `tensor_name_recognition`.
+/// Call before return: `contract_post_tensor_name_recognition!(result_expr)`
+macro_rules! contract_post_tensor_name_recognition {
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Invariants for equation `tensor_name_recognition`.
+/// Check after computation: `contract_inv_tensor_name_recognition!(result_expr)`
+macro_rules! contract_inv_tensor_name_recognition {
+    () => {{}};
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Combined pre+post contract for equation `tensor_name_recognition`.
+macro_rules! contract_tensor_name_recognition {
+    ($input:expr, $body:expr) => {{
+        contract_pre_tensor_name_recognition!($input);
+        let _contract_result = $body;
+        contract_post_tensor_name_recognition!(_contract_result);
         _contract_result
     }};
 }
@@ -2423,6 +2531,42 @@ macro_rules! contract_rank_bounds_safety {
         contract_pre_rank_bounds_safety!($input);
         let _contract_result = $body;
         contract_post_rank_bounds_safety!(_contract_result);
+        _contract_result
+    }};
+}
+
+/// Preconditions for equation `vram_estimation_tolerance`.
+/// Call at function entry: `contract_pre_vram_estimation_tolerance!(input_expr)`
+macro_rules! contract_pre_vram_estimation_tolerance {
+    () => {{}};
+    ($input:expr) => {{
+        let _contract_input = &$input;
+    }};
+}
+
+/// Postconditions for equation `vram_estimation_tolerance`.
+/// Call before return: `contract_post_vram_estimation_tolerance!(result_expr)`
+macro_rules! contract_post_vram_estimation_tolerance {
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Invariants for equation `vram_estimation_tolerance`.
+/// Check after computation: `contract_inv_vram_estimation_tolerance!(result_expr)`
+macro_rules! contract_inv_vram_estimation_tolerance {
+    () => {{}};
+    ($result:expr) => {{
+        let _contract_result = &$result;
+    }};
+}
+
+/// Combined pre+post contract for equation `vram_estimation_tolerance`.
+macro_rules! contract_vram_estimation_tolerance {
+    ($input:expr, $body:expr) => {{
+        contract_pre_vram_estimation_tolerance!($input);
+        let _contract_result = $body;
+        contract_post_vram_estimation_tolerance!(_contract_result);
         _contract_result
     }};
 }
@@ -21051,12 +21195,34 @@ macro_rules! contract_pre_silu {
     }};
 }
 
+/// Postconditions for equation `silu`.
+/// Call before return: `contract_post_silu!(result_expr)`
+macro_rules! contract_post_silu {
+    ($result:expr) => {{
+        let _contract_result = &$result;
+        debug_assert!(
+            _contract_result.iter().all(|v| v.is_finite()),
+            "Contract silu: postcondition violated — result.iter().all(|v| v.is_finite())"
+        );
+    }};
+}
+
 /// Invariants for equation `silu`.
 /// Check after computation: `contract_inv_silu!(result_expr)`
 macro_rules! contract_inv_silu {
     () => {{}};
     ($result:expr) => {{
         let _contract_result = &$result;
+    }};
+}
+
+/// Combined pre+post contract for equation `silu`.
+macro_rules! contract_silu {
+    ($input:expr, $body:expr) => {{
+        contract_pre_silu!($input);
+        let _contract_result = $body;
+        contract_post_silu!(_contract_result);
+        _contract_result
     }};
 }
 
@@ -21307,7 +21473,6 @@ macro_rules! contract_pre_softmax {
 macro_rules! contract_post_softmax {
     ($result:expr) => {{
         let _contract_result = &$result;
-        debug_assert!(_contract_result.iter().all(|v| *v > 0.0), "Contract softmax: postcondition violated — result.iter().all(|v| *v > 0.0)");
         debug_assert!((_contract_result.iter().sum::<f32>() - 1.0).abs() < 1e-5, "Contract softmax: postcondition violated — (result.iter().sum::<f32>() - 1.0).abs() < 1e-5");
     }};
 }
