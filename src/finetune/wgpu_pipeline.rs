@@ -793,11 +793,15 @@ impl WgpuInstructPipeline {
         if self.lora_step == 0 {
             let h_norm: f32 = hidden.iter().map(|x| x * x).sum::<f32>().sqrt();
             let h_mean: f32 = hidden.iter().sum::<f32>() / hidden.len() as f32;
-            eprintln!("[DIAG-509] embed: norm={h_norm:.4}, mean={h_mean:.6}, len={}, seq={seq_len}", hidden.len());
+            eprintln!(
+                "[DIAG-509] embed: norm={h_norm:.4}, mean={h_mean:.6}, len={}, seq={seq_len}",
+                hidden.len()
+            );
             // Dump first 5 values of token 264's embedding (compare vs PyTorch)
             let tok264_offset = 264 * self.hidden_dim;
             if tok264_offset + 5 < self.embed_weights.len() {
-                let tok264: Vec<f32> = self.embed_weights[tok264_offset..tok264_offset+5].to_vec();
+                let tok264: Vec<f32> =
+                    self.embed_weights[tok264_offset..tok264_offset + 5].to_vec();
                 eprintln!("[DIAG-509] embed[264,:5]={tok264:?} (PyTorch: [-0.0295, 0.0035, 0.0193, 0.0020, 0.0049])");
             }
         }
@@ -880,7 +884,9 @@ impl WgpuInstructPipeline {
             // (before attention consumes Q/K/V buffers)
 
             // PMAT-509: Diagnostic — check hidden after layers 0, 1, 27
-            if self.lora_step == 0 && (layer_idx == 0 || layer_idx == 1 || layer_idx == self.num_layers - 1) {
+            if self.lora_step == 0
+                && (layer_idx == 0 || layer_idx == 1 || layer_idx == self.num_layers - 1)
+            {
                 let n_floats = seq_len * self.hidden_dim;
                 let h = self.fwd.download_hidden(n_floats);
                 let norm: f32 = h.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -943,19 +949,30 @@ impl WgpuInstructPipeline {
         // PMAT-509: Diagnostic — check logits after lm_head on first step
         if self.lora_step == 0 {
             let logits_data = self.trainer.download(&self.logits_buf);
-            let l_norm: f32 = logits_data.iter().take(self.vocab_size).map(|x| x * x).sum::<f32>().sqrt();
-            let l_max = logits_data.iter().take(self.vocab_size).cloned().fold(f32::NEG_INFINITY, f32::max);
-            let l_min = logits_data.iter().take(self.vocab_size).cloned().fold(f32::INFINITY, f32::min);
+            let l_norm: f32 =
+                logits_data.iter().take(self.vocab_size).map(|x| x * x).sum::<f32>().sqrt();
+            let l_max =
+                logits_data.iter().take(self.vocab_size).cloned().fold(f32::NEG_INFINITY, f32::max);
+            let l_min =
+                logits_data.iter().take(self.vocab_size).cloned().fold(f32::INFINITY, f32::min);
             let nan_count = logits_data.iter().take(self.vocab_size).filter(|x| x.is_nan()).count();
             // Check if logits are all zero (would indicate lm_head failed)
-            let zero_count = logits_data.iter().take(self.vocab_size).filter(|x| **x == 0.0).count();
+            let zero_count =
+                logits_data.iter().take(self.vocab_size).filter(|x| **x == 0.0).count();
             eprintln!("[DIAG-509] logits[0]: norm={l_norm:.4}, min={l_min:.4}, max={l_max:.4}, nan={nan_count}, zeros={zero_count}/{}", self.vocab_size);
             // Check argmax of first position
-            let argmax = logits_data.iter().take(self.vocab_size)
-                .enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            let argmax = logits_data
+                .iter()
+                .take(self.vocab_size)
+                .enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(i, v)| (i, *v));
             let target = labels[0];
-            let target_logit = if (target as usize) < self.vocab_size { logits_data[target as usize] } else { f32::NAN };
+            let target_logit = if (target as usize) < self.vocab_size {
+                logits_data[target as usize]
+            } else {
+                f32::NAN
+            };
             eprintln!("[DIAG-509] pos0: argmax={argmax:?}, target={target}, target_logit={target_logit:.4}, loss_range=[{loss_start},{loss_end})");
         }
 
@@ -1060,13 +1077,24 @@ impl WgpuInstructPipeline {
         let s = seq_len as u32;
         let rank = self.lora_rank as u32;
 
-        // For each layer: use saved_activations.attn_norm_out as input to Q/K/V,
-        // and saved_activations.ffn_norm_out as input to gate/up/down.
-        // grad_output for each projection ≈ grad_hidden (GPU-resident, no CPU upload)
-        let grad_buf = &grad_hidden_buf;
+        // PMAT-510 FIX: Per-layer gradient propagation.
+        // Previous bug: all 28 layers received the same grad_hidden_buf from the loss.
+        // Fix: iterate layers in REVERSE order (27→0), propagating gradient backward
+        // through each layer's frozen base weights (residual + FFN path).
+        //
+        // Backward through one transformer layer:
+        //   grad_silu = grad @ W_down^T       [seq, inter]
+        //   grad_ffn  = grad_silu @ W_gate^T  [seq, hidden]
+        //   grad_input = grad + grad_ffn      (residual connection)
+        //
+        // This is simplified (skips SiLU backward, RMSNorm backward, up_proj path,
+        // and attention backward) but provides DIFFERENT gradients per layer because
+        // W_down and W_gate are different for each of the 28 layers.
+        let h = self.hidden_dim as u32;
+        let mut grad_buf = grad_hidden_buf;
 
-        for (layer_idx, layer_lora) in self.lora.iter().enumerate() {
-            // Determine saved input for this layer's projections
+        for layer_idx in (0..self.lora.len()).rev() {
+            let layer_lora = &self.lora[layer_idx];
             let saved = &_saved_activations[layer_idx];
 
             for proj in &layer_lora.projections {
@@ -1094,7 +1122,7 @@ impl WgpuInstructPipeline {
                 let xa_t = self.trainer.zeros((s * rank) as usize);
                 self.dispatch_transpose(&xa, &xa_t, s, rank, scale);
                 let db = self.trainer.zeros((rank * proj.out_dim) as usize);
-                self.trainer.matmul_forward(&xa_t, grad_buf, &db, rank, s, proj.out_dim);
+                self.trainer.matmul_forward(&xa_t, &grad_buf, &db, rank, s, proj.out_dim);
 
                 // Step 3: dA (skip if B=0 — first step optimization)
                 let da = if self.lora_step <= 1 {
@@ -1103,7 +1131,7 @@ impl WgpuInstructPipeline {
                     let bt = self.trainer.zeros((rank * proj.out_dim) as usize);
                     self.dispatch_transpose(&proj.b, &bt, rank, proj.out_dim, 1.0);
                     let d_xa = self.trainer.zeros((s * rank) as usize);
-                    self.trainer.matmul_forward(grad_buf, &bt, &d_xa, s, proj.out_dim, rank);
+                    self.trainer.matmul_forward(&grad_buf, &bt, &d_xa, s, proj.out_dim, rank);
                     let xt = self.trainer.zeros((s * proj.in_dim) as usize);
                     self.dispatch_transpose(input_buf, &xt, s, proj.in_dim, scale);
                     let da_buf = self.trainer.zeros((proj.in_dim * rank) as usize);
@@ -1117,6 +1145,41 @@ impl WgpuInstructPipeline {
                     .adamw_step(&proj.a, &da, &proj.m_a, &proj.v_a, lr, 0.9, 0.999, 1e-8, 0.01);
                 self.trainer
                     .adamw_step(&proj.b, &db, &proj.m_b, &proj.v_b, lr, 0.9, 0.999, 1e-8, 0.01);
+            }
+
+            // PMAT-510: Propagate gradient backward through this layer's base weights.
+            // Backward through FFN: grad_silu = grad @ W_down^T, grad_ffn = grad_silu @ W_gate^T
+            // Then residual: grad_input = grad + grad_ffn
+            let prefix = format!("layer.{layer_idx}");
+            let w_down_key = format!("{prefix}.down_proj");
+            let w_gate_key = format!("{prefix}.gate_proj");
+
+            if let (Some(w_down), Some(w_gate)) =
+                (self.fwd.weight_buffer(&w_down_key), self.fwd.weight_buffer(&w_gate_key))
+            {
+                // Get intermediate_dim from down_proj: W_down is [inter, hidden]
+                let n_floats: u64 = w_down.size() / 4;
+                let inter: u32 = (n_floats / u64::from(h)) as u32;
+
+                // grad_silu = grad @ W_down^T  [seq, inter]
+                // W_down is [inter, hidden]. W_down^T is [hidden, inter].
+                // dispatch_transpose(W_down[inter, h], W_down_t[h, inter])
+                let w_down_t = self.trainer.zeros((h * inter) as usize);
+                self.dispatch_transpose(w_down, &w_down_t, inter, h, 1.0);
+                let grad_silu = self.trainer.zeros((s * inter) as usize);
+                self.trainer.matmul_forward(&grad_buf, &w_down_t, &grad_silu, s, h, inter);
+
+                // grad_ffn = grad_silu @ W_gate^T  [seq, hidden]
+                // W_gate is [hidden, inter]. W_gate^T is [inter, hidden].
+                let w_gate_t = self.trainer.zeros((inter * h) as usize);
+                self.dispatch_transpose(w_gate, &w_gate_t, h, inter, 1.0);
+                let grad_ffn = self.trainer.zeros((s * h) as usize);
+                self.trainer.matmul_forward(&grad_silu, &w_gate_t, &grad_ffn, s, inter, h);
+
+                // grad_input = grad + grad_ffn (residual connection)
+                let grad_next = self.trainer.zeros((s * h) as usize);
+                self.fwd.gpu_residual_add(&grad_buf, &grad_ffn, &grad_next, s * h);
+                grad_buf = grad_next;
             }
         }
 
