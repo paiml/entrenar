@@ -110,7 +110,9 @@ fn apply_rope(
         }
     }
 
-    Tensor::from_vec(out, x.requires_grad())
+    let result = Tensor::from_vec(out, x.requires_grad());
+    contract_post_rope!(result.data().as_slice().unwrap_or(&[]));
+    result
 }
 
 // ---------------------------------------------------------------------------

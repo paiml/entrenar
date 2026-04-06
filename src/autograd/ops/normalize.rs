@@ -43,6 +43,7 @@ pub fn layer_norm(x: &Tensor, gamma: &Tensor, beta: &Tensor, epsilon: f32) -> Te
         result.set_backward_op(backward_op);
     }
 
+    contract_post_layernorm!(result.data().as_slice().unwrap_or(&[]));
     result
 }
 

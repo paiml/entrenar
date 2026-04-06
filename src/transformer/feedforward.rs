@@ -109,6 +109,7 @@ impl FeedForward {
         // SwiGLU: SiLU(gate) * up
         let gate_activated = crate::autograd::swish(&gate);
         let hidden = crate::autograd::mul(&gate_activated, &up);
+        contract_post_swiglu!(hidden.data().as_slice().unwrap_or(&[]));
 
         // Down projection — HF weights [hidden, intermediate] (ENT-269)
         matmul_nt(&hidden, &self.w_down, seq_len, intermediate_size, hidden_size)

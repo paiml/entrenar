@@ -184,6 +184,7 @@ impl RMSNorm {
             result.set_backward_op(backward_op);
         }
 
+        contract_post_rmsnorm!(result.data().as_slice().unwrap_or(&[]));
         result
     }
 }
@@ -271,7 +272,9 @@ impl LayerNorm {
             }
         }
 
-        Tensor::from_vec(output, x.requires_grad() || self.weight.requires_grad())
+        let result = Tensor::from_vec(output, x.requires_grad() || self.weight.requires_grad());
+        contract_post_layernorm!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Get hidden size
