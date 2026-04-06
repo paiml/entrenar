@@ -95,6 +95,10 @@ pub struct WgpuInstructPipeline {
     normed_buf: wgpu::Buffer,
     /// RMSNorm epsilon
     eps: f32,
+    /// PMAT-511: Cached transposed+scaled base weights for backward gradient propagation.
+    /// (W_down^T * scale_down, W_gate^T * scale_gate) per layer.
+    /// Computed once at first training step since base weights are frozen.
+    bwd_weight_cache: Vec<(wgpu::Buffer, wgpu::Buffer)>,
 }
 
 #[cfg(feature = "gpu")]
@@ -469,6 +473,7 @@ impl WgpuInstructPipeline {
             output_norm_gpu: output_norm_gpu_buf,
             normed_buf: normed_buf_alloc,
             eps,
+            bwd_weight_cache: Vec::new(),
         }
     }
 
@@ -1148,40 +1153,56 @@ impl WgpuInstructPipeline {
             }
 
             // PMAT-510/511: Propagate gradient backward through this layer's base weights.
-            // PMAT-511 FIX: Scale by 1/sqrt(dim) per GEMM to preserve gradient variance.
-            // Without scaling, W_down^T and W_gate^T amplify gradient by ~sqrt(inter*hidden)
-            // ≈ 5400x per layer → exponential explosion through 28 layers.
-            // Scale = 1/sqrt(reduction_dim) per GEMM (Kaiming-style variance preservation).
-            let prefix = format!("layer.{layer_idx}");
-            let w_down_key = format!("{prefix}.down_proj");
-            let w_gate_key = format!("{prefix}.gate_proj");
+            // Cache transposed+scaled weights on first step (base weights are frozen).
+            // Eliminates 56 transpose dispatches/step → just 56 GEMMs + 28 adds.
+            if self.bwd_weight_cache.is_empty() {
+                // Build cache on first backward pass
+                for li in 0..self.num_layers {
+                    let pf = format!("layer.{li}");
+                    let dk = format!("{pf}.down_proj");
+                    let gk = format!("{pf}.gate_proj");
+                    if let (Some(wd), Some(wg)) =
+                        (self.fwd.weight_buffer(&dk), self.fwd.weight_buffer(&gk))
+                    {
+                        let nf: u64 = wd.size() / 4;
+                        let it: u32 = (nf / u64::from(h)) as u32;
+                        let sd = 1.0 / (h as f32).sqrt();
+                        let sg = 1.0 / (it as f32).sqrt();
+                        let wdt = self.trainer.zeros((h * it) as usize);
+                        self.dispatch_transpose(wd, &wdt, it, h, sd);
+                        let wgt = self.trainer.zeros((it * h) as usize);
+                        self.dispatch_transpose(wg, &wgt, h, it, sg);
+                        self.bwd_weight_cache.push((wdt, wgt));
+                    } else {
+                        // Missing weights — push empty buffers
+                        self.bwd_weight_cache.push((self.trainer.zeros(0), self.trainer.zeros(0)));
+                    }
+                }
+                eprintln!(
+                    "[PMAT-511] Cached {} transposed backward weight pairs",
+                    self.bwd_weight_cache.len()
+                );
+            }
 
-            if let (Some(w_down), Some(w_gate)) =
-                (self.fwd.weight_buffer(&w_down_key), self.fwd.weight_buffer(&w_gate_key))
-            {
-                let n_floats: u64 = w_down.size() / 4;
-                let inter: u32 = (n_floats / u64::from(h)) as u32;
+            if layer_idx < self.bwd_weight_cache.len() {
+                let (ref w_down_t, ref w_gate_t) = self.bwd_weight_cache[layer_idx];
+                if w_down_t.size() > 0 {
+                    let n_floats: u64 = w_down_t.size() / 4;
+                    let inter: u32 = (n_floats / u64::from(h)) as u32;
 
-                // Variance-preserving scale: 1/sqrt(reduction_dim) per GEMM
-                let scale_down = 1.0 / (h as f32).sqrt();
-                let scale_gate = 1.0 / (inter as f32).sqrt();
+                    // grad_silu = grad @ W_down^T_scaled  [seq, inter]
+                    let grad_silu = self.trainer.zeros((s * inter) as usize);
+                    self.trainer.matmul_forward(&grad_buf, w_down_t, &grad_silu, s, h, inter);
 
-                // grad_silu = (grad @ W_down^T) * scale_down  [seq, inter]
-                let w_down_t = self.trainer.zeros((h * inter) as usize);
-                self.dispatch_transpose(w_down, &w_down_t, inter, h, scale_down);
-                let grad_silu = self.trainer.zeros((s * inter) as usize);
-                self.trainer.matmul_forward(&grad_buf, &w_down_t, &grad_silu, s, h, inter);
+                    // grad_ffn = grad_silu @ W_gate^T_scaled  [seq, hidden]
+                    let grad_ffn = self.trainer.zeros((s * h) as usize);
+                    self.trainer.matmul_forward(&grad_silu, w_gate_t, &grad_ffn, s, inter, h);
 
-                // grad_ffn = (grad_silu @ W_gate^T) * scale_gate  [seq, hidden]
-                let w_gate_t = self.trainer.zeros((inter * h) as usize);
-                self.dispatch_transpose(w_gate, &w_gate_t, h, inter, scale_gate);
-                let grad_ffn = self.trainer.zeros((s * h) as usize);
-                self.trainer.matmul_forward(&grad_silu, &w_gate_t, &grad_ffn, s, inter, h);
-
-                // grad_input = grad + grad_ffn (residual connection)
-                let grad_next = self.trainer.zeros((s * h) as usize);
-                self.fwd.gpu_residual_add(&grad_buf, &grad_ffn, &grad_next, s * h);
-                grad_buf = grad_next;
+                    // grad_input = grad + grad_ffn (residual)
+                    let grad_next = self.trainer.zeros((s * h) as usize);
+                    self.fwd.gpu_residual_add(&grad_buf, &grad_ffn, &grad_next, s * h);
+                    grad_buf = grad_next;
+                }
             }
         }
 
