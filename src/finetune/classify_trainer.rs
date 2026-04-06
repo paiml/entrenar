@@ -970,6 +970,7 @@ impl ClassifyTrainer {
             }
         }
 
+        contract_post_save_checkpoint!(());
         Ok(())
     }
 

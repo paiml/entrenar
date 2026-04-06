@@ -38,7 +38,9 @@ pub fn quantize_to_gguf_bytes(data: &[f32], quant: GgufQuantization) -> (Vec<u8>
             let quantized = Q8_0::quantize(data);
             (encode_q8_0_blocks(&quantized), GgmlType::Q8_0)
         }
-    }
+    };
+    contract_post_quantize_precision_bound!(&result);
+    result
 }
 
 /// Encode Q4_0 quantized data into GGUF binary block format

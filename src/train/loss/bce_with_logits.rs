@@ -48,7 +48,7 @@ impl BCEWithLogitsLoss {
     /// Compute element-wise sigmoid: σ(x) = 1 / (1 + exp(-x))
     pub(crate) fn sigmoid(x: &Array1<f32>) -> Array1<f32> {
         contract_pre_sigmoid!();
-        x.mapv(|v| {
+        let result = x.mapv(|v| {
             // Numerically stable sigmoid
             if v >= 0.0 {
                 let exp_neg = (-v).exp();
@@ -57,7 +57,9 @@ impl BCEWithLogitsLoss {
                 let exp_v = v.exp();
                 exp_v / (1.0 + exp_v)
             }
-        })
+        });
+        contract_post_silu!(result);
+        result
     }
 
     /// Numerically stable BCE: max(x, 0) - x*t + log(1 + exp(-|x|))

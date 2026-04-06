@@ -62,6 +62,7 @@ pub fn gelu(a: &Tensor) -> Tensor {
         result.set_backward_op(backward_op);
     }
 
+    contract_post_gelu!(result.data().as_slice().unwrap_or(&[]));
     result
 }
 
@@ -191,6 +192,7 @@ pub fn softmax(a: &Tensor) -> Tensor {
         result.set_backward_op(backward_op);
     }
 
+    contract_post_softmax!(result.data().as_slice().unwrap_or(&[]));
     result
 }
 

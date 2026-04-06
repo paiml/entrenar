@@ -474,6 +474,7 @@ pub fn matmul(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor {
         result.set_backward_op(backward_op);
     }
 
+    contract_post_matmul!(result.data().as_slice().unwrap_or(&[]));
     result
 }
 
@@ -588,6 +589,7 @@ pub fn matmul_nt(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor
         result.set_backward_op(backward_op);
     }
 
+    contract_post_matmul!(result.data().as_slice().unwrap_or(&[]));
     result
 }
 

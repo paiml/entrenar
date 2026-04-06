@@ -306,7 +306,10 @@ impl Transformer {
         let lm_weight = self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight);
 
         // lm_head / tied embed_tokens is [vocab_size, hidden_size] in HF (ENT-269)
-        matmul_nt(&normalized, lm_weight, seq_len, hidden_size, self.config.vocab_size)
+        let result =
+            matmul_nt(&normalized, lm_weight, seq_len, hidden_size, self.config.vocab_size);
+        contract_post_embedding_lookup!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Forward pass returning hidden states (before lm_head)
@@ -332,7 +335,9 @@ impl Transformer {
         }
 
         // Final normalization
-        self.norm.forward_batched(&hidden, seq_len, hidden_size)
+        let result = self.norm.forward_batched(&hidden, seq_len, hidden_size);
+        contract_post_embedding_lookup!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Forward pass returning hidden states with LoRA adjusts (KAIZEN-011)
@@ -385,7 +390,9 @@ impl Transformer {
             hidden = crate::autograd::add(&residual, &ffn_out);
         }
 
-        self.norm.forward_batched(&hidden, seq_len, hidden_size)
+        let result = self.norm.forward_batched(&hidden, seq_len, hidden_size);
+        contract_post_embedding_lookup!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Forward pass with LoRA adapters (ENT-LoRA-001)
@@ -407,7 +414,9 @@ impl Transformer {
 
         let hidden = self.forward_hidden_with_lora(token_ids, lora_layers);
         let lm_weight = self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight);
-        matmul_nt(&hidden, lm_weight, seq_len, hidden_size, self.config.vocab_size)
+        let result = matmul_nt(&hidden, lm_weight, seq_len, hidden_size, self.config.vocab_size);
+        contract_post_embedding_lookup!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Get the last token's logits (for generation)
@@ -423,7 +432,9 @@ impl Transformer {
         let last_logits: Vec<f32> =
             logits.data().as_slice().expect("logits must be contiguous")[start..end].to_vec();
 
-        Tensor::from_vec(last_logits, logits.requires_grad())
+        let result = Tensor::from_vec(last_logits, logits.requires_grad());
+        contract_post_embedding_lookup!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Get all parameters as a vector

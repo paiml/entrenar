@@ -130,7 +130,9 @@ impl Discriminator {
 /// Sigmoid activation function
 pub fn sigmoid(x: f32) -> f32 {
     contract_pre_sigmoid!();
-    1.0 / (1.0 + (-x).exp())
+    let result = 1.0 / (1.0 + (-x).exp());
+    contract_post_silu!(&[result]);
+    result
 }
 
 #[cfg(test)]

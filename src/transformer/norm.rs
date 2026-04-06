@@ -55,7 +55,9 @@ impl RMSNorm {
 
         // Normalize and scale
         let normalized = scale(x, 1.0 / rms);
-        crate::autograd::mul(&normalized, &self.weight)
+        let result = crate::autograd::mul(&normalized, &self.weight);
+        contract_post_rmsnorm!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Forward pass for batched input

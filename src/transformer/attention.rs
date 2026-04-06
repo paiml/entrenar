@@ -501,7 +501,9 @@ impl MultiHeadAttention {
         }
 
         // Output projection — w_o is [hidden_size, q_dim] in HF (ENT-269)
-        matmul_nt(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
+        let result = matmul_nt(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size);
+        contract_post_attention!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Forward pass with LoRA adjusts on Q and V projections (KAIZEN-010).
@@ -674,7 +676,9 @@ impl MultiHeadAttention {
         }
 
         // Output projection — w_o is [hidden_size, q_dim] in HF (ENT-269)
-        matmul_nt(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
+        let result = matmul_nt(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size);
+        contract_post_lora_forward!(result);
+        result
     }
 
     /// Get all parameters as a vector

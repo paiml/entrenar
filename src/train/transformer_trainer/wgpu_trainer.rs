@@ -339,7 +339,7 @@ impl WgpuModelState {
         alpha: f32,
     ) -> Result<std::path::PathBuf, String> {
         contract_pre_save_checkpoint!();
-        super::wgpu_checkpoint::save_lora_checkpoint(
+        let result = super::wgpu_checkpoint::save_lora_checkpoint(
             &self.lora,
             self.hidden_size,
             dir,
@@ -347,18 +347,22 @@ impl WgpuModelState {
             loss,
             rank,
             alpha,
-        )
+        );
+        contract_post_save_checkpoint!(result);
+        result
     }
 
     /// Load LoRA checkpoint (delegates to wgpu_checkpoint)
     pub fn load_checkpoint(&mut self, path: &std::path::Path) -> Result<(u32, f32), String> {
         contract_pre_load_checkpoint!();
-        super::wgpu_checkpoint::load_lora_checkpoint(
+        let result = super::wgpu_checkpoint::load_lora_checkpoint(
             &mut self.lora,
             self.num_layers,
             self.hidden_size,
             path,
-        )
+        );
+        contract_post_load_checkpoint!(result);
+        result
     }
 }
 

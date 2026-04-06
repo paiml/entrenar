@@ -75,6 +75,7 @@ impl TrainerConfig {
     pub fn temperature(mut self, temp: f32) -> Self {
         contract_pre_temperature!();
         self.distillation_loss = DistillationLoss::new(temp, self.distillation_loss.alpha);
+        contract_post_temperature_bounds!(temp);
         self
     }
 

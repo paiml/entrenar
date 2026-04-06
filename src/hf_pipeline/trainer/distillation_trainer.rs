@@ -72,6 +72,7 @@ impl<T: TeacherModel> DistillationTrainer<T> {
             total_loss += at.loss(sa, ta);
         }
 
+        contract_post_cross_entropy!(total_loss);
         total_loss
     }
 

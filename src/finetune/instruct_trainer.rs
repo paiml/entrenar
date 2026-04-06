@@ -476,6 +476,7 @@ impl InstructTrainer {
         })?;
         std::fs::write(path.join("model.safetensors"), safetensor_bytes)?;
 
+        contract_post_save_checkpoint!(());
         Ok(())
     }
 }

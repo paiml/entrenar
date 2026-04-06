@@ -83,7 +83,9 @@ impl Embedding {
             }
         }
 
-        Tensor::from_vec(output, true)
+        let result = Tensor::from_vec(output, true);
+        contract_post_embedding_lookup!(result.data().as_slice().unwrap_or(&[]));
+        result
     }
 
     /// Get vocabulary size
