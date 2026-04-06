@@ -1147,9 +1147,11 @@ impl WgpuInstructPipeline {
                     .adamw_step(&proj.b, &db, &proj.m_b, &proj.v_b, lr, 0.9, 0.999, 1e-8, 0.01);
             }
 
-            // PMAT-510: Propagate gradient backward through this layer's base weights.
-            // Backward through FFN: grad_silu = grad @ W_down^T, grad_ffn = grad_silu @ W_gate^T
-            // Then residual: grad_input = grad + grad_ffn
+            // PMAT-510/511: Propagate gradient backward through this layer's base weights.
+            // PMAT-511 FIX: Scale by 1/sqrt(dim) per GEMM to preserve gradient variance.
+            // Without scaling, W_down^T and W_gate^T amplify gradient by ~sqrt(inter*hidden)
+            // ≈ 5400x per layer → exponential explosion through 28 layers.
+            // Scale = 1/sqrt(reduction_dim) per GEMM (Kaiming-style variance preservation).
             let prefix = format!("layer.{layer_idx}");
             let w_down_key = format!("{prefix}.down_proj");
             let w_gate_key = format!("{prefix}.gate_proj");
@@ -1157,22 +1159,22 @@ impl WgpuInstructPipeline {
             if let (Some(w_down), Some(w_gate)) =
                 (self.fwd.weight_buffer(&w_down_key), self.fwd.weight_buffer(&w_gate_key))
             {
-                // Get intermediate_dim from down_proj: W_down is [inter, hidden]
                 let n_floats: u64 = w_down.size() / 4;
                 let inter: u32 = (n_floats / u64::from(h)) as u32;
 
-                // grad_silu = grad @ W_down^T  [seq, inter]
-                // W_down is [inter, hidden]. W_down^T is [hidden, inter].
-                // dispatch_transpose(W_down[inter, h], W_down_t[h, inter])
+                // Variance-preserving scale: 1/sqrt(reduction_dim) per GEMM
+                let scale_down = 1.0 / (h as f32).sqrt();
+                let scale_gate = 1.0 / (inter as f32).sqrt();
+
+                // grad_silu = (grad @ W_down^T) * scale_down  [seq, inter]
                 let w_down_t = self.trainer.zeros((h * inter) as usize);
-                self.dispatch_transpose(w_down, &w_down_t, inter, h, 1.0);
+                self.dispatch_transpose(w_down, &w_down_t, inter, h, scale_down);
                 let grad_silu = self.trainer.zeros((s * inter) as usize);
                 self.trainer.matmul_forward(&grad_buf, &w_down_t, &grad_silu, s, h, inter);
 
-                // grad_ffn = grad_silu @ W_gate^T  [seq, hidden]
-                // W_gate is [hidden, inter]. W_gate^T is [inter, hidden].
+                // grad_ffn = (grad_silu @ W_gate^T) * scale_gate  [seq, hidden]
                 let w_gate_t = self.trainer.zeros((inter * h) as usize);
-                self.dispatch_transpose(w_gate, &w_gate_t, h, inter, 1.0);
+                self.dispatch_transpose(w_gate, &w_gate_t, h, inter, scale_gate);
                 let grad_ffn = self.trainer.zeros((s * h) as usize);
                 self.trainer.matmul_forward(&grad_silu, &w_gate_t, &grad_ffn, s, inter, h);
 
