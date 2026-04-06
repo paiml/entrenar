@@ -206,6 +206,17 @@ impl InstructTrainer {
 
             let train_loss = if epoch_tokens > 0 { epoch_loss / epoch_tokens as f32 } else { 0.0 };
 
+            // PMAT-512: Emit per-epoch loss to stderr so canary parser can extract it.
+            // Format matches WGPU path (finetune.rs:678) for parser compatibility.
+            eprintln!(
+                "  Epoch {} complete: avg_loss={:.4} tokens={} samples={} lr={:.2e}",
+                epoch + 1,
+                train_loss,
+                epoch_tokens,
+                train_prepared.len(),
+                self.pipeline.learning_rate(),
+            );
+
             // ── Validate ──
             // KAIZEN-046: val_prompts/val_responses hoisted outside epoch loop.
             let val_result = self.pipeline.evaluate(&val_prompts, &val_responses);
@@ -259,6 +270,19 @@ impl InstructTrainer {
                 stopped_early = true;
                 break;
             }
+        }
+
+        // PMAT-512: Print final training summary to stderr for canary parser.
+        if let Some(last) = epoch_metrics.last() {
+            eprintln!(
+                "[training] Training complete: final_loss={:.4} best_val_loss={:.4} best_epoch={} epochs={} time={}s{}",
+                last.train_loss,
+                best_val_loss,
+                best_epoch + 1,
+                epoch_metrics.len(),
+                total_start.elapsed().as_secs(),
+                if stopped_early { " (early stopped)" } else { "" },
+            );
         }
 
         // PMAT-483: Print profiler report at end of training (text + JSON)
