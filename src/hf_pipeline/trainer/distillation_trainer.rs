@@ -52,7 +52,7 @@ impl<T: TeacherModel> DistillationTrainer<T> {
         teacher_attention: Option<&[ndarray::Array2<f32>]>,
     ) -> f32 {
         // Contract: cross-entropy-kernel-v1.yaml precondition (pv codegen)
-        // contract_pre_cross_entropy!(student_logits.as_slice().unwrap_or(&[])); // TODO: macro not generated
+        contract_pre_cross_entropy!();
 
         // Base distillation loss
         let mut total_loss =

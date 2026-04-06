@@ -338,6 +338,7 @@ impl WgpuModelState {
         rank: u32,
         alpha: f32,
     ) -> Result<std::path::PathBuf, String> {
+        contract_pre_save_checkpoint!();
         super::wgpu_checkpoint::save_lora_checkpoint(
             &self.lora,
             self.hidden_size,

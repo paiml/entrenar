@@ -114,6 +114,7 @@ impl GenerateConfig {
     /// Create a greedy decoding config (deterministic, always picks highest probability token).
     #[must_use]
     pub fn greedy(max_new_tokens: usize) -> Self {
+        contract_pre_greedy!();
         Self { max_new_tokens, temperature: 0.0, top_k: 0, stop_tokens: Vec::new() }
     }
 }

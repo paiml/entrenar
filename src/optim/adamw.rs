@@ -182,6 +182,7 @@ impl Optimizer for AdamW {
     }
 
     fn step_refs(&mut self, params: &mut [&mut Tensor]) {
+        contract_pre_weight_update!();
         // Ensure moments are sized correctly
         if self.m.len() < params.len() {
             self.m.resize(params.len(), None);
