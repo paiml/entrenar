@@ -10,7 +10,7 @@
 	property-test property-test-fast \
 	examples examples-fast examples-list \
 	server server-dev \
-	validate-book \
+	publish validate-book \
 	llama-tests llama-properties llama-mutations llama-chaos llama-gradients llama-fuzz llama-examples llama-ci \
 	profile-llama profile-llama-otlp profile-llama-anomaly \
 	wasm-build wasm-install wasm-serve wasm-e2e wasm-e2e-ui wasm-e2e-headed wasm-e2e-update wasm-clean \
@@ -566,3 +566,25 @@ falsify: ## Run batuta falsification checklist
 	@which batuta > /dev/null 2>&1 || (echo "batuta not installed" && exit 1)
 	@batuta falsify
 	@echo "Falsification check complete"
+
+publish: ## Publish entrenar to crates.io with post-publish cargo install verification (PMAT-517)
+	@echo "Publishing entrenar to crates.io..."
+	@echo "Step 1: cargo publish --allow-dirty"
+	@cargo publish --allow-dirty
+	@echo ""
+	@echo "=== POST-PUBLISH VERIFICATION (PMAT-517) ==="
+	@echo "Waiting for crates.io index to update..."
+	@sleep 15
+	@echo "Step 2: Verifying cargo install apr-cli --force (depends on entrenar)..."
+	@cargo install apr-cli --force 2>&1 | tee /tmp/publish-verify-entrenar.log; \
+	INSTALL_STATUS=$$?; \
+	if [ $$INSTALL_STATUS -ne 0 ]; then \
+		echo ""; \
+		echo "FATAL: cargo install apr-cli FAILED after publishing entrenar!"; \
+		echo "The published entrenar is BROKEN. You must fix and republish."; \
+		echo "Build log: /tmp/publish-verify-entrenar.log"; \
+		exit 1; \
+	fi
+	@echo "Verifying apr --version..."
+	@apr --version
+	@echo "POST-PUBLISH VERIFICATION: PASSED"
