@@ -369,6 +369,7 @@ impl MultiHeadAttention {
     /// # Returns
     /// Output tensor (seq_len * hidden_size, flattened)
     pub fn forward(&self, x: &Tensor, seq_len: usize) -> Tensor {
+        contract_pre_attention!(x.data());
         let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;
@@ -520,6 +521,7 @@ impl MultiHeadAttention {
         x: &Tensor,
         seq_len: usize,
         lora_a_q: &Tensor,
+        // contract_pre_attention applied via forward()
         lora_b_q: &Tensor,
         lora_a_v: &Tensor,
         lora_b_v: &Tensor,

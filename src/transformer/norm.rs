@@ -46,6 +46,7 @@ impl RMSNorm {
     ///
     /// RMSNorm(x) = x / sqrt(mean(x^2) + eps) * weight
     pub fn forward(&self, x: &Tensor) -> Tensor {
+        contract_pre_rmsnorm!(x.data());
         let n = x.len() as f32;
 
         // Compute RMS

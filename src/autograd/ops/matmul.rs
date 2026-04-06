@@ -50,6 +50,7 @@ fn get_cuda_executor() -> Option<&'static Mutex<CudaExecutor>> {
 /// Uses cache-efficient blocked transpose for large matrices
 #[inline]
 pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
+    contract_pre_transpose!(data);
     TRACER.start(TraceStep::Transpose);
     let mut transposed = vec![0.0f32; rows * cols];
 
@@ -152,6 +153,7 @@ fn transpose_simple(src: &[f32], dst: &mut [f32], rows: usize, cols: usize) {
 /// block uploads), all subsequent calls skip CUDA entirely and use trueno SIMD.
 #[cfg(all(feature = "realizar", feature = "cuda"))]
 pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    contract_pre_matmul!(a);
     // Fast path: skip CUDA entirely once disabled (common during QLoRA training
     // where NF4 blocks fill VRAM before realizador can JIT-compile gemm_tiled)
     if !CUDA_MATMUL_DISABLED.load(Ordering::Relaxed) {

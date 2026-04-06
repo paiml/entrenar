@@ -61,6 +61,7 @@ impl Embedding {
     /// # Returns
     /// Embedded vectors (seq_len * hidden_size, flattened)
     pub fn forward(&self, token_ids: &[u32]) -> Tensor {
+        contract_pre_embedding_lookup!(token_ids);
         let mut output = Vec::with_capacity(token_ids.len() * self.hidden_size);
 
         for &token_id in token_ids {

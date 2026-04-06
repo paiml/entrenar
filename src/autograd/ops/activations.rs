@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 /// ReLU activation
 pub fn relu(a: &Tensor) -> Tensor {
+    contract_pre_relu!(a.data().as_slice().unwrap_or(&[]));
     let data = a.data().mapv(|x| x.max(0.0));
     let requires_grad = a.requires_grad();
 
@@ -49,6 +50,7 @@ impl BackwardOp for ReluBackward {
 ///
 /// ONE PATH: Forward math delegates to `trueno::gelu_scalar` (UCBD §4).
 pub fn gelu(a: &Tensor) -> Tensor {
+    contract_pre_gelu!(a.data().as_slice().unwrap_or(&[]));
     let data = a.data().mapv(trueno::gelu_scalar);
 
     let requires_grad = a.requires_grad();
@@ -169,6 +171,7 @@ impl BackwardOp for SwishBackward {
 /// Softmax activation
 #[contract("softmax-v1", equation = "softmax")]
 pub fn softmax(a: &Tensor) -> Tensor {
+    contract_pre_softmax!(a.data().as_slice().unwrap_or(&[]));
     let max_val = a.data().iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let exp_vals = a.data().mapv(|x| (x - max_val).exp());
     let sum_exp = exp_vals.sum();
