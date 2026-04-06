@@ -789,6 +789,13 @@ impl WgpuInstructPipeline {
 
         let t1 = std::time::Instant::now();
 
+        // PMAT-509: Diagnostic — check embedding norm on first step
+        if self.lora_step == 0 {
+            let h_norm: f32 = hidden.iter().map(|x| x * x).sum::<f32>().sqrt();
+            let h_mean: f32 = hidden.iter().sum::<f32>() / hidden.len() as f32;
+            eprintln!("[DIAG-509] embed: norm={h_norm:.4}, mean={h_mean:.6}, len={}, seq={seq_len}", hidden.len());
+        }
+
         // 2. GPU forward through 28 transformer layers with LoRA contribution
         // Contract: lora-algebra-v1/lora_shape — h = W_base @ x + (x @ A) @ B * scale
         // Per-layer forward: base GEMM (via WgslForwardPass) + LoRA addmm (via pipeline shader)
@@ -868,6 +875,18 @@ impl WgpuInstructPipeline {
         }
 
         let t2 = std::time::Instant::now();
+
+        // PMAT-509: Diagnostic — check hidden state after all layers on first step
+        if self.lora_step == 0 {
+            let n_floats = seq_len * self.hidden_dim;
+            let h_data = self.fwd.download_hidden(n_floats);
+            let h_norm: f32 = h_data.iter().map(|x| x * x).sum::<f32>().sqrt();
+            let h_mean: f32 = h_data.iter().sum::<f32>() / h_data.len() as f32;
+            let nan_count = h_data.iter().filter(|x| x.is_nan()).count();
+            let inf_count = h_data.iter().filter(|x| x.is_infinite()).count();
+            let first5: Vec<f32> = h_data.iter().take(5).copied().collect();
+            eprintln!("[DIAG-509] post-layers: norm={h_norm:.4}, mean={h_mean:.6}, nan={nan_count}, inf={inf_count}, first5={first5:?}");
+        }
 
         // 3. GPU RMSNorm + lm_head — hidden stays on GPU (contract: gpu-output-norm-v1)
         let _t2a = std::time::Instant::now();
