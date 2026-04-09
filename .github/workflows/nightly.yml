@@ -85,7 +85,7 @@ jobs:
           7z a ../../../entrenar-${{ matrix.target }}.zip entrenar.exe
           cd ../../..
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: entrenar-${{ matrix.target }}
           path: entrenar-${{ matrix.target }}.*
